@@ -1,11 +1,12 @@
 import { useState, useCallback, useMemo, useRef } from "react";
-import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { Search, MoreVertical, Upload, FolderUp, FolderPlus, RefreshCw } from "lucide-react";
 import { FileGrid } from "~/components/library/file-grid";
 import { useSearch } from "~/components/omni-input/modules/use-search";
 import { GridItem } from "~/components/library/grid-item";
 import type { FileNode } from "~/components/library/library-utils";
+import { ModalNavigationProvider, useModalNavigation } from "~/contexts/modal-navigation-context";
+import type { FileWithDigests } from "~/types/file-card";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import {
@@ -17,17 +18,33 @@ import {
 import { useAuth } from "~/contexts/auth-context";
 import { useUploadNotifications } from "~/hooks/use-upload-notifications";
 
+function fileNodeToFileWithDigests(node: FileNode): FileWithDigests {
+  const name = node.path.split("/").pop() || node.path;
+  return {
+    path: node.path,
+    name,
+    isFolder: node.type === "folder",
+    size: node.size ?? null,
+    mimeType: null,
+    hash: null,
+    modifiedAt: node.modifiedAt ?? 0,
+    createdAt: node.modifiedAt ?? 0,
+    digests: [],
+    previewSqlar: node.previewSqlar,
+  };
+}
+
 function SearchResultsGrid({
   results,
   isSearching,
   error,
-  onFileOpen,
 }: {
   results: import("~/types/api").SearchResponse | null;
   isSearching: boolean;
   error: string | null;
-  onFileOpen: (path: string, name: string) => void;
 }) {
+  const { openModal } = useModalNavigation();
+
   const nodes: FileNode[] = useMemo(() => {
     if (!results?.results) return [];
     return results.results.map((r) => ({
@@ -73,7 +90,10 @@ function SearchResultsGrid({
             key={node.path}
             node={node}
             fullPath={node.path}
-            onClick={() => onFileOpen(node.path, node.path.split("/").pop() || node.path)}
+            onClick={() => {
+              if (node.type === "folder") return;
+              openModal(fileNodeToFileWithDigests(node));
+            }}
             onRefresh={() => {}}
           />
         ))}
@@ -83,7 +103,7 @@ function SearchResultsGrid({
 }
 
 function DataContent() {
-  const navigate = useNavigate();
+  const { openModal } = useModalNavigation();
   const [searchQuery, setSearchQuery] = useState("");
   const [createFolderTrigger, setCreateFolderTrigger] = useState(0);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -94,8 +114,8 @@ function DataContent() {
   useUploadNotifications();
 
   const handleFileOpen = useCallback((path: string, _name: string) => {
-    navigate(`/file/${path}`);
-  }, [navigate]);
+    openModal(fileNodeToFileWithDigests({ path, type: "file" }));
+  }, [openModal]);
 
   const handleUploadFile = useCallback(() => {
     fileInputRef.current?.click();
@@ -212,7 +232,6 @@ function DataContent() {
             results={searchResults.keywordResults}
             isSearching={searchResults.isKeywordSearching}
             error={searchResults.keywordError}
-            onFileOpen={handleFileOpen}
           />
         ) : (
           <FileGrid
@@ -250,5 +269,9 @@ export default function DataPage() {
     );
   }
 
-  return <DataContent />;
+  return (
+    <ModalNavigationProvider files={[]}>
+      <DataContent />
+    </ModalNavigationProvider>
+  );
 }
