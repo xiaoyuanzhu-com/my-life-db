@@ -901,15 +901,13 @@ export function useAgentRuntime(options: {
               }
             }),
       status: msg.status,
-      metadata: (msg.isOptimistic || msg.parentToolUseId || msg.planEntries)
-        ? {
-            custom: {
-              ...(msg.isOptimistic && { isOptimistic: true }),
-              ...(msg.parentToolUseId && { parentToolUseId: msg.parentToolUseId }),
-              ...(msg.planEntries && { planEntries: msg.planEntries }),
-            },
-          }
-        : undefined,
+      metadata: {
+        custom: {
+          ...(msg.isOptimistic && { isOptimistic: true }),
+          ...(msg.parentToolUseId && { parentToolUseId: msg.parentToolUseId }),
+          ...(msg.planEntries && { planEntries: msg.planEntries }),
+        },
+      },
     }),
     []
   )
