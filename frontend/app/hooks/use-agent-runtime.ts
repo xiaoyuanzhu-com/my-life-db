@@ -321,7 +321,6 @@ export function useAgentRuntime(options: {
           const parentToolUseId = getFrameParentToolUseId(frame)
 
 
-          if (isActiveRef.current) setIsRunning(true)
           setMessages((prev) => {
             const updated = [...prev]
             const last = findLastAssistant(updated, parentToolUseId)
@@ -379,7 +378,6 @@ export function useAgentRuntime(options: {
           const parentToolUseId = getFrameParentToolUseId(frame)
 
 
-          if (isActiveRef.current) setIsRunning(true)
           setMessages((prev) => {
             const updated = [...prev]
             const last = findLastAssistant(updated, parentToolUseId)
@@ -436,7 +434,6 @@ export function useAgentRuntime(options: {
           const args = { ...rawInput, kind: f.kind, ...(metaToolName && { metaToolName }) } as ReadonlyJSONObject
 
 
-          if (isActiveRef.current) setIsRunning(true)
           setMessages((prev) => {
             const updated = [...prev]
 
@@ -941,7 +938,6 @@ export function useAgentRuntime(options: {
     () => ({
       messages: rootMessages,
       isRunning,
-      convertMessage: (msg: ThreadMessageLike) => msg,
       onNew: async (message) => {
         // Extract text from the AppendMessage content parts
         const textParts = message.content.filter(
