@@ -23,6 +23,9 @@ type acpSession struct {
 	mu     sync.Mutex
 	closed bool
 
+	// MCP servers passed via ACP (reused in LoadSession)
+	mcpServers []acp.McpServer
+
 	// Cached from NewSessionResponse, emitted on first Send()
 	initialModes  *SessionMeta
 	initialModels *SessionMeta
@@ -132,9 +135,14 @@ func newSessionFromWarm(ctx context.Context, warm *warmConn, agentCfg AgentConfi
 		cwd, _ = os.Getwd()
 	}
 
+	mcpServers := config.McpServers
+	if mcpServers == nil {
+		mcpServers = []acp.McpServer{}
+	}
+
 	req := acp.NewSessionRequest{
 		Cwd:        cwd,
-		McpServers: []acp.McpServer{},
+		McpServers: mcpServers,
 	}
 
 	// Pass system prompt via _meta.systemPrompt (append mode).
@@ -170,11 +178,12 @@ func newSessionFromWarm(ctx context.Context, warm *warmConn, agentCfg AgentConfi
 	// is captured and forwarded to connected clients.
 
 	session := &acpSession{
-		cmd:       warm.cmd,
-		conn:      warm.conn,
-		client:    warm.client,
-		sessionID: string(sessResp.SessionId),
-		agentType: agentCfg.Type,
+		cmd:        warm.cmd,
+		conn:       warm.conn,
+		client:     warm.client,
+		sessionID:  string(sessResp.SessionId),
+		agentType:  agentCfg.Type,
+		mcpServers: mcpServers,
 	}
 
 	// Cache session modes
@@ -347,12 +356,17 @@ func (s *acpSession) LoadSession(ctx context.Context, sessionID string, cwd stri
 
 	log.Info().Str("sessionId", sessionID).Str("cwd", cwd).Msg("calling ACP session/load")
 
+	mcpServers := s.mcpServers
+	if mcpServers == nil {
+		mcpServers = []acp.McpServer{}
+	}
+
 	// conn.LoadSession blocks. During this call, the agent replays history
 	// as SessionUpdate notifications → acpClient.emit() → onFrame handler.
 	_, err := s.conn.LoadSession(ctx, acp.LoadSessionRequest{
 		SessionId:  acp.SessionId(sessionID),
 		Cwd:        cwd,
-		McpServers: []acp.McpServer{},
+		McpServers: mcpServers,
 	})
 
 	if err != nil {

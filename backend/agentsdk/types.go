@@ -8,6 +8,8 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	acp "github.com/coder/acp-go-sdk"
 )
 
 // AgentType identifies which agent CLI to use.
@@ -37,6 +39,7 @@ type SessionConfig struct {
 	WorkingDir   string
 	MaxTurns     int
 	Env          map[string]string // extra env vars for the agent process
+	McpServers   []acp.McpServer   // MCP servers to provide to the agent via ACP
 }
 
 // TaskConfig configures a one-off agent task.

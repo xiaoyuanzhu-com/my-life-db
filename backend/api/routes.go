@@ -24,6 +24,10 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		// Public share routes (no auth required)
 		public.GET("/share/:token", h.GetSharedSession)
 		public.GET("/share/:token/messages", h.GetSharedSessionMessages)
+
+		// Explore MCP endpoint — no auth so ACP agents can connect via HTTP
+		exploreMCP := explore.NewMCPHandler(h.server.Explore())
+		public.POST("/explore/mcp", exploreMCP.HandleMCP)
 	}
 
 	// Protected routes (require auth when auth mode is enabled)
@@ -150,9 +154,7 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 	api.GET("/explore/posts/:id/comments", h.GetExploreComments)
 	api.DELETE("/explore/posts/:id", h.DeleteExplorePost)
 
-	// Explore MCP endpoint
-	exploreMCP := explore.NewMCPHandler(h.server.Explore())
-	api.POST("/explore/mcp", exploreMCP.HandleMCP)
+	// Explore MCP endpoint — registered in public group (see above)
 
 	// Agent apps API - protected
 	api.GET("/agent-apps", h.GetAgentApps)

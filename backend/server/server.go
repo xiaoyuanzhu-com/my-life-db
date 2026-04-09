@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	acp "github.com/coder/acp-go-sdk"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/xiaoyuanzhu-com/my-life-db/agent"
@@ -75,15 +76,6 @@ func New(cfg *Config) (*Server, error) {
 	// 1.5.1. Initialize explore service
 	s.explore = explore.NewService(cfg.UserDataDir)
 
-	// Write .mcp.json to UserDataDir so Claude Code sessions pick up the agent-apps MCP server
-	if binaryPath, err := os.Executable(); err == nil {
-		if err := agentapps.WriteMCPConfig(cfg.UserDataDir, binaryPath, cfg.UserDataDir, cfg.Port); err != nil {
-			log.Warn().Err(err).Msg("failed to write .mcp.json for agent-apps")
-		} else {
-			log.Info().Str("dir", cfg.UserDataDir).Msg("wrote .mcp.json for agent-apps MCP server")
-		}
-	}
-
 	// 1.6. Initialize LLM proxy
 	s.llmProxy = llm.NewProxy(cfg.LLM)
 	if cfg.LLM.HasAnthropic() || cfg.LLM.HasOpenAI() {
@@ -115,14 +107,37 @@ func New(cfg *Config) (*Server, error) {
 			CleanEnv: true,
 		}
 
+		// Build MCP servers to pass via ACP (no .mcp.json discovery needed)
+		var mcpServers []acp.McpServer
+		if binaryPath, err := os.Executable(); err == nil {
+			mcpServers = append(mcpServers, acp.McpServer{
+				Stdio: &acp.McpServerStdio{
+					Name:    "agent-apps",
+					Command: binaryPath,
+					Args:    []string{"mcp-agent-apps", "--user-data-dir", cfg.UserDataDir},
+					Env:     []acp.EnvVariable{},
+				},
+			})
+		}
+		mcpServers = append(mcpServers, acp.McpServer{
+			Http: &acp.McpServerHttpInline{
+				Name:    "explore",
+				Type:    "http",
+				Url:     fmt.Sprintf("http://localhost:%d/api/explore/mcp", cfg.Port),
+				Headers: []acp.HttpHeader{},
+			},
+		})
+
 		s.agentClient = agentsdk.NewClient(agentsdk.SessionConfig{
 			SystemPrompt: buildAgentSystemPrompt(cfg.UserDataDir),
+			McpServers:   mcpServers,
 		}, ccAgent, codexAgent)
 		s.agentClient.SetProxyBaseURL(fmt.Sprintf("http://localhost:%d", cfg.Port))
 		s.agentClient.StartPool(ctx, agentsdk.AgentClaudeCode, 3)
 
 		log.Info().
 			Bool("llm_proxy", cfg.LLM.HasAnthropic() || cfg.LLM.HasOpenAI()).
+			Int("mcp_servers", len(mcpServers)).
 			Msg("agent client initialized")
 	}
 

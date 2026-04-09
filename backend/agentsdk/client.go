@@ -93,6 +93,11 @@ func (c *Client) CreateSession(ctx context.Context, config SessionConfig) (Sessi
 		config.SystemPrompt = c.defaults.SystemPrompt
 	}
 
+	// Inherit default MCP servers if not explicitly set
+	if len(config.McpServers) == 0 && len(c.defaults.McpServers) > 0 {
+		config.McpServers = c.defaults.McpServers
+	}
+
 	var session *acpSession
 
 	// Try pool first (only for the pooled agent type)

@@ -22,10 +22,14 @@ type AgentError struct {
 }
 
 func (e *AgentError) Error() string {
+	base := fmt.Sprintf("agent: %s: %s", e.Type, e.Message)
 	if e.Agent != "" {
-		return fmt.Sprintf("agent %s: %s: %s", e.Agent, e.Type, e.Message)
+		base = fmt.Sprintf("agent %s: %s: %s", e.Agent, e.Type, e.Message)
 	}
-	return fmt.Sprintf("agent: %s: %s", e.Type, e.Message)
+	if e.Cause != nil {
+		return base + ": " + e.Cause.Error()
+	}
+	return base
 }
 
 func (e *AgentError) Unwrap() error { return e.Cause }
