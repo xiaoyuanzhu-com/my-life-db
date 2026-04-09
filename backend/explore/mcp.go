@@ -14,11 +14,13 @@ import (
 // MCPHandler serves MCP (Model Context Protocol) over streamable HTTP for explore.
 type MCPHandler struct {
 	service *Service
+	token   string // required bearer token; empty disables auth
 }
 
 // NewMCPHandler creates a new MCP handler backed by the given explore service.
-func NewMCPHandler(service *Service) *MCPHandler {
-	return &MCPHandler{service: service}
+// If token is non-empty, requests must include "Authorization: Bearer <token>".
+func NewMCPHandler(service *Service, token string) *MCPHandler {
+	return &MCPHandler{service: service, token: token}
 }
 
 // JSON-RPC 2.0 types
@@ -46,6 +48,14 @@ type rpcError struct {
 // It reads a JSON-RPC 2.0 request from the POST body, dispatches it,
 // and writes the JSON-RPC 2.0 response.
 func (m *MCPHandler) HandleMCP(c *gin.Context) {
+	if m.token != "" {
+		auth := c.GetHeader("Authorization")
+		if auth != "Bearer "+m.token {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+	}
+
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, jsonrpcResponse{

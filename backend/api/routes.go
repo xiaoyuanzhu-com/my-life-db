@@ -25,8 +25,8 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		public.GET("/share/:token", h.GetSharedSession)
 		public.GET("/share/:token/messages", h.GetSharedSessionMessages)
 
-		// Explore MCP endpoint — no auth so ACP agents can connect via HTTP
-		exploreMCP := explore.NewMCPHandler(h.server.Explore())
+		// Explore MCP endpoint — uses server's internal MCP token
+		exploreMCP := explore.NewMCPHandler(h.server.Explore(), h.server.MCPToken())
 		public.POST("/explore/mcp", exploreMCP.HandleMCP)
 	}
 

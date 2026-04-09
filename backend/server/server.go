@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	cryptoRand "crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"os"
@@ -42,6 +44,11 @@ type Server struct {
 	agentApps       *agentapps.Service
 	explore         *explore.Service
 
+	// Ephemeral token for internal MCP endpoints. Generated at startup,
+	// passed to agents via ACP headers. All internal MCP HTTP handlers
+	// validate this token.
+	mcpToken string
+
 	// Shutdown context - cancelled when server is shutting down.
 	// Long-running handlers (WebSocket, SSE) should listen to this.
 	shutdownCtx    context.Context
@@ -55,8 +62,14 @@ type Server struct {
 // New creates a new server with all components initialized
 func New(cfg *Config) (*Server, error) {
 	ctx, cancel := context.WithCancel(context.Background())
+
+	// Generate ephemeral token for internal MCP endpoints
+	tokenBytes := make([]byte, 32)
+	cryptoRand.Read(tokenBytes)
+
 	s := &Server{
 		cfg:            cfg,
+		mcpToken:       hex.EncodeToString(tokenBytes),
 		shutdownCtx:    ctx,
 		shutdownCancel: cancel,
 	}
@@ -121,10 +134,12 @@ func New(cfg *Config) (*Server, error) {
 		}
 		mcpServers = append(mcpServers, acp.McpServer{
 			Http: &acp.McpServerHttpInline{
-				Name:    "explore",
-				Type:    "http",
-				Url:     fmt.Sprintf("http://localhost:%d/api/explore/mcp", cfg.Port),
-				Headers: []acp.HttpHeader{},
+				Name: "explore",
+				Type: "http",
+				Url:  fmt.Sprintf("http://localhost:%d/api/explore/mcp", cfg.Port),
+				Headers: []acp.HttpHeader{
+					{Name: "Authorization", Value: "Bearer " + s.mcpToken},
+				},
 			},
 		})
 
@@ -459,6 +474,7 @@ func (s *Server) LLMProxy() *llm.Proxy                        { return s.llmProx
 func (s *Server) AgentClient() *agentsdk.Client                { return s.agentClient }
 func (s *Server) AgentApps() *agentapps.Service                 { return s.agentApps }
 func (s *Server) Explore() *explore.Service                      { return s.explore }
+func (s *Server) MCPToken() string                            { return s.mcpToken }
 func (s *Server) Router() *gin.Engine                         { return s.router }
 func (s *Server) ShutdownContext() context.Context            { return s.shutdownCtx }
 
