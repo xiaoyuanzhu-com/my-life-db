@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -16,10 +17,12 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/agent"
 	"github.com/xiaoyuanzhu-com/my-life-db/agent/appclient"
 	"github.com/xiaoyuanzhu-com/my-life-db/agentapps"
+	"github.com/xiaoyuanzhu-com/my-life-db/agentrunner"
 	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/explore"
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
+	"github.com/xiaoyuanzhu-com/my-life-db/hooks"
 	"github.com/xiaoyuanzhu-com/my-life-db/llm"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
@@ -43,6 +46,10 @@ type Server struct {
 	agentClient     *agentsdk.Client
 	agentApps       *agentapps.Service
 	explore         *explore.Service
+	hookRegistry    *hooks.Registry
+	cronHook        *hooks.CronHook
+	fsHook          *hooks.FSHook
+	agentRunner     *agentrunner.Runner
 
 	// Ephemeral token for internal MCP endpoints. Generated at startup,
 	// passed to agents via ACP headers. All internal MCP HTTP handlers
@@ -156,6 +163,23 @@ func New(cfg *Config) (*Server, error) {
 			Msg("agent client initialized")
 	}
 
+	// 1.7. Initialize hooks registry
+	s.hookRegistry = hooks.NewRegistry()
+	s.cronHook = hooks.NewCronHook(s.hookRegistry)
+	s.fsHook = hooks.NewFSHook(s.hookRegistry)
+	s.hookRegistry.Register(s.cronHook)
+	s.hookRegistry.Register(s.fsHook)
+
+	// 1.8. Initialize agent runner
+	agentsDir := filepath.Join(cfg.UserDataDir, "agents")
+	s.agentRunner = agentrunner.New(agentrunner.Config{
+		AgentsDir:   agentsDir,
+		Registry:    s.hookRegistry,
+		CronHook:    s.cronHook,
+		AgentClient: s.agentClient,
+		WorkingDir:  cfg.UserDataDir,
+	})
+
 	// 2. Load user settings from database and apply log level
 	settings, err := db.LoadUserSettings()
 	if err == nil && settings.Preferences.LogLevel != "" {
@@ -228,6 +252,20 @@ func (s *Server) connectServices() {
 		// Notify UI of file changes
 		if event.IsNew || event.ContentChanged {
 			s.notifService.NotifyInboxChanged()
+		}
+
+		// Emit file events to hooks registry for auto-run agents
+		if event.IsNew {
+			s.fsHook.EmitFileEvent(hooks.EventFileCreated, map[string]any{
+				"path":   event.FilePath,
+				"name":   filepath.Base(event.FilePath),
+				"folder": filepath.Dir(event.FilePath),
+			})
+		} else if event.ContentChanged {
+			s.fsHook.EmitFileEvent(hooks.EventFileChanged, map[string]any{
+				"path": event.FilePath,
+				"name": filepath.Base(event.FilePath),
+			})
 		}
 	})
 
@@ -394,6 +432,16 @@ func (s *Server) Start() error {
 	// Start Meilisearch indexer backfill
 	go s.meiliIndexer.Backfill()
 
+	// Start hooks registry
+	if err := s.hookRegistry.Start(s.shutdownCtx); err != nil {
+		log.Error().Err(err).Msg("failed to start hooks registry")
+	}
+
+	// Start agent runner
+	if err := s.agentRunner.Start(s.shutdownCtx); err != nil {
+		log.Error().Err(err).Msg("failed to start agent runner")
+	}
+
 	// Create HTTP server
 	s.http = &http.Server{
 		Addr:     fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port),
@@ -437,6 +485,14 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		log.Info().Msg("HTTP listener closed")
 	}
 
+	// 4.5. Stop agent runner + hooks (before agent client shutdown)
+	if s.agentRunner != nil {
+		s.agentRunner.Stop()
+	}
+	if s.hookRegistry != nil {
+		s.hookRegistry.Stop()
+	}
+
 	// 5. Shutdown agent client (close all ACP sessions + warm pool)
 	if s.agentClient != nil {
 		s.agentClient.ShutdownPool()
@@ -474,6 +530,9 @@ func (s *Server) LLMProxy() *llm.Proxy                        { return s.llmProx
 func (s *Server) AgentClient() *agentsdk.Client                { return s.agentClient }
 func (s *Server) AgentApps() *agentapps.Service                 { return s.agentApps }
 func (s *Server) Explore() *explore.Service                      { return s.explore }
+func (s *Server) HookRegistry() *hooks.Registry                  { return s.hookRegistry }
+func (s *Server) FSHook() *hooks.FSHook                          { return s.fsHook }
+func (s *Server) AgentRunner() *agentrunner.Runner               { return s.agentRunner }
 func (s *Server) MCPToken() string                            { return s.mcpToken }
 func (s *Server) Router() *gin.Engine                         { return s.router }
 func (s *Server) ShutdownContext() context.Context            { return s.shutdownCtx }

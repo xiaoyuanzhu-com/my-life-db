@@ -14,9 +14,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/xiaoyuanzhu-com/my-life-db/agentapps"
+	"github.com/xiaoyuanzhu-com/my-life-db/agentrunner"
+	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/api"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
+	"github.com/xiaoyuanzhu-com/my-life-db/hooks"
 	"github.com/xiaoyuanzhu-com/my-life-db/llm"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/server"
@@ -80,6 +83,28 @@ func main() {
 	// Setup API routes
 	handlers := api.NewHandlers(srv)
 	api.SetupRoutes(srv.Router(), handlers)
+
+	// Wire auto-run agent session callback (must be after api.NewHandlers
+	// to avoid circular imports between server and api packages)
+	srv.AgentRunner().SetOnSessionCreated(func(sess agentsdk.Session, def *agentrunner.AgentDef, payload hooks.Payload) {
+		// Persist session to database
+		db.CreateAgentSession(sess.ID(), def.Agent, cfg.UserDataDir, def.Name, "auto", def.File)
+
+		// Wire frame broadcasting so WebSocket subscribers receive frames
+		sessionState := api.GetOrCreateSessionState(sess.ID())
+		sess.SetOnFrame(func(data []byte) {
+			sessionState.AppendAndBroadcast(data)
+		})
+
+		// Store ACP session in the in-memory map for WebSocket handler access
+		api.StoreAcpSession(sess.ID(), sess)
+
+		log.Info().
+			Str("sessionId", sess.ID()).
+			Str("agent", def.Name).
+			Str("trigger", def.Trigger).
+			Msg("auto-run agent session created")
+	})
 
 	// Setup static file serving and SPA fallback
 	setupStaticRoutes(srv.Router())

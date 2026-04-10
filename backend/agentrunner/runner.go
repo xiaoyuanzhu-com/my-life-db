@@ -23,7 +23,7 @@ type Config struct {
 
 	// Called when a session is created. Server uses this to persist to DB
 	// and wire frame broadcasting.
-	OnSessionCreated func(sessionID string, def *AgentDef, payload hooks.Payload)
+	OnSessionCreated func(sess agentsdk.Session, def *AgentDef, payload hooks.Payload)
 }
 
 // Runner loads agent definitions from markdown files, subscribes to hooks,
@@ -115,6 +115,13 @@ func (r *Runner) Stop() error {
 	return nil
 }
 
+// SetOnSessionCreated sets the callback invoked when an auto-run agent session
+// is created. This allows main.go to wire DB persistence and frame broadcasting
+// without circular imports between server and api packages.
+func (r *Runner) SetOnSessionCreated(fn func(sess agentsdk.Session, def *AgentDef, payload hooks.Payload)) {
+	r.cfg.OnSessionCreated = fn
+}
+
 // registerTrigger sets up the hook subscription for an agent definition.
 // For cron triggers, it registers a cron schedule and subscribes to cron.tick
 // events matching the agent name. For file event triggers, it subscribes
@@ -178,7 +185,7 @@ func (r *Runner) execute(ctx context.Context, def *AgentDef, payload hooks.Paylo
 	}
 
 	if r.cfg.OnSessionCreated != nil {
-		r.cfg.OnSessionCreated(session.ID(), def, payload)
+		r.cfg.OnSessionCreated(session, def, payload)
 	}
 
 	// Send prompt and drain frames in a goroutine
