@@ -25,22 +25,24 @@ func All() []BundledSkill {
 	}
 }
 
-// skillRoots lists the directories where skills are installed.
-// .agents/skills/ is the cross-client Agent Skills standard (agentskills.io),
-// supported by 30+ clients including Claude Code, Codex, Cursor, Gemini CLI,
-// Goose, GitHub Copilot, VS Code, and more.
-var skillRoots = []string{
-	".agents/skills",
-}
-
-// Install writes all bundled skills to the user's data directory.
-// Skills are written to the standard .agents/skills/ directory for
-// cross-client discovery (agentskills.io convention).
+// Install writes all bundled skills to discovery directories.
+// Skills are installed to:
+//   - <dataDir>/.agents/skills/ — cross-client Agent Skills standard (agentskills.io)
+//   - ~/.claude/skills/ — Claude Code CLI discovery
+//
 // Existing files are overwritten to ensure they stay up to date.
 func Install(dataDir string) {
-	for _, root := range skillRoots {
+	roots := []string{
+		filepath.Join(dataDir, ".agents/skills"),
+	}
+
+	if home, err := os.UserHomeDir(); err == nil {
+		roots = append(roots, filepath.Join(home, ".claude/skills"))
+	}
+
+	for _, root := range roots {
 		for _, skill := range All() {
-			dest := filepath.Join(dataDir, root, skill.Path)
+			dest := filepath.Join(root, skill.Path)
 			dir := filepath.Dir(dest)
 
 			if err := os.MkdirAll(dir, 0755); err != nil {
