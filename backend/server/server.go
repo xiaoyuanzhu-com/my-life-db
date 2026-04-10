@@ -26,6 +26,7 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/llm"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
+	"github.com/xiaoyuanzhu-com/my-life-db/skills"
 	"github.com/xiaoyuanzhu-com/my-life-db/workers/digest"
 	meiliworker "github.com/xiaoyuanzhu-com/my-life-db/workers/meili"
 )
@@ -89,6 +90,9 @@ func New(cfg *Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 	s.database = database
+
+	// Install bundled skills for agent discovery
+	skills.Install(cfg.UserDataDir)
 
 	// 1.5. Initialize agent apps service
 	s.agentApps = agentapps.NewService(cfg.UserDataDir)
@@ -586,5 +590,31 @@ Use descriptive filenames: dashboard-sleep-trends.html, report-quarterly.html, c
 
 **Versioning rule:** When the user asks to modify a previously generated HTML file, always write to a NEW file with a version suffix (e.g., -v2, -v3). Never overwrite the original — it is still referenced earlier in the conversation and must remain intact so the user can see what changed and why.
 
-For small visualizations (under ~50 lines), inline HTML code blocks are fine — no need for a file.`
+For small visualizations (under ~50 lines), inline HTML code blocks are fine — no need for a file.
+
+## Auto-Run Agents
+
+MyLifeDB supports auto-run agents — markdown files in the agents/ folder that define automated tasks. When a user wants to automate something (organize files, run backups, scheduled reports), help them create an agent definition.
+
+Agent definitions are markdown files with YAML frontmatter:
+
+` + "```" + `markdown
+---
+name: <display name>
+agent: claude_code
+trigger: <file.created|file.changed|file.moved|file.deleted|cron>
+schedule: "<cron expression>"  # only if trigger is cron
+enabled: true
+---
+
+<natural language instructions — the agent follows these when triggered>
+` + "```" + `
+
+The prompt below the frontmatter is where all logic lives — filtering, actions, reporting. There are no config-based filters; the agent decides whether to act based on the trigger context it receives.
+
+Save agent files to: ` + dataDir + `/agents/<name>.md
+
+The agent runner watches this folder and picks up changes automatically.
+
+When relevant, suggest the user include instructions to use the publish-post tool to share results on the explore page.`
 }
