@@ -4,8 +4,8 @@ import { useAuth } from '~/contexts/auth-context';
 
 const navLinks = [
   { href: '/', label: 'Data', icon: Database },
-  { href: '/explore', label: 'Explore', icon: Compass },
   { href: '/agent', label: 'Agent', icon: Terminal },
+  { href: '/explore', label: 'Explore', icon: Compass },
   { href: '/me', label: 'Me', icon: User },
 ];
 

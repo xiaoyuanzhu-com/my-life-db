@@ -9,14 +9,14 @@ const navItems = [
     icon: Database,
   },
   {
-    href: '/explore',
-    label: 'Explore',
-    icon: Compass,
-  },
-  {
     href: '/agent',
     label: 'Agent',
     icon: Bot,
+  },
+  {
+    href: '/explore',
+    label: 'Explore',
+    icon: Compass,
   },
   {
     href: '/me',
