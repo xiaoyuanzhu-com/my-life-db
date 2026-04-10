@@ -57,6 +57,9 @@ func New(cfg Config) *Runner {
 func (r *Runner) LoadDefs() ([]*AgentDef, error) {
 	entries, err := os.ReadDir(r.cfg.AgentsDir)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("reading agents dir %s: %w", r.cfg.AgentsDir, err)
 	}
 
