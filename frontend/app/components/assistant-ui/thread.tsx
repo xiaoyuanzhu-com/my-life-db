@@ -227,6 +227,12 @@ const StopButton: FC = () => {
  *           pendingComposerText signalled by the runtime.
  * Clears: localStorage is cleared immediately on send (in onNew) and again
  *         when user_message_chunk confirms receipt (belt-and-suspenders).
+ *
+ * IMPORTANT: composerRuntime is accessed via a ref (not as an effect dependency)
+ * to prevent the restore effect from re-firing when the ExternalStoreAdapter
+ * rebuilds. The adapter rebuilds on every message/isRunning change, which would
+ * cause the restore to read a stale localStorage value and overwrite the
+ * composer text the user is actively typing.
  */
 const DraftPersistenceSync: FC = () => {
   const composerRuntime = useComposerRuntime();
@@ -235,21 +241,43 @@ const DraftPersistenceSync: FC = () => {
 
   const storageKey = sessionId ? `agent-input:${sessionId}` : "agent-input:new-session";
 
+  // Stable ref to composerRuntime — avoids triggering restore when the
+  // runtime reference changes (which happens when the adapter rebuilds).
+  const composerRef = useRef(composerRuntime);
+  composerRef.current = composerRuntime;
+
+  // Whether the initial restore for the current storageKey has completed.
+  // While false the persist effect is suppressed so it cannot wipe the
+  // draft from localStorage before the deferred setTimeout restores it.
+  const hasRestoredRef = useRef(false);
+
   // Restore from localStorage when session changes (mount, navigation).
   // Deferred via setTimeout so it runs AFTER assistant-ui's internal
   // thread-switch reset, which would otherwise overwrite our setText.
   useEffect(() => {
+    hasRestoredRef.current = false;
     const draft = localStorage.getItem(storageKey);
     if (draft) {
-      const timer = setTimeout(() => composerRuntime.setText(draft), 0);
-      return () => clearTimeout(timer);
+      const timer = setTimeout(() => {
+        composerRef.current.setText(draft);
+        hasRestoredRef.current = true;
+      }, 0);
+      return () => {
+        clearTimeout(timer);
+        hasRestoredRef.current = false;
+      };
+    } else {
+      hasRestoredRef.current = true;
     }
-  }, [storageKey, composerRuntime]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- composerRuntime
+    // accessed via ref; adding it here causes the race condition this fixes.
+  }, [storageKey]);
 
-  // Persist as-you-type. Skip when storageKey just changed — the text
-  // may be stale from the previous session and we'd cross-contaminate.
+  // Persist as-you-type. Suppressed until the restore phase completes and
+  // when storageKey just changed (text may be stale from the previous session).
   const activeKeyRef = useRef(storageKey);
   useEffect(() => {
+    if (!hasRestoredRef.current) return;
     if (activeKeyRef.current !== storageKey) {
       activeKeyRef.current = storageKey;
       return;
@@ -264,10 +292,10 @@ const DraftPersistenceSync: FC = () => {
   // Restore from failed send (runtime signals via pendingComposerText)
   useEffect(() => {
     if (pendingComposerText && clearPendingComposerText) {
-      composerRuntime.setText(pendingComposerText);
+      composerRef.current.setText(pendingComposerText);
       clearPendingComposerText();
     }
-  }, [pendingComposerText, clearPendingComposerText, composerRuntime]);
+  }, [pendingComposerText, clearPendingComposerText]);
 
   return null;
 };
