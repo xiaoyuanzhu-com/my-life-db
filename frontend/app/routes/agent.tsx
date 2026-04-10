@@ -940,12 +940,12 @@ export default function AgentPage() {
               onCollapse={() => setIsSidebarCollapsed(true)}
               onExpand={() => setIsSidebarCollapsed(false)}
               className={cn(
-                'flex flex-col bg-muted/30',
+                'flex flex-col bg-muted/30 overflow-hidden',
                 isSidebarCollapsed && 'hidden'
               )}
             >
               <SessionsHeader showCollapseButton />
-              <div className="flex-1 overflow-hidden p-2">
+              <div className="flex-1 min-h-0 overflow-hidden p-2">
                 <ThreadList activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} />
               </div>
             </ResizablePanel>
@@ -1055,9 +1055,9 @@ export default function AgentPage() {
           </div>
         ) : sessionSidebar ? (
           /* List view: full-screen session list */
-          <div className="flex flex-1 flex-col bg-muted/30 min-w-0">
+          <div className="flex flex-1 flex-col bg-muted/30 min-w-0 overflow-hidden">
             <SessionsHeader />
-            <div className="flex-1 overflow-hidden p-2">
+            <div className="flex-1 min-h-0 overflow-hidden p-2">
               <ThreadList activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} />
             </div>
           </div>

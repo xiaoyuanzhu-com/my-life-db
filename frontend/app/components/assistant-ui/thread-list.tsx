@@ -28,7 +28,7 @@ interface ThreadListProps {
 
 export const ThreadList: FC<ThreadListProps> = ({ activeSessionId, sessionStates, sessionSources }) => {
   return (
-    <ThreadListPrimitive.Root className="aui-root aui-thread-list-root flex flex-col gap-0.5 overflow-y-auto">
+    <ThreadListPrimitive.Root className="aui-root aui-thread-list-root flex h-full flex-col gap-0.5 overflow-y-auto">
       <AuiIf condition={(s) => s.threads.isLoading}>
         <ThreadListSkeleton />
       </AuiIf>
