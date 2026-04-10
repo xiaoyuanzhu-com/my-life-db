@@ -324,6 +324,13 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 		}
 	}()
 
+	// Prompt serialization: only one prompt goroutine may run at a time.
+	// promptDone is closed when the current goroutine exits.
+	// promptCancel cancels the per-prompt context (used by session.cancel
+	// and to abort a stale prompt before starting a new one).
+	var promptDone chan struct{}
+	var promptCancel context.CancelFunc
+
 	// Read loop: handle inbound messages
 	for {
 		msgType, msg, err := conn.Read(ctx)
@@ -441,8 +448,27 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			// is in rawMessages for burst replay on page refresh.
 			sessionState.AppendAndBroadcast(agentsdk.SynthUserMessageChunk(promptText))
 
+			// Serialize prompts: wait for any in-flight prompt goroutine to finish
+			// before starting a new one. This prevents concurrent conn.Prompt()
+			// calls on the same ACP connection (which causes the SDK to return
+			// empty responses for the second call).
+			if promptCancel != nil {
+				promptCancel() // signal the old goroutine's context to cancel
+			}
+			if promptDone != nil {
+				<-promptDone // wait for the old goroutine to exit
+			}
+
+			// Create a per-prompt context so session.cancel can abort it.
+			promptCtx, pCancel := context.WithCancel(h.server.ShutdownContext())
+			promptCancel = pCancel
+			done := make(chan struct{})
+			promptDone = done
+
 			// Send prompt and start frame forwarding
-			go func(acpSess agentsdk.Session, prompt string) {
+			go func(acpSess agentsdk.Session, prompt string, pCtx context.Context) {
+				defer close(done)
+
 				// Mark processing BEFORE Send() so any WS client connecting
 				// between turn.start and the first event sees the correct state.
 				sessionState.Mu.Lock()
@@ -461,7 +487,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 					sessionState.AppendAndBroadcast(startBytes)
 				}
 
-				events, err := acpSess.Send(h.server.ShutdownContext(), prompt)
+				events, err := acpSess.Send(pCtx, prompt)
 				if err != nil {
 					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send prompt to ACP session")
 					sessionState.Mu.Lock()
@@ -501,7 +527,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				if !sessionState.Killed {
 					h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "result")
 				}
-			}(acpSession, promptText)
+			}(acpSession, promptText, promptCtx)
 
 			// Auto-unarchive
 			if archived, err := db.IsAgentSessionArchived(sessionID); err == nil && archived {
@@ -529,6 +555,11 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				} else {
 					log.Info().Str("sessionId", sessionID).Msg("agent session cancelled via WebSocket")
 				}
+			}
+
+			// Cancel the per-prompt context so conn.Prompt() returns promptly.
+			if promptCancel != nil {
+				promptCancel()
 			}
 
 			// Send ack so the client can immediately update UI (stop spinner, clear permissions).
