@@ -146,12 +146,9 @@ export function useAgentRuntime(options: {
   const [pendingComposerText, setPendingComposerText] = useState<string | null>(null)
 
 
-  // Use a ref to generate stable message IDs
-  const msgIdCounter = useRef(0)
-  const nextId = useCallback(() => {
-    msgIdCounter.current += 1
-    return `msg-${msgIdCounter.current}`
-  }, [])
+  // Generate globally unique message IDs to avoid collisions in
+  // assistant-ui's MessageRepository when switching sessions.
+  const nextId = useCallback(() => crypto.randomUUID(), [])
 
   // Reset all per-session state when switching sessions
   const prevSessionIdRef = useRef(sessionId)
@@ -163,15 +160,13 @@ export function useAgentRuntime(options: {
     const pendingText = pendingOptimisticRef.current
     if (pendingText) {
       pendingOptimisticRef.current = null
-      msgIdCounter.current = 0
       setMessages([{
-        id: `msg-1`,
+        id: nextId(),
         role: "user",
         content: [{ type: "text", text: pendingText }],
         createdAt: new Date(),
         isOptimistic: true,
       }])
-      msgIdCounter.current = 1
       setIsRunning(true)
     } else {
       setMessages([])
@@ -209,12 +204,7 @@ export function useAgentRuntime(options: {
           // duplicates.  Preserve any optimistic messages — they haven't been
           // confirmed by the server yet and will be reconciled when the
           // matching user_message_chunk arrives in the replay.
-          setMessages((prev) => {
-            const kept = prev.filter((m) => m.isOptimistic)
-            // Reset counter, but skip past IDs already used by optimistic messages
-            msgIdCounter.current = kept.length
-            return kept
-          })
+          setMessages((prev) => prev.filter((m) => m.isOptimistic))
           setIsRunning(f.isProcessing)
           setPendingPermissions(new Map())
           setHistoryLoadError(null)
