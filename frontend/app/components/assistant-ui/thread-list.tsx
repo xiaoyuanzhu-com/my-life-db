@@ -22,9 +22,11 @@ interface ThreadListProps {
   activeSessionId?: string | null;
   /** Map of session ID → sessionState, used to render status dots */
   sessionStates?: Record<string, SessionState>;
+  /** Map of session ID → source, used to render "auto" badge */
+  sessionSources?: Record<string, string>;
 }
 
-export const ThreadList: FC<ThreadListProps> = ({ activeSessionId, sessionStates }) => {
+export const ThreadList: FC<ThreadListProps> = ({ activeSessionId, sessionStates, sessionSources }) => {
   return (
     <ThreadListPrimitive.Root className="aui-root aui-thread-list-root flex flex-col gap-0.5 overflow-y-auto">
       <AuiIf condition={(s) => s.threads.isLoading}>
@@ -32,10 +34,10 @@ export const ThreadList: FC<ThreadListProps> = ({ activeSessionId, sessionStates
       </AuiIf>
       <AuiIf condition={(s) => !s.threads.isLoading}>
         <ThreadListPrimitive.Items>
-          {() => <ThreadListItem activeSessionId={activeSessionId} sessionStates={sessionStates} />}
+          {() => <ThreadListItem activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} />}
         </ThreadListPrimitive.Items>
         <ThreadListPrimitive.Items archived>
-          {() => <ThreadListItem activeSessionId={activeSessionId} sessionStates={sessionStates} />}
+          {() => <ThreadListItem activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} />}
         </ThreadListPrimitive.Items>
       </AuiIf>
     </ThreadListPrimitive.Root>
@@ -60,7 +62,7 @@ const ThreadListSkeleton: FC = () => {
   );
 };
 
-const ThreadListItem: FC<{ activeSessionId?: string | null; sessionStates?: Record<string, SessionState> }> = ({ activeSessionId, sessionStates }) => {
+const ThreadListItem: FC<{ activeSessionId?: string | null; sessionStates?: Record<string, SessionState>; sessionSources?: Record<string, string> }> = ({ activeSessionId, sessionStates, sessionSources }) => {
   // Workaround: assistant-ui's ExternalStoreThreadListRuntimeCore has a bug where
   // _mainThreadId is not set from the adapter's threadId on initial construction
   // (constructor sets this.adapter before calling __internal_setAdapter, so
@@ -75,6 +77,7 @@ const ThreadListItem: FC<{ activeSessionId?: string | null; sessionStates?: Reco
   const sessionState = itemId ? sessionStates?.[itemId] : undefined;
   const isArchived = sessionState === 'archived';
   const showDot = !isActive && (sessionState === 'working' || sessionState === 'unread');
+  const isAuto = itemId ? sessionSources?.[itemId] === 'auto' : false;
 
   return (
     <ThreadListItemPrimitive.Root
@@ -88,6 +91,11 @@ const ThreadListItem: FC<{ activeSessionId?: string | null; sessionStates?: Reco
         )}>
           <ThreadListItemPrimitive.Title fallback="New Chat" />
         </span>
+        {isAuto && (
+          <span className="shrink-0 text-[10px] leading-none px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+            auto
+          </span>
+        )}
         {/* Fixed-width dot column — keeps dots vertically aligned across rows */}
         <span className="w-2 shrink-0 flex items-center ml-1">
           {showDot && (

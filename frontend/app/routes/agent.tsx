@@ -46,6 +46,8 @@ interface Session {
   agentType?: string
   shareToken?: string
   shareUrl?: string
+  source?: 'user' | 'auto'
+  agentFile?: string
 }
 
 interface Pagination {
@@ -731,6 +733,15 @@ export default function AgentPage() {
     return map
   }, [sessions])
 
+  // Build a map of session ID → source for the thread list "auto" badge
+  const sessionSources = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const s of sessions) {
+      if (s.source) map[s.id] = s.source
+    }
+    return map
+  }, [sessions])
+
   // ── Agent Runtime (lifted from AgentChat) ─────────────────────────────────
   // The runtime is owned at the route level so that AssistantRuntimeProvider
   // wraps all AgentChat instances. The key on the provider forces a remount
@@ -935,7 +946,7 @@ export default function AgentPage() {
             >
               <SessionsHeader showCollapseButton />
               <div className="flex-1 overflow-hidden p-2">
-                <ThreadList activeSessionId={activeSessionId} sessionStates={sessionStates} />
+                <ThreadList activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} />
               </div>
             </ResizablePanel>
 
@@ -1047,7 +1058,7 @@ export default function AgentPage() {
           <div className="flex flex-1 flex-col bg-muted/30 min-w-0">
             <SessionsHeader />
             <div className="flex-1 overflow-hidden p-2">
-              <ThreadList activeSessionId={activeSessionId} sessionStates={sessionStates} />
+              <ThreadList activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} />
             </div>
           </div>
         ) : (
