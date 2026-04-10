@@ -77,7 +77,7 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 	// Use ACP session ID as DB primary key
 	sessionID := sess.ID()
 
-	if err := db.CreateAgentSession(sessionID, agentTypeStr, req.WorkingDir, req.Title); err != nil {
+	if err := db.CreateAgentSession(sessionID, agentTypeStr, req.WorkingDir, req.Title, "user", ""); err != nil {
 		log.Error().Err(err).Msg("failed to create agent session in DB")
 		sess.Close()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create session"})
