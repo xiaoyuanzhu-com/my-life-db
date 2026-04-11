@@ -42,9 +42,11 @@ type CreatePostInput struct {
 }
 
 // MediaInput represents a media file to attach to a post.
+// Provide either Content (base64-encoded) or Path (absolute file path), not both.
 type MediaInput struct {
 	Filename string `json:"filename"`
-	Content  string `json:"content"` // base64-encoded
+	Content  string `json:"content,omitempty"` // base64-encoded
+	Path     string `json:"path,omitempty"`    // absolute file path (alternative to base64)
 }
 
 // sanitizeForPath strips special characters, replaces spaces with hyphens,
@@ -115,14 +117,26 @@ func (s *Service) CreatePost(input CreatePostInput) (*db.ExplorePostWithComments
 		mediaDir = &relDir
 
 		for _, m := range input.Media {
-			data, err := base64.StdEncoding.DecodeString(m.Content)
-			if err != nil {
-				return nil, fmt.Errorf("invalid base64 for %s: %w", m.Filename, err)
-			}
+			destPath := filepath.Join(absDir, m.Filename)
 
-			filePath := filepath.Join(absDir, m.Filename)
-			if err := os.WriteFile(filePath, data, 0644); err != nil {
-				return nil, fmt.Errorf("failed to write %s: %w", m.Filename, err)
+			if m.Path != "" {
+				// Copy from file path
+				data, err := os.ReadFile(m.Path)
+				if err != nil {
+					return nil, fmt.Errorf("failed to read %s: %w", m.Path, err)
+				}
+				if err := os.WriteFile(destPath, data, 0644); err != nil {
+					return nil, fmt.Errorf("failed to write %s: %w", m.Filename, err)
+				}
+			} else {
+				// Decode from base64
+				data, err := base64.StdEncoding.DecodeString(m.Content)
+				if err != nil {
+					return nil, fmt.Errorf("invalid base64 for %s: %w", m.Filename, err)
+				}
+				if err := os.WriteFile(destPath, data, 0644); err != nil {
+					return nil, fmt.Errorf("failed to write %s: %w", m.Filename, err)
+				}
 			}
 
 			mediaPaths = append(mediaPaths, filepath.Join("explore", relDir, m.Filename))

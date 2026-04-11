@@ -133,7 +133,7 @@ func (m *MCPHandler) handleToolsList(req jsonrpcRequest) *jsonrpcResponse {
 	tools := []map[string]any{
 		{
 			"name":        "createPost",
-			"description": "Create a new explore post. Optionally attach media files (base64-encoded) and tags.",
+			"description": "Create a new explore post. Optionally attach media files and tags. Media can be base64-encoded content or a file path on the server.",
 			"inputSchema": map[string]any{
 				"type":     "object",
 				"required": []string{"author", "title"},
@@ -157,10 +157,10 @@ func (m *MCPHandler) handleToolsList(req jsonrpcRequest) *jsonrpcResponse {
 					},
 					"media": map[string]any{
 						"type":        "array",
-						"description": "Media files to attach",
+						"description": "Media files to attach. Each item needs a filename and either content (base64) or path (absolute file path on server).",
 						"items": map[string]any{
 							"type":     "object",
-							"required": []string{"filename", "content"},
+							"required": []string{"filename"},
 							"properties": map[string]any{
 								"filename": map[string]any{
 									"type":        "string",
@@ -169,6 +169,10 @@ func (m *MCPHandler) handleToolsList(req jsonrpcRequest) *jsonrpcResponse {
 								"content": map[string]any{
 									"type":        "string",
 									"description": "Base64-encoded file content",
+								},
+								"path": map[string]any{
+									"type":        "string",
+									"description": "Absolute file path on the server (alternative to content — use this for large files)",
 								},
 							},
 						},
@@ -323,12 +327,18 @@ func (m *MCPHandler) callCreatePost(id json.RawMessage, args map[string]any) *js
 			}
 			filename, _ := m["filename"].(string)
 			content, _ := m["content"].(string)
-			if filename != "" && content != "" {
-				input.Media = append(input.Media, MediaInput{
-					Filename: filename,
-					Content:  content,
-				})
+			path, _ := m["path"].(string)
+			if filename == "" {
+				continue
 			}
+			if content == "" && path == "" {
+				continue
+			}
+			input.Media = append(input.Media, MediaInput{
+				Filename: filename,
+				Content:  content,
+				Path:     path,
+			})
 		}
 	}
 
