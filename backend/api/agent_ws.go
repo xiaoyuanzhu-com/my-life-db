@@ -466,7 +466,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			promptDone = done
 
 			// Send prompt and start frame forwarding
-			go func(acpSess agentsdk.Session, prompt string, pCtx context.Context) {
+			go func(acpSess agentsdk.Session, prompt string, pCtx context.Context, pCancel context.CancelFunc) {
 				defer close(done)
 
 				// Mark processing BEFORE Send() so any WS client connecting
@@ -477,6 +477,17 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				sessionState.Killed = false // reset from previous force-kill
 				sessionState.Mu.Unlock()
 				h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "working")
+
+				// Monitor process exit — cancel prompt context if process dies,
+				// which unblocks Prompt() and causes the events channel to close.
+				go func() {
+					select {
+					case <-acpSess.Done():
+						log.Info().Str("sessionId", sessionID).Msg("agent process exited during WS prompt")
+						pCancel()
+					case <-pCtx.Done():
+					}
+				}()
 
 				// Emit turn.start so the frontend knows processing has begun.
 				// Stored in rawMessages for burst replay on reconnect, ensuring
@@ -502,6 +513,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 						}); err == nil {
 							sessionState.AppendAndBroadcast(errBytes)
 						}
+						h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "result")
 					}
 					return
 				}
@@ -527,7 +539,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				if !sessionState.Killed {
 					h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "result")
 				}
-			}(acpSession, promptText, promptCtx)
+			}(acpSession, promptText, promptCtx, pCancel)
 
 			// Auto-unarchive
 			if archived, err := db.IsAgentSessionArchived(sessionID); err == nil && archived {

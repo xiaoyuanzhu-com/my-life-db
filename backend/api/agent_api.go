@@ -130,7 +130,21 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 			sessionState.Mu.Unlock()
 			h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "working")
 
-			ctx := h.server.ShutdownContext()
+			// Create a cancellable context so we can abort if the process exits.
+			ctx, cancel := context.WithCancel(h.server.ShutdownContext())
+			defer cancel()
+
+			// Monitor process exit — cancel prompt context if process dies,
+			// which unblocks Prompt() and causes the events channel to close.
+			go func() {
+				select {
+				case <-acpSess.Done():
+					log.Info().Str("sessionId", sessionID).Msg("agent process exited during initial prompt")
+					cancel()
+				case <-ctx.Done():
+				}
+			}()
+
 			events, err := acpSess.Send(ctx, prompt)
 			if err != nil {
 				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send initial prompt to ACP session")
@@ -142,6 +156,7 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 				}); err == nil {
 					sessionState.AppendAndBroadcast(errBytes)
 				}
+				h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "result")
 				return
 			}
 

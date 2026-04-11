@@ -200,6 +200,10 @@ type Session interface {
 	// Close terminates the session and kills the agent process.
 	Close() error
 
+	// Done returns a channel that closes when the agent process exits.
+	// Used to detect process death and clean up in-memory state (e.g. IsProcessing).
+	Done() <-chan struct{}
+
 	// ID returns the session identifier.
 	ID() string
 
