@@ -17,18 +17,15 @@ export function BreadcrumbNav({ currentPath, onNavigate, className }: Breadcrumb
         className
       )}
     >
-      {/* Root / Home button */}
-      <button
-        onClick={() => onNavigate('')}
-        className={cn(
-          'shrink-0 px-1.5 py-1 rounded-md transition-colors',
-          segments.length === 0
-            ? 'text-foreground font-medium'
-            : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-        )}
-      >
-        data
-      </button>
+      {/* Root / Home button — hidden when already at root */}
+      {segments.length > 0 && (
+        <button
+          onClick={() => onNavigate('')}
+          className="shrink-0 px-1.5 py-1 rounded-md transition-colors text-muted-foreground hover:text-foreground hover:bg-accent"
+        >
+          data
+        </button>
+      )}
 
       {/* Path segments */}
       {segments.map((segment, index) => {
