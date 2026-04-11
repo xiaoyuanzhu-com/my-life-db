@@ -133,7 +133,7 @@ func (m *MCPHandler) handleToolsList(req jsonrpcRequest) *jsonrpcResponse {
 	tools := []map[string]any{
 		{
 			"name":        "createPost",
-			"description": "Create a new explore post. Optionally attach media files and tags. Media can be base64-encoded content or a file path on the server.",
+			"description": "Create a new explore post. RENDERING CONTEXT: In the feed, only the first image and the title (max 2 lines) are visible on the post card — no description, no tags, no content. Users decide whether to open a post based solely on the cover image and title. Write a short, intriguing title that sparks curiosity. The first media item is the cover image — make it visually compelling and representative of the post. Content, tags, and additional images are only shown after the user opens the post.",
 			"inputSchema": map[string]any{
 				"type":     "object",
 				"required": []string{"author", "title"},
@@ -144,11 +144,11 @@ func (m *MCPHandler) handleToolsList(req jsonrpcRequest) *jsonrpcResponse {
 					},
 					"title": map[string]any{
 						"type":        "string",
-						"description": "Title of the post",
+						"description": "Short, intriguing title (1-2 lines max). This is the only text visible on the post card in the feed — make it count. Aim to spark curiosity so users want to open the post.",
 					},
 					"content": map[string]any{
 						"type":        "string",
-						"description": "Text content of the post",
+						"description": "Text content of the post (only visible after user opens the post)",
 					},
 					"mediaType": map[string]any{
 						"type":        "string",
@@ -157,7 +157,7 @@ func (m *MCPHandler) handleToolsList(req jsonrpcRequest) *jsonrpcResponse {
 					},
 					"media": map[string]any{
 						"type":        "array",
-						"description": "Media files to attach. Each item needs a filename and either content (base64) or path (absolute file path on server).",
+						"description": "Media files to attach. The FIRST item becomes the cover image shown on the post card — choose the most visually striking image. Each item needs a filename and either content (base64) or path (absolute file path on server).",
 						"items": map[string]any{
 							"type":     "object",
 							"required": []string{"filename"},
@@ -180,7 +180,7 @@ func (m *MCPHandler) handleToolsList(req jsonrpcRequest) *jsonrpcResponse {
 					"tags": map[string]any{
 						"type":        "array",
 						"items":       map[string]any{"type": "string"},
-						"description": "Tags to attach to the post",
+						"description": "Tags to attach to the post (only visible after user opens the post)",
 					},
 				},
 			},

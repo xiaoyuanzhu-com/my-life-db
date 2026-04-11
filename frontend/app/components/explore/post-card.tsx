@@ -30,20 +30,9 @@ export function PostCard({ post, onClick }: PostCardProps) {
             )}
           </div>
         )}
-        <div className="p-3">
-          <h3 className="font-semibold text-sm line-clamp-2">{post.title}</h3>
-          {post.content && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{post.content}</p>}
-          {post.tags && post.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-2">
-              {post.tags.map((tag) => (
-                <span key={tag} className="text-xs bg-muted px-1.5 py-0.5 rounded-full text-muted-foreground">#{tag}</span>
-              ))}
-            </div>
-          )}
-          <div className="flex items-center gap-2 mt-2">
-            <span className="text-xs font-medium text-foreground/80">{post.author}</span>
-            <span className="text-xs text-muted-foreground">{new Date(post.createdAt).toLocaleDateString()}</span>
-          </div>
+        <div className="px-2.5 py-2">
+          <h3 className="font-semibold text-sm line-clamp-2 leading-snug">{post.title}</h3>
+          <span className="text-xs text-muted-foreground mt-1 block">{post.author}</span>
         </div>
       </div>
     </div>
