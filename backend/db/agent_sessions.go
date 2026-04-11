@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 )
 
 // ── Agent session CRUD ──────────────────────────────────────────────────────
@@ -62,16 +63,34 @@ func GetAgentSession(sessionID string) (*AgentSessionRecord, error) {
 	return &r, nil
 }
 
-// ListAgentSessions returns all non-archived sessions ordered by most recent activity.
-func ListAgentSessions(includeArchived bool) ([]AgentSessionRecord, error) {
+// ListAgentSessions returns sessions ordered by most recent activity with cursor-based pagination.
+// cursor is the updated_at value of the last item from the previous page (0 for first page).
+// limit is the max number of results to return (0 for no limit).
+func ListAgentSessions(includeArchived bool, cursor int64, limit int) ([]AgentSessionRecord, error) {
 	query := `SELECT session_id, agent_type, working_dir, title, source, agent_file, created_at, updated_at, archived_at
 		 FROM agent_sessions`
+
+	var conditions []string
+	var params []QueryParam
 	if !includeArchived {
-		query += ` WHERE archived_at IS NULL`
+		conditions = append(conditions, `archived_at IS NULL`)
+	}
+	if cursor > 0 {
+		conditions = append(conditions, `updated_at < ?`)
+		params = append(params, cursor)
+	}
+	if len(conditions) > 0 {
+		query += ` WHERE ` + conditions[0]
+		for _, c := range conditions[1:] {
+			query += ` AND ` + c
+		}
 	}
 	query += ` ORDER BY updated_at DESC`
+	if limit > 0 {
+		query += fmt.Sprintf(` LIMIT %d`, limit)
+	}
 
-	return Select(query, nil, func(rows *sql.Rows) (AgentSessionRecord, error) {
+	return Select(query, params, func(rows *sql.Rows) (AgentSessionRecord, error) {
 		var r AgentSessionRecord
 		var archivedAt sql.NullInt64
 		err := rows.Scan(&r.SessionID, &r.AgentType, &r.WorkingDir, &r.Title, &r.Source, &r.AgentFile, &r.CreatedAt, &r.UpdatedAt, &archivedAt)

@@ -325,7 +325,7 @@ export default function AgentPage() {
       setLoading(true)
       // Fetch first page of sessions with pagination
       const params = new URLSearchParams({
-        limit: '20',
+        limit: '50',
         status: statusFilter,
       })
 
@@ -356,7 +356,7 @@ export default function AgentPage() {
   const refreshSessions = useCallback(async () => {
     try {
       const params = new URLSearchParams({
-        limit: '20',
+        limit: '50',
         status: statusFilter,
       })
 
@@ -569,7 +569,7 @@ export default function AgentPage() {
     try {
       setIsLoadingMore(true)
       const params = new URLSearchParams({
-        limit: '20',
+        limit: '50',
         status: statusFilter,
         cursor: pagination.nextCursor,
       })
@@ -946,7 +946,7 @@ export default function AgentPage() {
             >
               <SessionsHeader showCollapseButton />
               <div className="flex-1 min-h-0 overflow-hidden p-2">
-                <ThreadList activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} />
+                <ThreadList activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} hasMore={pagination.hasMore} isLoadingMore={isLoadingMore} onLoadMore={loadMoreSessions} />
               </div>
             </ResizablePanel>
 
@@ -1058,7 +1058,7 @@ export default function AgentPage() {
           <div className="flex flex-1 flex-col bg-muted/30 min-w-0 overflow-hidden">
             <SessionsHeader />
             <div className="flex-1 min-h-0 overflow-hidden p-2">
-              <ThreadList activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} />
+              <ThreadList activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} hasMore={pagination.hasMore} isLoadingMore={isLoadingMore} onLoadMore={loadMoreSessions} />
             </div>
           </div>
         ) : (

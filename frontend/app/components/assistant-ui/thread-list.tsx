@@ -11,9 +11,10 @@ import {
 import {
   ArchiveIcon,
   ArchiveRestoreIcon,
+  Loader2Icon,
   MoreHorizontalIcon,
 } from "lucide-react";
-import type { FC } from "react";
+import { type FC, useEffect, useRef } from "react";
 import { cn } from "~/lib/utils";
 
 type SessionState = 'idle' | 'working' | 'unread' | 'archived';
@@ -24,9 +25,33 @@ interface ThreadListProps {
   sessionStates?: Record<string, SessionState>;
   /** Map of session ID → source, used to render "auto" badge */
   sessionSources?: Record<string, string>;
+  /** Whether more sessions can be loaded */
+  hasMore?: boolean;
+  /** Whether more sessions are currently loading */
+  isLoadingMore?: boolean;
+  /** Callback to load more sessions */
+  onLoadMore?: () => void;
 }
 
-export const ThreadList: FC<ThreadListProps> = ({ activeSessionId, sessionStates, sessionSources }) => {
+export const ThreadList: FC<ThreadListProps> = ({ activeSessionId, sessionStates, sessionSources, hasMore, isLoadingMore, onLoadMore }) => {
+  const sentinelRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel || !onLoadMore) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasMore && !isLoadingMore) {
+          onLoadMore()
+        }
+      },
+      { threshold: 0 }
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [hasMore, isLoadingMore, onLoadMore])
+
   return (
     <ThreadListPrimitive.Root className="aui-root aui-thread-list-root flex h-full flex-col gap-0.5 overflow-y-auto">
       <AuiIf condition={(s) => s.threads.isLoading}>
@@ -39,6 +64,13 @@ export const ThreadList: FC<ThreadListProps> = ({ activeSessionId, sessionStates
         <ThreadListPrimitive.Items archived>
           {() => <ThreadListItem activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} />}
         </ThreadListPrimitive.Items>
+        {/* Scroll sentinel for infinite loading */}
+        <div ref={sentinelRef} className="shrink-0 h-1" />
+        {isLoadingMore && (
+          <div className="flex items-center justify-center py-2">
+            <Loader2Icon className="h-4 w-4 animate-spin text-muted-foreground" />
+          </div>
+        )}
       </AuiIf>
     </ThreadListPrimitive.Root>
   );

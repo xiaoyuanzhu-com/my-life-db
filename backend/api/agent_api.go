@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -169,13 +170,31 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 	})
 }
 
-// GetAgentSessions lists agent sessions from the DB.
+// GetAgentSessions lists agent sessions from the DB with cursor-based pagination.
 // GET /api/agent/sessions, GET /api/agent/sessions/all
+//
+// Query params:
+//   - status: "active" (default), "archived", or "all"
+//   - limit:  page size (default 50)
+//   - cursor: updated_at of the last item from the previous page
 func (h *Handlers) GetAgentSessions(c *gin.Context) {
 	statusFilter := c.DefaultQuery("status", "active")
 	includeArchived := statusFilter == "all" || statusFilter == "archived"
 
-	sessions, err := db.ListAgentSessions(includeArchived)
+	limit := 50
+	if l, err := strconv.Atoi(c.DefaultQuery("limit", "50")); err == nil && l > 0 {
+		limit = l
+	}
+
+	var cursor int64
+	if cs := c.Query("cursor"); cs != "" {
+		if v, err := strconv.ParseInt(cs, 10, 64); err == nil {
+			cursor = v
+		}
+	}
+
+	// Fetch limit+1 to determine if there are more results
+	sessions, err := db.ListAgentSessions(includeArchived, cursor, limit+1)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to list agent sessions")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list sessions"})
@@ -191,6 +210,11 @@ func (h *Handlers) GetAgentSessions(c *gin.Context) {
 			}
 		}
 		sessions = archived
+	}
+
+	hasMore := len(sessions) > limit
+	if hasMore {
+		sessions = sessions[:limit]
 	}
 
 	// Load read states and runtime states for sessionState computation
@@ -214,11 +238,17 @@ func (h *Handlers) GetAgentSessions(c *gin.Context) {
 		result = append(result, entry)
 	}
 
+	// Build pagination response
+	var nextCursor any
+	if hasMore && len(sessions) > 0 {
+		nextCursor = strconv.FormatInt(sessions[len(sessions)-1].UpdatedAt, 10)
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"sessions": result,
 		"pagination": gin.H{
-			"hasMore":    false,
-			"nextCursor": nil,
+			"hasMore":    hasMore,
+			"nextCursor": nextCursor,
 			"totalCount": len(result),
 		},
 	})
