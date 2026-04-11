@@ -1,7 +1,7 @@
-import { useState, useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useSearchParams } from "react-router";
 import { toast } from "sonner";
-import { Search, MoreVertical, Upload, FolderUp, FolderPlus, RefreshCw } from "lucide-react";
+import { Search, Upload, FolderUp, FolderPlus, RefreshCw, Plus } from "lucide-react";
 import { FileGrid } from "~/components/library/file-grid";
 import { BreadcrumbNav } from "~/components/library/breadcrumb-nav";
 import { useSearch } from "~/components/omni-input/modules/use-search";
@@ -19,6 +19,7 @@ import {
 } from "~/components/ui/dropdown-menu";
 import { useAuth } from "~/contexts/auth-context";
 import { useUploadNotifications } from "~/hooks/use-upload-notifications";
+import { cn } from "~/lib/utils";
 
 function fileNodeToFileWithDigests(node: FileNode): FileWithDigests {
   const name = node.path.split("/").pop() || node.path;
@@ -109,8 +110,10 @@ function DataContent() {
   const [searchParams, setSearchParams] = useSearchParams();
   const currentPath = searchParams.get("path") || "";
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchExpanded, setSearchExpanded] = useState(false);
   const [createFolderTrigger, setCreateFolderTrigger] = useState(0);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const handleNavigate = useCallback((path: string) => {
     if (path) {
@@ -185,6 +188,22 @@ function DataContent() {
     }
   }, [search, clearSearch]);
 
+  const handleSearchToggle = useCallback(() => {
+    setSearchExpanded(true);
+  }, []);
+
+  const handleSearchCollapse = useCallback(() => {
+    setSearchQuery("");
+    clearSearch();
+    setSearchExpanded(false);
+  }, [clearSearch]);
+
+  useEffect(() => {
+    if (searchExpanded) {
+      searchInputRef.current?.focus();
+    }
+  }, [searchExpanded]);
+
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       {/* Hidden file inputs */}
@@ -198,22 +217,62 @@ function DataContent() {
         {...{ webkitdirectory: "", directory: "" } as React.InputHTMLAttributes<HTMLInputElement>}
       />
 
-      {/* Top bar: search + actions */}
+      {/* Top bar: breadcrumb + search + actions (single line) */}
       <div className="shrink-0 px-4 py-3 flex items-center gap-2 md:px-[10%]">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder="Search files..."
-            value={searchQuery}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            className="pl-9"
-          />
+        <div className="flex-1 min-w-0">
+          <BreadcrumbNav currentPath={currentPath} onNavigate={handleNavigate} />
+        </div>
+        <div
+          className={cn(
+            "relative h-9 overflow-hidden transition-[width] duration-100 ease-out",
+            searchExpanded ? "w-56 sm:w-[28rem] max-w-full" : "w-9"
+          )}
+        >
+          {/* Search icon button — visible when collapsed */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleSearchToggle}
+            aria-label="Search"
+            tabIndex={searchExpanded ? -1 : 0}
+            className={cn(
+              "absolute inset-0 transition-opacity duration-100 ease-out",
+              searchExpanded ? "opacity-0 pointer-events-none" : "opacity-100"
+            )}
+          >
+            <Search className="h-5 w-5" />
+          </Button>
+          {/* Search input — visible when expanded */}
+          <div
+            className={cn(
+              "absolute inset-0 transition-opacity duration-100 ease-out",
+              searchExpanded ? "opacity-100" : "opacity-0 pointer-events-none"
+            )}
+          >
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Search files..."
+              value={searchQuery}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") handleSearchCollapse();
+              }}
+              onBlur={(e) => {
+                const next = e.relatedTarget as Node | null;
+                if (next && e.currentTarget.parentElement?.contains(next)) return;
+                handleSearchCollapse();
+              }}
+              tabIndex={searchExpanded ? 0 : -1}
+              className="pl-9 pr-9 focus-visible:ring-0 focus-visible:border-input"
+            />
+          </div>
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon">
-              <MoreVertical className="h-5 w-5" />
+            <Button variant="ghost" size="icon" aria-label="Add">
+              <Plus className="h-5 w-5" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -229,20 +288,17 @@ function DataContent() {
               <FolderPlus className="h-4 w-4 mr-2" />
               New Folder
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setRefreshTrigger(n => n + 1)}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh
-            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setRefreshTrigger(n => n + 1)}
+          aria-label="Refresh"
+        >
+          <RefreshCw className="h-5 w-5" />
+        </Button>
       </div>
-
-      {/* Breadcrumbs */}
-      {!searchQuery.trim() && currentPath && (
-        <div className="shrink-0 px-4 md:px-[10%]">
-          <BreadcrumbNav currentPath={currentPath} onNavigate={handleNavigate} />
-        </div>
-      )}
 
       {/* Search results or file grid */}
       <div className="flex-1 overflow-hidden md:px-[10%]">
