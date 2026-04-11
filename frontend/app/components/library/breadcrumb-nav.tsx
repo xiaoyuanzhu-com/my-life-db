@@ -27,7 +27,7 @@ export function BreadcrumbNav({ currentPath, onNavigate, className }: Breadcrumb
             : 'text-muted-foreground hover:text-foreground hover:bg-accent'
         )}
       >
-        Library
+        data
       </button>
 
       {/* Path segments */}
