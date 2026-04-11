@@ -21,7 +21,7 @@ import {
   AlertDialogTitle,
 } from '~/components/ui/alert-dialog';
 import { Input } from '~/components/ui/input';
-import { type FileNode, getNodeName, formatFileSize } from './library-utils';
+import { type FileNode, getNodeName } from './library-utils';
 import { FileTypeIcon } from './file-type-icon';
 
 const archiveExtensions = ['.zip', '.tar', '.tar.gz', '.tgz', '.tar.bz2', '.tbz2', '.tar.xz', '.txz', '.tar.zst', '.7z', '.rar'];
@@ -260,11 +260,6 @@ export function GridItem({
                 >
                   {name}
                 </p>
-                {node.size !== undefined && !isFolder && (
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
-                    {formatFileSize(node.size)}
-                  </p>
-                )}
               </div>
             )}
           </button>
