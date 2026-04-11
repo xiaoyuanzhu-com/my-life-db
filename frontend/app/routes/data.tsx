@@ -148,7 +148,7 @@ function DataContent() {
       const { getUploadQueueManager } = await import("~/lib/send-queue/upload-queue-manager");
       const uploadManager = getUploadQueueManager();
       await uploadManager.init();
-      const batch = Array.from(files).map(file => ({ file, destination: "" }));
+      const batch = Array.from(files).map(file => ({ file, destination: currentPath }));
       await uploadManager.enqueueBatch(batch);
     } catch (error) {
       console.error("Failed to upload files:", error);
@@ -169,7 +169,11 @@ function DataContent() {
         const relativePath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
         const pathParts = relativePath.split("/");
         pathParts.pop();
-        return { file, destination: pathParts.join("/") };
+        const relativeDir = pathParts.join("/");
+        const destination = currentPath
+          ? relativeDir ? `${currentPath}/${relativeDir}` : currentPath
+          : relativeDir;
+        return { file, destination };
       });
       await uploadManager.enqueueBatch(batch);
     } catch (error) {
