@@ -79,6 +79,18 @@ function isTextExtension(ext: string): boolean {
   return textExtensions.has(ext);
 }
 
+const imageExtensions = new Set([
+  'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'heic', 'heif',
+]);
+
+const videoExtensions = new Set([
+  'mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'wmv', 'm4v',
+]);
+
+const audioExtensions = new Set([
+  'mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma', 'opus',
+]);
+
 /**
  * Determine the content type of a file for card/modal dispatch
  * Priority: MIME type > Extension > textPreview > fallback
@@ -87,10 +99,10 @@ export function getFileContentType(file: FileWithDigests): FileContentType {
   const mimeType = file.mimeType || '';
   const ext = getExtension(file.name);
 
-  // 1. Media types (by MIME)
-  if (mimeType.startsWith('image/')) return 'image';
-  if (mimeType.startsWith('video/')) return 'video';
-  if (mimeType.startsWith('audio/')) return 'audio';
+  // 1. Media types (by MIME or extension)
+  if (mimeType.startsWith('image/') || imageExtensions.has(ext)) return 'image';
+  if (mimeType.startsWith('video/') || videoExtensions.has(ext)) return 'video';
+  if (mimeType.startsWith('audio/') || audioExtensions.has(ext)) return 'audio';
 
   // 2. Document types (by MIME or extension)
   if (mimeType === 'application/pdf' || ext === 'pdf') return 'pdf';
