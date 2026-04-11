@@ -1,7 +1,9 @@
 import { useState, useCallback, useMemo, useRef } from "react";
+import { useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { Search, MoreVertical, Upload, FolderUp, FolderPlus, RefreshCw } from "lucide-react";
 import { FileGrid } from "~/components/library/file-grid";
+import { BreadcrumbNav } from "~/components/library/breadcrumb-nav";
 import { useSearch } from "~/components/omni-input/modules/use-search";
 import { GridItem } from "~/components/library/grid-item";
 import type { FileNode } from "~/components/library/library-utils";
@@ -104,9 +106,19 @@ function SearchResultsGrid({
 
 function DataContent() {
   const { openModal } = useModalNavigation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const currentPath = searchParams.get("path") || "";
   const [searchQuery, setSearchQuery] = useState("");
   const [createFolderTrigger, setCreateFolderTrigger] = useState(0);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  const handleNavigate = useCallback((path: string) => {
+    if (path) {
+      setSearchParams({ path });
+    } else {
+      setSearchParams({});
+    }
+  }, [setSearchParams]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const { results: searchResults, isSearching, search, clear: clearSearch } = useSearch();
@@ -225,6 +237,13 @@ function DataContent() {
         </DropdownMenu>
       </div>
 
+      {/* Breadcrumbs */}
+      {!searchQuery.trim() && currentPath && (
+        <div className="shrink-0 px-4 md:px-[10%]">
+          <BreadcrumbNav currentPath={currentPath} onNavigate={handleNavigate} />
+        </div>
+      )}
+
       {/* Search results or file grid */}
       <div className="flex-1 overflow-hidden md:px-[10%]">
         {searchQuery.trim() ? (
@@ -241,6 +260,8 @@ function DataContent() {
             createFolderTrigger={createFolderTrigger}
             onUploadFile={handleUploadFile}
             onUploadFolder={handleUploadFolder}
+            currentPath={currentPath}
+            onNavigate={handleNavigate}
           />
         )}
       </div>

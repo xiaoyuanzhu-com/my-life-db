@@ -24,6 +24,9 @@ interface FileGridProps {
   /** Optional action callbacks for integrated toolbar (mobile) */
   onUploadFile?: () => void;
   onUploadFolder?: () => void;
+  /** Controlled path state — when provided, FileGrid does not manage its own path */
+  currentPath?: string;
+  onNavigate?: (path: string) => void;
 }
 
 export function FileGrid({
@@ -35,8 +38,11 @@ export function FileGrid({
   createFolderTrigger,
   onUploadFile,
   onUploadFolder,
+  currentPath: controlledPath,
+  onNavigate: controlledNavigate,
 }: FileGridProps) {
-  const [currentPath, setCurrentPath] = useState('');
+  const [internalPath, setInternalPath] = useState('');
+  const currentPath = controlledPath ?? internalPath;
   const [children, setChildren] = useState<FileNode[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
@@ -273,13 +279,15 @@ export function FileGrid({
     }
   }, [loadChildren]);
 
+  const navigateTo = controlledNavigate ?? setInternalPath;
+
   const handleNavigate = (path: string) => {
-    setCurrentPath(path);
+    navigateTo(path);
   };
 
   const handleItemClick = (node: FileNode, fullPath: string) => {
     if (node.type === 'folder') {
-      setCurrentPath(fullPath);
+      navigateTo(fullPath);
     } else {
       onFileOpen(fullPath, getNodeName(node));
     }

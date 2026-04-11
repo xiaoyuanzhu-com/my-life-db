@@ -1,4 +1,4 @@
-import { ChevronRight, Home } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { cn } from '~/lib/utils';
 
 interface BreadcrumbNavProps {
@@ -21,14 +21,13 @@ export function BreadcrumbNav({ currentPath, onNavigate, className }: Breadcrumb
       <button
         onClick={() => onNavigate('')}
         className={cn(
-          'flex items-center gap-1 shrink-0 px-1.5 py-1 rounded-md transition-colors',
+          'shrink-0 px-1.5 py-1 rounded-md transition-colors',
           segments.length === 0
             ? 'text-foreground font-medium'
             : 'text-muted-foreground hover:text-foreground hover:bg-accent'
         )}
       >
-        <Home className="w-3.5 h-3.5" />
-        <span>Library</span>
+        Library
       </button>
 
       {/* Path segments */}
