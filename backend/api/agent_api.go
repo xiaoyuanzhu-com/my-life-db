@@ -125,14 +125,22 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 			// Mark processing BEFORE Send() so any WS client connecting
 			// between turn.start and the first event sees the correct state.
 			sessionState.Mu.Lock()
-			sessionState.IsProcessing = true
+			sessionState.SetProcessing(true, "rest-prompt")
 			sessionState.IsActive = true
+			sessionState.TouchFrame() // initialize watchdog baseline
 			sessionState.Mu.Unlock()
 			h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "working")
 
 			// Create a cancellable context so we can abort if the process exits.
 			ctx, cancel := context.WithCancel(h.server.ShutdownContext())
 			defer cancel()
+
+			// Register prompt so WS handler can wait for us
+			restDone := make(chan struct{})
+			defer close(restDone)
+			sessionState.Mu.Lock()
+			sessionState.RegisterPrompt(restDone, cancel)
+			sessionState.Mu.Unlock()
 
 			// Monitor process exit — cancel prompt context if process dies,
 			// which unblocks Prompt() and causes the events channel to close.
@@ -149,7 +157,7 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 			if err != nil {
 				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send initial prompt to ACP session")
 				sessionState.Mu.Lock()
-				sessionState.IsProcessing = false
+				sessionState.SetProcessing(false, "rest-prompt-send-error")
 				sessionState.Mu.Unlock()
 				if errBytes, err := json.Marshal(map[string]any{
 					"type": "error", "message": "Failed to send message: " + err.Error(), "code": "SEND_ERROR",
@@ -166,7 +174,8 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 			// Channel closed = turn complete
 			sessionState.Mu.Lock()
 			sessionState.ResultCount++
-			sessionState.IsProcessing = false
+			sessionState.SetProcessing(false, "rest-prompt-complete")
+			sessionState.ClearPrompt()
 			sessionState.Mu.Unlock()
 			h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "result")
 		}(sess, req.Message)

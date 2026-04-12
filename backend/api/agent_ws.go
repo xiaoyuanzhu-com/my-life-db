@@ -33,7 +33,7 @@ func getOrCreateSessionState(sessionID string) *agentsdk.SessionState {
 	if state, ok := agentSessionStates[sessionID]; ok {
 		return state
 	}
-	state := agentsdk.NewSessionState()
+	state := agentsdk.NewSessionState(sessionID)
 	agentSessionStates[sessionID] = state
 	return state
 }
@@ -79,7 +79,7 @@ func GetAllSessionRuntimeStates() map[string]struct{ IsProcessing bool; ResultCo
 	for id, ss := range agentSessionStates {
 		ss.Mu.RLock()
 		result[id] = struct{ IsProcessing bool; ResultCount int }{
-			IsProcessing: ss.IsProcessing,
+			IsProcessing: ss.IsProcessing(),
 			ResultCount:  ss.ResultCount,
 		}
 		ss.Mu.RUnlock()
@@ -176,7 +176,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 	// state before any content frames arrive.
 	sessionState.Mu.RLock()
 	isActive := sessionState.IsActive
-	isProcessing := sessionState.IsProcessing
+	isProcessing := sessionState.IsProcessing()
 	sessionState.Mu.RUnlock()
 
 	if infoFrame, err := json.Marshal(map[string]any{
@@ -210,10 +210,14 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 					}
 					return
 				}
+				// Track turn.complete for read state — but only increment the counter.
+				// Don't persist immediately; defer will handle it on disconnect.
+				// This prevents a race where the write loop marks a result as "read"
+				// right as the user navigates away, causing working→idle instead of
+				// working→unread.
 				var mt struct{ Type string `json:"type"` }
 				if json.Unmarshal(data, &mt) == nil && mt.Type == "turn.complete" {
 					seenResultCount.Add(1)
-					persistReadState()
 				}
 			}
 			// Wait for new data or context cancellation
@@ -265,6 +269,9 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			}
 
 			sess.SetOnFrame(func(data []byte) {
+				sessionState.Mu.Lock()
+				sessionState.TouchFrame()
+				sessionState.Mu.Unlock()
 				sessionState.AppendAndBroadcast(data)
 			})
 			// Set mode AFTER onFrame so the mode-change event is captured
@@ -324,12 +331,8 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 		}
 	}()
 
-	// Prompt serialization: only one prompt goroutine may run at a time.
-	// promptDone is closed when the current goroutine exits.
-	// promptCancel cancels the per-prompt context (used by session.cancel
-	// and to abort a stale prompt before starting a new one).
-	var promptDone chan struct{}
-	var promptCancel context.CancelFunc
+	// Prompt serialization is handled via sessionState.PromptDone/PromptCancel
+	// (shared across WS and REST goroutines). See SessionState.WaitForPrompt().
 
 	// Read loop: handle inbound messages
 	for {
@@ -424,6 +427,9 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 					continue
 				}
 				sess.SetOnFrame(func(data []byte) {
+					sessionState.Mu.Lock()
+					sessionState.TouchFrame()
+					sessionState.Mu.Unlock()
 					sessionState.AppendAndBroadcast(data)
 				})
 				// Set mode AFTER onFrame so the mode-change event is captured
@@ -452,18 +458,17 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			// before starting a new one. This prevents concurrent conn.Prompt()
 			// calls on the same ACP connection (which causes the SDK to return
 			// empty responses for the second call).
-			if promptCancel != nil {
-				promptCancel() // signal the old goroutine's context to cancel
-			}
-			if promptDone != nil {
-				<-promptDone // wait for the old goroutine to exit
-			}
+			// Uses shared SessionState tracking so WS handler can also wait for
+			// REST-initiated or auto-run goroutines.
+			sessionState.WaitForPrompt()
 
 			// Create a per-prompt context so session.cancel can abort it.
 			promptCtx, pCancel := context.WithCancel(h.server.ShutdownContext())
-			promptCancel = pCancel
 			done := make(chan struct{})
-			promptDone = done
+
+			sessionState.Mu.Lock()
+			sessionState.RegisterPrompt(done, pCancel)
+			sessionState.Mu.Unlock()
 
 			// Send prompt and start frame forwarding
 			go func(acpSess agentsdk.Session, prompt string, pCtx context.Context, pCancel context.CancelFunc) {
@@ -472,9 +477,10 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				// Mark processing BEFORE Send() so any WS client connecting
 				// between turn.start and the first event sees the correct state.
 				sessionState.Mu.Lock()
-				sessionState.IsProcessing = true
+				sessionState.SetProcessing(true, "ws-prompt")
 				sessionState.IsActive = true
 				sessionState.Killed = false // reset from previous force-kill
+				sessionState.TouchFrame()   // initialize watchdog baseline
 				sessionState.Mu.Unlock()
 				h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "working")
 
@@ -486,6 +492,33 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 						log.Info().Str("sessionId", sessionID).Msg("agent process exited during WS prompt")
 						pCancel()
 					case <-pCtx.Done():
+					}
+				}()
+
+				// Stuck-prompt watchdog: if no ACP frames arrive for 5 minutes
+				// while the prompt is still running, force-cancel and log diagnostics.
+				go func() {
+					const stuckTimeout = 5 * time.Minute
+					ticker := time.NewTicker(30 * time.Second)
+					defer ticker.Stop()
+					for {
+						select {
+						case <-pCtx.Done():
+							return
+						case <-ticker.C:
+							sessionState.Mu.RLock()
+							last := sessionState.LastFrameAt
+							processing := sessionState.IsProcessing()
+							sessionState.Mu.RUnlock()
+							if processing && !last.IsZero() && time.Since(last) > stuckTimeout {
+								log.Error().
+									Str("sessionId", sessionID).
+									Dur("idle", time.Since(last)).
+									Msg("stuck-prompt watchdog: no ACP frames for 5 minutes, force-cancelling")
+								pCancel()
+								return
+							}
+						}
 					}
 				}()
 
@@ -504,7 +537,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 					sessionState.Mu.Lock()
 					killed := sessionState.Killed
 					if !killed {
-						sessionState.IsProcessing = false
+						sessionState.SetProcessing(false, "ws-prompt-send-error")
 					}
 					sessionState.Mu.Unlock()
 					if !killed {
@@ -533,8 +566,9 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				sessionState.Mu.Lock()
 				if !sessionState.Killed {
 					sessionState.ResultCount++
-					sessionState.IsProcessing = false
+					sessionState.SetProcessing(false, "ws-prompt-complete")
 				}
+				sessionState.ClearPrompt()
 				sessionState.Mu.Unlock()
 				if !sessionState.Killed {
 					h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "result")
@@ -570,8 +604,11 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			}
 
 			// Cancel the per-prompt context so conn.Prompt() returns promptly.
-			if promptCancel != nil {
-				promptCancel()
+			sessionState.Mu.RLock()
+			pc := sessionState.PromptCancel
+			sessionState.Mu.RUnlock()
+			if pc != nil {
+				pc()
 			}
 
 			// Send ack so the client can immediately update UI (stop spinner, clear permissions).
@@ -605,7 +642,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			// duplicate turn.complete / spurious error frames).
 			sessionState.Mu.Lock()
 			sessionState.Killed = true
-			sessionState.IsProcessing = false
+			sessionState.SetProcessing(false, "ws-kill")
 			sessionState.Mu.Unlock()
 
 			if completeBytes, err := json.Marshal(map[string]any{

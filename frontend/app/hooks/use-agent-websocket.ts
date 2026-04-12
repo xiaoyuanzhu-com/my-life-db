@@ -153,6 +153,10 @@ export function useAgentWebSocket({
     send({ type: "session.cancel" })
   }, [send])
 
+  const sendKill = useCallback(() => {
+    send({ type: "session.kill" })
+  }, [send])
+
   const sendPermissionResponse = useCallback((toolCallId: string, optionId: string) => {
     send({ type: "permission.respond", toolCallId, optionId })
   }, [send])
@@ -225,5 +229,5 @@ export function useAgentWebSocket({
     }
   }, [sessionId, token, enabled])
 
-  return { connected, sendPrompt, sendCancel, sendPermissionResponse, sendSetMode }
+  return { connected, sendPrompt, sendCancel, sendKill, sendPermissionResponse, sendSetMode }
 }

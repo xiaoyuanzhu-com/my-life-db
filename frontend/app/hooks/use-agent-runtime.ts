@@ -187,6 +187,9 @@ export function useAgentRuntime(options: {
   const messagesRef = useRef(messages)
   messagesRef.current = messages
 
+  const isRunningRef = useRef(isRunning)
+  isRunningRef.current = isRunning
+
   // ── Frame Handler ─────────────────────────────────────────────────
 
   const onFrame = useCallback(
@@ -853,7 +856,7 @@ export function useAgentRuntime(options: {
 
   // ── WebSocket Connection ──────────────────────────────────────────
 
-  const { connected, sendPrompt, sendCancel, sendPermissionResponse, sendSetMode } =
+  const { connected, sendPrompt, sendCancel, sendKill, sendPermissionResponse, sendSetMode } =
     useAgentWebSocket({
       sessionId,
       token,
@@ -995,6 +998,12 @@ export function useAgentRuntime(options: {
       },
       onCancel: async () => {
         sendCancel()
+        // If still running after 3s, force-kill the session
+        setTimeout(() => {
+          if (isRunningRef.current) {
+            sendKill()
+          }
+        }, 3000)
       },
       // Thread list adapter — conditionally included when sessions data is provided
       ...(sessions ? {
@@ -1027,7 +1036,7 @@ export function useAgentRuntime(options: {
         },
       } : {}),
     }),
-    [rootMessages, isRunning, sendPrompt, sendCancel, onSend, sessions, activeSessionId, onSwitchToThread, onSwitchToNewThread, onRenameThread, onArchiveThread, onUnarchiveThread, onDeleteThread]
+    [rootMessages, isRunning, sendPrompt, sendCancel, sendKill, onSend, sessions, activeSessionId, onSwitchToThread, onSwitchToNewThread, onRenameThread, onArchiveThread, onUnarchiveThread, onDeleteThread]
   )
 
   // ── Runtime ───────────────────────────────────────────────────────

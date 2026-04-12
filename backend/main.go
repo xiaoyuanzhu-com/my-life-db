@@ -93,6 +93,9 @@ func main() {
 		// Wire frame broadcasting so WebSocket subscribers receive frames
 		sessionState := api.GetOrCreateSessionState(sess.ID())
 		sess.SetOnFrame(func(data []byte) {
+			sessionState.Mu.Lock()
+			sessionState.TouchFrame()
+			sessionState.Mu.Unlock()
 			sessionState.AppendAndBroadcast(data)
 		})
 
