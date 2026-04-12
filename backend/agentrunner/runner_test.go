@@ -13,7 +13,7 @@ const testAgentMD = `---
 name: test-agent
 agent: claude_code
 trigger: cron
-schedule: "0 0 * * * *"
+schedule: "0 * * * *"
 ---
 
 You are a test agent. Do something useful.
@@ -65,8 +65,8 @@ func TestRunnerLoadsAgentDefs(t *testing.T) {
 	if def.Trigger != "cron" {
 		t.Errorf("Trigger = %q, want %q", def.Trigger, "cron")
 	}
-	if def.Schedule != "0 0 * * * *" {
-		t.Errorf("Schedule = %q, want %q", def.Schedule, "0 0 * * * *")
+	if def.Schedule != "0 * * * *" {
+		t.Errorf("Schedule = %q, want %q", def.Schedule, "0 * * * *")
 	}
 	if def.Enabled == nil || !*def.Enabled {
 		t.Error("expected Enabled to be true")
@@ -174,7 +174,7 @@ func TestBuildPromptCron(t *testing.T) {
 		Name:     "daily-summary",
 		Agent:    "claude_code",
 		Trigger:  "cron",
-		Schedule: "0 0 9 * * *",
+		Schedule: "0 9 * * *",
 		Prompt:   "Generate a daily summary.",
 	}
 
@@ -183,7 +183,7 @@ func TestBuildPromptCron(t *testing.T) {
 		Timestamp: time.Date(2026, 4, 10, 9, 0, 0, 0, time.UTC),
 		Data: map[string]any{
 			"name":     "daily-summary",
-			"schedule": "0 0 9 * * *",
+			"schedule": "0 9 * * *",
 		},
 	}
 
@@ -193,7 +193,7 @@ func TestBuildPromptCron(t *testing.T) {
 	expected := `[Trigger Context]
 Event: cron.tick
 Time: 2026-04-10T09:00:00Z
-Schedule: 0 0 9 * * *
+Schedule: 0 9 * * *
 
 ---
 

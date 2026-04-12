@@ -17,11 +17,11 @@ type CronHook struct {
 	entries   map[string]cron.EntryID // name → entry ID
 }
 
-// NewCronHook creates a CronHook with second-precision scheduling.
+// NewCronHook creates a CronHook with standard 5-field cron scheduling.
 func NewCronHook(registry *Registry) *CronHook {
 	return &CronHook{
 		registry:  registry,
-		scheduler: cron.New(cron.WithSeconds()),
+		scheduler: cron.New(),
 		entries:   make(map[string]cron.EntryID),
 	}
 }

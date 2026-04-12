@@ -11,6 +11,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/robfig/cron/v3"
+	"github.com/xiaoyuanzhu-com/my-life-db/agentrunner"
 )
 
 // Service manages agent app files under USER_DATA_DIR/apps/.
@@ -240,4 +243,79 @@ func validatePath(path string) error {
 		return fmt.Errorf("invalid path: %q", path)
 	}
 	return nil
+}
+
+// ValidationResult holds the result of validating an agent definition.
+type ValidationResult struct {
+	Valid  bool              `json:"valid"`
+	Errors []string          `json:"errors,omitempty"`
+	Parsed *ValidationParsed `json:"parsed,omitempty"`
+}
+
+// ValidationParsed holds the parsed fields from a valid agent definition.
+type ValidationParsed struct {
+	Name     string `json:"name"`
+	Agent    string `json:"agent"`
+	Trigger  string `json:"trigger"`
+	Schedule string `json:"schedule,omitempty"`
+	Enabled  bool   `json:"enabled"`
+}
+
+var validAgents = map[string]bool{
+	"claude_code": true,
+	"codex":       true,
+}
+
+var validTriggers = map[string]bool{
+	"cron":         true,
+	"file.created": true,
+	"file.changed": true,
+	"file.moved":   true,
+	"file.deleted": true,
+}
+
+// ValidateAgentDef validates the full markdown content of an agent definition.
+// It reuses agentrunner.ParseAgentDef for structural parsing and adds
+// semantic validation (valid agent types, trigger types, cron expression parsing).
+func ValidateAgentDef(content string) ValidationResult {
+	def, err := agentrunner.ParseAgentDef([]byte(content), "validate")
+	if err != nil {
+		return ValidationResult{Valid: false, Errors: []string{err.Error()}}
+	}
+
+	var errs []string
+
+	if !validAgents[def.Agent] {
+		errs = append(errs, fmt.Sprintf("unknown agent type %q, must be one of: claude_code, codex", def.Agent))
+	}
+
+	if !validTriggers[def.Trigger] {
+		errs = append(errs, fmt.Sprintf("unknown trigger type %q, must be one of: cron, file.created, file.changed, file.moved, file.deleted", def.Trigger))
+	}
+
+	if def.Trigger == "cron" && def.Schedule != "" {
+		parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+		if _, err := parser.Parse(def.Schedule); err != nil {
+			errs = append(errs, fmt.Sprintf("invalid cron schedule %q: %v", def.Schedule, err))
+		}
+	}
+
+	if def.Prompt == "" {
+		errs = append(errs, "prompt body is empty — add instructions below the frontmatter")
+	}
+
+	if len(errs) > 0 {
+		return ValidationResult{Valid: false, Errors: errs}
+	}
+
+	return ValidationResult{
+		Valid: true,
+		Parsed: &ValidationParsed{
+			Name:     def.Name,
+			Agent:    def.Agent,
+			Trigger:  def.Trigger,
+			Schedule: def.Schedule,
+			Enabled:  def.Enabled != nil && *def.Enabled,
+		},
+	}
 }

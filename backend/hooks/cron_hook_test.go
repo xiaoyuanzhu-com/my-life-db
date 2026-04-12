@@ -19,7 +19,7 @@ func TestCronHookEmitsOnSchedule(t *testing.T) {
 		lastPayload = p
 	})
 
-	if err := hook.AddSchedule("every-second", "* * * * * *"); err != nil {
+	if err := hook.AddSchedule("every-second", "@every 1s"); err != nil {
 		t.Fatalf("AddSchedule failed: %v", err)
 	}
 
@@ -48,8 +48,8 @@ func TestCronHookEmitsOnSchedule(t *testing.T) {
 	if lastPayload.Data["name"] != "every-second" {
 		t.Errorf("expected name 'every-second', got %v", lastPayload.Data["name"])
 	}
-	if lastPayload.Data["schedule"] != "* * * * * *" {
-		t.Errorf("expected schedule '* * * * * *', got %v", lastPayload.Data["schedule"])
+	if lastPayload.Data["schedule"] != "@every 1s" {
+		t.Errorf("expected schedule '@every 1s', got %v", lastPayload.Data["schedule"])
 	}
 }
 
@@ -63,7 +63,7 @@ func TestCronHookRemoveSchedule(t *testing.T) {
 		count.Add(1)
 	})
 
-	if err := hook.AddSchedule("removable", "* * * * * *"); err != nil {
+	if err := hook.AddSchedule("removable", "@every 1s"); err != nil {
 		t.Fatalf("AddSchedule failed: %v", err)
 	}
 

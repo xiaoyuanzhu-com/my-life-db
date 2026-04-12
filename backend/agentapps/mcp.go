@@ -189,6 +189,20 @@ func (m *MCPServer) handleToolsList(req jsonrpcRequest) *jsonrpcResponse {
 				},
 			},
 		},
+		{
+			"name":        "validateAgent",
+			"description": "Validate an agent definition before saving it. Pass the full markdown content (frontmatter + prompt) and get back validation results with specific, actionable error messages. Always call this before writing to the agents/ directory.",
+			"inputSchema": map[string]any{
+				"type":     "object",
+				"required": []string{"content"},
+				"properties": map[string]any{
+					"content": map[string]any{
+						"type":        "string",
+						"description": "Full markdown content of the agent definition (YAML frontmatter between --- delimiters + prompt body)",
+					},
+				},
+			},
+		},
 	}
 
 	return &jsonrpcResponse{
@@ -220,6 +234,8 @@ func (m *MCPServer) handleToolsCall(req jsonrpcRequest) *jsonrpcResponse {
 		return m.callListFiles(req.ID, params.Arguments)
 	case "deleteFile":
 		return m.callDeleteFile(req.ID, params.Arguments)
+	case "validateAgent":
+		return m.callValidateAgent(req.ID, params.Arguments)
 	default:
 		return &jsonrpcResponse{
 			JSONRPC: "2.0",
@@ -288,6 +304,17 @@ func (m *MCPServer) callDeleteFile(id json.RawMessage, args map[string]any) *jso
 		return m.toolError(id, err.Error())
 	}
 	return m.toolResult(id, fmt.Sprintf("Deleted %s/%s", app, path))
+}
+
+func (m *MCPServer) callValidateAgent(id json.RawMessage, args map[string]any) *jsonrpcResponse {
+	content, _ := args["content"].(string)
+	if content == "" {
+		return m.toolError(id, "content is required")
+	}
+
+	result := ValidateAgentDef(content)
+	data, _ := json.Marshal(result)
+	return m.toolResult(id, string(data))
 }
 
 func (m *MCPServer) toolResult(id json.RawMessage, text string) *jsonrpcResponse {
