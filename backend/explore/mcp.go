@@ -133,7 +133,7 @@ func (m *MCPHandler) handleToolsList(req jsonrpcRequest) *jsonrpcResponse {
 	tools := []map[string]any{
 		{
 			"name":        "createPost",
-			"description": "Create a new explore post. RENDERING CONTEXT: In the feed, only the first image and the title (max 2 lines) are visible on the post card — no description, no tags, no content. Users decide whether to open a post based solely on the cover image and title. Write a short, intriguing title that sparks curiosity. The first media item is the cover image — make it visually compelling and representative of the post. Content, tags, and additional images are only shown after the user opens the post.",
+			"description": "Create a new explore post. RENDERING CONTEXT: In the feed, only the first image and the title (max 2 lines) are visible on the post card — no description, no tags, no content. Users decide whether to open a post based solely on the cover image and title. Write a short, intriguing title that sparks curiosity. The first media item is the cover image — make it visually compelling and representative of the post. Content, tags, and additional images are only shown after the user opens the post. IMAGE GUIDELINES: Most readers view posts on mobile devices. Generated images should be mobile-friendly — use large, legible text, bold visuals, high contrast, and avoid tiny details that get lost on small screens.",
 			"inputSchema": map[string]any{
 				"type":     "object",
 				"required": []string{"author", "title"},
