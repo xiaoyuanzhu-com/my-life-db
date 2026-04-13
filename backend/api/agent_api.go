@@ -2,13 +2,11 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
@@ -52,159 +50,33 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 		return
 	}
 
-	// Map agentType string to agentsdk.AgentType
 	agentTypeStr := req.AgentType
 	if agentTypeStr == "" {
 		agentTypeStr = "claude_code"
 	}
-	agentType := agentsdk.AgentClaudeCode
-	if agentTypeStr == "codex" {
-		agentType = agentsdk.AgentCodex
-	}
 
-	// Spawn ACP agent process eagerly.
-	// Use background context — the ACP process must outlive this HTTP request.
-	sess, err := h.server.AgentClient().CreateSession(context.Background(), agentsdk.SessionConfig{
-		Agent:      agentType,
-		Mode:       req.PermissionMode,
-		WorkingDir: req.WorkingDir,
-	})
+	handle, err := CreateSession(
+		context.Background(), // ACP process must outlive this HTTP request
+		h.server.AgentClient(),
+		h.server.Notifications(),
+		h.server.ShutdownContext(),
+		SessionParams{
+			AgentType:      agentTypeStr,
+			WorkingDir:     req.WorkingDir,
+			Title:          req.Title,
+			Message:        req.Message,
+			PermissionMode: req.PermissionMode,
+			Source:         "user",
+		},
+	)
 	if err != nil {
-		log.Error().Err(err).Msg("failed to create ACP session")
+		log.Error().Err(err).Msg("failed to create agent session")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create agent session: " + err.Error()})
 		return
 	}
 
-	// Use ACP session ID as DB primary key
-	sessionID := sess.ID()
-
-	if err := db.CreateAgentSession(sessionID, agentTypeStr, req.WorkingDir, req.Title, "user", ""); err != nil {
-		log.Error().Err(err).Msg("failed to create agent session in DB")
-		sess.Close()
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create session"})
-		return
-	}
-
-	// Save permission mode if provided
-	if req.PermissionMode != "" {
-		db.SaveAgentSessionPermissionMode(sessionID, req.PermissionMode)
-	}
-
-	// Wire onFrame BEFORE storing — ensures any Send() (from here or from the
-	// WebSocket handler) delivers agent_message_chunk frames to connected clients.
-	sessionState := GetOrCreateSessionState(sessionID)
-	sess.SetOnFrame(func(data []byte) {
-		sessionState.AppendAndBroadcast(data)
-	})
-
-	// Set mode AFTER onFrame so the mode-change event is captured and forwarded
-	if req.PermissionMode != "" {
-		if err := sess.SetMode(context.Background(), req.PermissionMode); err != nil {
-			log.Warn().Err(err).Str("sessionId", sessionID).Str("mode", req.PermissionMode).Msg("failed to set initial mode")
-		}
-	}
-
-	// Store the ACP session in the in-memory map so the WS handler can find it
-	StoreAcpSession(sessionID, sess)
-
-	log.Info().
-		Str("sessionId", sessionID).
-		Str("agentType", agentTypeStr).
-		Str("workingDir", req.WorkingDir).
-		Msg("created agent session with ACP session ID as primary key")
-
-	// If a message was provided, start processing it in a background goroutine
-	if req.Message != "" {
-		// Synthesize user_message_chunk BEFORE Send() so the user's message
-		// is in rawMessages for burst replay on page refresh. ACP does not
-		// echo user messages during live Prompt() calls.
-		sessionState.AppendAndBroadcast(agentsdk.SynthUserMessageChunk(req.Message))
-
-		// Send prompt and forward raw frames in a background goroutine
-		go func(acpSess agentsdk.Session, prompt string) {
-			// Mark processing BEFORE Send() so any WS client connecting
-			// between turn.start and the first event sees the correct state.
-			sessionState.Mu.Lock()
-			sessionState.SetProcessing(true, "rest-prompt")
-			sessionState.IsActive = true
-			sessionState.TouchFrame() // record prompt start time for diagnostics
-			sessionState.Mu.Unlock()
-			h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "working")
-
-			// Create a cancellable context so we can abort if the process exits.
-			ctx, cancel := context.WithCancel(h.server.ShutdownContext())
-			defer cancel()
-
-			// Register prompt so WS handler can wait for us
-			restDone := make(chan struct{})
-			defer close(restDone)
-			sessionState.Mu.Lock()
-			sessionState.RegisterPrompt(restDone, cancel)
-			sessionState.Mu.Unlock()
-
-			// Monitor process exit — cancel prompt context if process dies,
-			// which unblocks Prompt() and causes the events channel to close.
-			go func() {
-				select {
-				case <-acpSess.Done():
-					log.Info().Str("sessionId", sessionID).Msg("agent process exited during initial prompt")
-					cancel()
-				case <-ctx.Done():
-				}
-			}()
-
-			events, err := acpSess.Send(ctx, prompt)
-			if err != nil {
-				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send initial prompt to ACP session")
-				sessionState.Mu.Lock()
-				sessionState.SetProcessing(false, "rest-prompt-send-error")
-				sessionState.Mu.Unlock()
-				if errBytes, err := json.Marshal(map[string]any{
-					"type": "error", "message": "Failed to send message: " + err.Error(), "code": "SEND_ERROR",
-				}); err == nil {
-					sessionState.AppendAndBroadcast(errBytes)
-				}
-				h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "result")
-				return
-			}
-
-			frameCount := 0
-			for frame := range events {
-				frameCount++
-				sessionState.AppendAndBroadcast(frame)
-			}
-			// Channel closed = turn complete
-			sessionState.Mu.Lock()
-			sessionState.ResultCount++
-			sessionState.SetProcessing(false, "rest-prompt-complete")
-			sessionState.ClearPrompt()
-			sessionState.Mu.Unlock()
-
-			// Detect zero-output turns (see ws handler for rationale)
-			if frameCount <= 1 {
-				log.Info().
-					Str("sessionId", sessionID).
-					Int("frameCount", frameCount).
-					Msg("zero-output turn detected: agent produced no content")
-				if errBytes, err := json.Marshal(map[string]any{
-					"type":    "error",
-					"message": "The agent returned an empty response. This can happen when the session state is corrupted — try sending your message again or start a new session.",
-					"code":    "EMPTY_RESPONSE",
-				}); err == nil {
-					sessionState.AppendAndBroadcast(errBytes)
-				}
-			}
-			h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "result")
-		}(sess, req.Message)
-
-		log.Info().
-			Str("sessionId", sessionID).
-			Str("prompt", req.Message).
-			Msg("initial prompt sent to agent session during creation")
-	}
-
 	c.JSON(http.StatusOK, gin.H{
-		"id":         sessionID,
+		"id":         handle.ID,
 		"agentType":  agentTypeStr,
 		"workingDir": req.WorkingDir,
 		"title":      req.Title,

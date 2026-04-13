@@ -15,17 +15,30 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
+// SessionParams describes how to create an agent session.
+// Passed to Config.CreateSession by the runner.
+type SessionParams struct {
+	AgentType      string // "claude_code" or "codex"
+	WorkingDir     string
+	Title          string
+	Message        string // initial prompt
+	PermissionMode string
+	Source         string // "auto"
+	AgentFile      string // agent definition file
+}
+
 // Config holds the configuration for the agent runner.
 type Config struct {
-	AgentsDir   string           // path to agents/ folder
-	Registry    *hooks.Registry  // hooks registry
-	CronHook    *hooks.CronHook  // for registering cron schedules
-	AgentClient *agentsdk.Client // for spawning ACP sessions (nil in tests)
-	WorkingDir  string           // working directory for sessions
+	AgentsDir   string          // path to agents/ folder
+	Registry    *hooks.Registry // hooks registry
+	CronHook    *hooks.CronHook // for registering cron schedules
+	WorkingDir  string          // working directory for sessions
 
-	// Called when a session is created. Server uses this to persist to DB
-	// and wire frame broadcasting.
-	OnSessionCreated func(sess agentsdk.Session, def *AgentDef, payload hooks.Payload)
+	// CreateSession creates an agent session through the shared api path.
+	// Returns the ACP session for lifecycle management and a channel that
+	// closes when the initial prompt completes.
+	// When nil, session creation is skipped (tests).
+	CreateSession func(ctx context.Context, params SessionParams) (acpSession agentsdk.Session, promptDone <-chan struct{}, err error)
 }
 
 // Runner loads agent definitions from markdown files, subscribes to hooks,
@@ -128,11 +141,11 @@ func (r *Runner) Stop() error {
 	return nil
 }
 
-// SetOnSessionCreated sets the callback invoked when an auto-run agent session
-// is created. This allows main.go to wire DB persistence and frame broadcasting
+// SetCreateSession sets the callback used to create agent sessions.
+// This allows main.go to wire session creation through the shared api path
 // without circular imports between server and api packages.
-func (r *Runner) SetOnSessionCreated(fn func(sess agentsdk.Session, def *AgentDef, payload hooks.Payload)) {
-	r.cfg.OnSessionCreated = fn
+func (r *Runner) SetCreateSession(fn func(ctx context.Context, params SessionParams) (agentsdk.Session, <-chan struct{}, error)) {
+	r.cfg.CreateSession = fn
 }
 
 // loadAndRegister loads defs from disk, subscribes to event types (once),
@@ -391,45 +404,40 @@ func (r *Runner) Defs() []*AgentDef {
 	return out
 }
 
-// execute builds a prompt, creates an ACP session, calls OnSessionCreated,
-// sends the prompt, and drains frames.
+// execute builds a prompt, creates a session via the shared path, and
+// closes the ACP session after completion (fire-and-forget).
 func (r *Runner) execute(ctx context.Context, def *AgentDef, payload hooks.Payload) {
-	if r.cfg.AgentClient == nil {
-		log.Warn().Str("agent", def.Name).Msg("no agent client configured, skipping execution")
+	if r.cfg.CreateSession == nil {
+		log.Warn().Str("agent", def.Name).Msg("no CreateSession configured, skipping execution")
 		return
 	}
 
 	prompt := r.buildPrompt(def, payload)
 
-	session, err := r.cfg.AgentClient.CreateSession(ctx, agentsdk.SessionConfig{
-		Agent:      agentsdk.AgentType(def.Agent),
-		WorkingDir: r.cfg.WorkingDir,
-		Mode:       "bypassPermissions",
+	// Create session through the shared api path. The shared function
+	// handles DB persistence, frame broadcasting, synth user message,
+	// and sending the prompt in a background goroutine.
+	session, promptDone, err := r.cfg.CreateSession(ctx, SessionParams{
+		AgentType:      def.Agent,
+		WorkingDir:     r.cfg.WorkingDir,
+		Title:          def.Name,
+		Message:        prompt,
+		PermissionMode: "bypassPermissions",
+		Source:         "auto",
+		AgentFile:      def.File,
 	})
 	if err != nil {
-		log.Error().Err(err).Str("agent", def.Name).Msg("failed to create ACP session")
+		log.Error().Err(err).Str("agent", def.Name).Msg("failed to create agent session")
 		return
 	}
 
-	if r.cfg.OnSessionCreated != nil {
-		r.cfg.OnSessionCreated(session, def, payload)
-	}
-
-	// Send prompt and drain frames in a goroutine
+	// Wait for the prompt to complete, then close the session (fire-and-forget).
 	go func() {
-		defer session.Close()
-
-		frames, err := session.Send(ctx, prompt)
-		if err != nil {
-			log.Error().Err(err).Str("agent", def.Name).Str("session", session.ID()).Msg("failed to send prompt")
-			return
+		if promptDone != nil {
+			<-promptDone
 		}
-
-		// Drain all frames
-		for range frames {
-		}
-
-		log.Info().Str("agent", def.Name).Str("session", session.ID()).Msg("agent session completed")
+		session.Close()
+		log.Info().Str("agent", def.Name).Str("session", session.ID()).Msg("auto-run agent session completed")
 	}()
 }
 

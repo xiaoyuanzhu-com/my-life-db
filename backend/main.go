@@ -19,7 +19,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/api"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
-	"github.com/xiaoyuanzhu-com/my-life-db/hooks"
 	"github.com/xiaoyuanzhu-com/my-life-db/llm"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/server"
@@ -84,29 +83,28 @@ func main() {
 	handlers := api.NewHandlers(srv)
 	api.SetupRoutes(srv.Router(), handlers)
 
-	// Wire auto-run agent session callback (must be after api.NewHandlers
-	// to avoid circular imports between server and api packages)
-	srv.AgentRunner().SetOnSessionCreated(func(sess agentsdk.Session, def *agentrunner.AgentDef, payload hooks.Payload) {
-		// Persist session to database
-		db.CreateAgentSession(sess.ID(), def.Agent, cfg.UserDataDir, def.Name, "auto", def.File)
-
-		// Wire frame broadcasting so WebSocket subscribers receive frames
-		sessionState := api.GetOrCreateSessionState(sess.ID())
-		sess.SetOnFrame(func(data []byte) {
-			sessionState.Mu.Lock()
-			sessionState.TouchFrame()
-			sessionState.Mu.Unlock()
-			sessionState.AppendAndBroadcast(data)
-		})
-
-		// Store ACP session in the in-memory map for WebSocket handler access
-		api.StoreAcpSession(sess.ID(), sess)
-
-		log.Info().
-			Str("sessionId", sess.ID()).
-			Str("agent", def.Name).
-			Str("trigger", def.Trigger).
-			Msg("auto-run agent session created")
+	// Wire auto-run agent session creation through the shared api path
+	// (must be after api.NewHandlers to avoid circular imports)
+	srv.AgentRunner().SetCreateSession(func(ctx context.Context, params agentrunner.SessionParams) (agentsdk.Session, <-chan struct{}, error) {
+		handle, err := api.CreateSession(
+			ctx,
+			srv.AgentClient(),
+			srv.Notifications(),
+			srv.ShutdownContext(),
+			api.SessionParams{
+				AgentType:      params.AgentType,
+				WorkingDir:     params.WorkingDir,
+				Title:          params.Title,
+				Message:        params.Message,
+				PermissionMode: params.PermissionMode,
+				Source:         params.Source,
+				AgentFile:      params.AgentFile,
+			},
+		)
+		if err != nil {
+			return nil, nil, err
+		}
+		return handle.AcpSession, handle.PromptDone, nil
 	})
 
 	// Setup static file serving and SPA fallback

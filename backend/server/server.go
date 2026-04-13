@@ -177,11 +177,10 @@ func New(cfg *Config) (*Server, error) {
 	// 1.8. Initialize agent runner
 	agentsDir := filepath.Join(cfg.UserDataDir, "agents")
 	s.agentRunner = agentrunner.New(agentrunner.Config{
-		AgentsDir:   agentsDir,
-		Registry:    s.hookRegistry,
-		CronHook:    s.cronHook,
-		AgentClient: s.agentClient,
-		WorkingDir:  cfg.UserDataDir,
+		AgentsDir:  agentsDir,
+		Registry:   s.hookRegistry,
+		CronHook:   s.cronHook,
+		WorkingDir: cfg.UserDataDir,
 	})
 
 	// 2. Load user settings from database and apply log level
