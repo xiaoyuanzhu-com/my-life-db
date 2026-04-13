@@ -50,6 +50,8 @@ export interface AgentContextValue {
   pendingComposerText?: string | null
   /** Clear the pending composer text after it's been restored */
   clearPendingComposerText?: () => void
+  /** Counter that increments on each agent result, used as refreshKey for changed files */
+  resultCount?: number
 }
 
 const AgentContext = createContext<AgentContextValue | null>(null)

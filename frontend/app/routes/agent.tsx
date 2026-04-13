@@ -242,6 +242,9 @@ export default function AgentPage() {
     return 'claude_code'
   })
 
+  // Result count — increments on each agent session update, used as refreshKey for changed files popover
+  const [resultCount, setResultCount] = useState(0)
+
   // Get active session - use ref to cache and prevent unmount during session list refresh
   // This prevents ChatInterface from unmounting when sessions array temporarily
   // doesn't contain the active session (e.g., during filter changes or refresh)
@@ -307,6 +310,11 @@ export default function AgentPage() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only sync when activeSessionId changes
+  }, [activeSessionId])
+
+  // Reset resultCount when session changes
+  useEffect(() => {
+    setResultCount(0)
   }, [activeSessionId])
 
   // Sort sessions by last USER activity (most recent first)
@@ -557,8 +565,13 @@ export default function AgentPage() {
 
   // Refresh session list when titles change (SSE from backend)
   // Uses refreshSessions for seamless background updates without loading flash
+  const handleSessionUpdated = useCallback(() => {
+    refreshSessions()
+    setResultCount((prev) => prev + 1)
+  }, [refreshSessions])
+
   useAgentSessionNotifications({
-    onSessionUpdated: refreshSessions,
+    onSessionUpdated: handleSessionUpdated,
     enabled: isAuthenticated,
   })
 
@@ -837,6 +850,7 @@ export default function AgentPage() {
     subagentChildrenMap,
     pendingComposerText,
     clearPendingComposerText,
+    resultCount,
   }
 
   // ─── Native app: single layout, no responsive split ─────────────────────────

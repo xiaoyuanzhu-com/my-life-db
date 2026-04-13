@@ -32,6 +32,7 @@ import { PermissionModeSelector, type PermissionMode } from "~/components/agent/
 import { AgentTypeSelector, type AgentType } from "~/components/agent/agent-type-selector";
 import { SlashCommandPopover } from "~/components/agent/slash-command-popover";
 import { FileTagPopover } from "~/components/agent/file-tag-popover";
+import { ChangedFilesPopover } from "~/components/agent/changed-files-popover";
 import { useAgentContext } from "~/components/agent/agent-context";
 
 // Create the AssistantMessage with our ACP tool renderers baked in
@@ -309,8 +310,10 @@ const Composer: FC = () => {
     permissionMode, availableModes, onPermissionModeChange,
     agentType, onAgentTypeChange,
     sessionCommands,
+    sessionId,
     hasActiveSession,
     pendingPermissions,
+    resultCount,
   } = useAgentContext();
   const hasSession = useAuiState((s) => !s.thread.isEmpty);
 
@@ -361,6 +364,9 @@ const Composer: FC = () => {
               )}
               {permissionMode !== undefined && availableModes && availableModes.length > 0 && onPermissionModeChange && (
                 <PermissionModeSelector value={permissionMode as PermissionMode} modes={availableModes} onChange={(m) => onPermissionModeChange(m)} />
+              )}
+              {sessionId && (
+                <ChangedFilesPopover sessionId={sessionId} refreshKey={resultCount} />
               )}
             </div>
             <div className="flex items-center gap-1">
