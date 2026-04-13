@@ -14,6 +14,7 @@ type AgentDef struct {
 	Agent    string `yaml:"agent"`
 	Trigger  string `yaml:"trigger"`
 	Schedule string `yaml:"schedule,omitempty"`
+	Path     string `yaml:"path,omitempty"`
 	Enabled  *bool  `yaml:"enabled,omitempty"`
 	Prompt   string `yaml:"-"` // markdown body below frontmatter
 	File     string `yaml:"-"` // source filename
@@ -57,8 +58,19 @@ func ParseAgentDef(data []byte, filename string) (*AgentDef, error) {
 	if def.Trigger == "cron" && def.Schedule == "" {
 		return nil, fmt.Errorf("parsing %s: trigger \"cron\" requires a \"schedule\"", filename)
 	}
+	if isFileTrigger(def.Trigger) && def.Path == "" {
+		return nil, fmt.Errorf("parsing %s: file trigger %q requires a \"path\" glob pattern", filename, def.Trigger)
+	}
 
 	return &def, nil
+}
+
+func isFileTrigger(trigger string) bool {
+	switch trigger {
+	case "file.created", "file.changed", "file.moved", "file.deleted":
+		return true
+	}
+	return false
 }
 
 // splitFrontmatter splits data at the YAML frontmatter delimiters.

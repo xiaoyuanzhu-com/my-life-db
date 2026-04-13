@@ -9,6 +9,7 @@ func TestParseCompleteFileCreatedAgent(t *testing.T) {
 name: Organize Inbox
 agent: claude_code
 trigger: file.created
+path: "inbox/**"
 enabled: true
 ---
 
@@ -70,6 +71,7 @@ func TestDefaultEnabledTrue(t *testing.T) {
 name: Test Agent
 agent: claude_code
 trigger: file.created
+path: "**"
 ---
 
 Some prompt.
@@ -92,6 +94,7 @@ func TestEnabledFalse(t *testing.T) {
 name: Disabled Agent
 agent: claude_code
 trigger: file.created
+path: "**"
 enabled: false
 ---
 
@@ -114,6 +117,7 @@ func TestErrorOnMissingName(t *testing.T) {
 	input := `---
 agent: claude_code
 trigger: file.created
+path: "**"
 ---
 
 Some prompt.
@@ -136,5 +140,103 @@ Some prompt.
 	_, err := ParseAgentDef([]byte(input), "bad-cron.md")
 	if err == nil {
 		t.Fatal("expected error for cron without schedule, got nil")
+	}
+}
+
+func TestParseFileAgentWithPath(t *testing.T) {
+	input := `---
+name: Inbox Watcher
+agent: claude_code
+trigger: file.created
+path: "inbox/**"
+---
+
+Process the new file.
+`
+	def, err := ParseAgentDef([]byte(input), "inbox-watcher.md")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if def.Path != "inbox/**" {
+		t.Errorf("Path = %q, want %q", def.Path, "inbox/**")
+	}
+}
+
+func TestErrorOnFileCreatedWithoutPath(t *testing.T) {
+	input := `---
+name: No Path Agent
+agent: claude_code
+trigger: file.created
+---
+
+Some prompt.
+`
+	_, err := ParseAgentDef([]byte(input), "no-path.md")
+	if err == nil {
+		t.Fatal("expected error for file.created without path, got nil")
+	}
+}
+
+func TestErrorOnFileChangedWithoutPath(t *testing.T) {
+	input := `---
+name: No Path Agent
+agent: claude_code
+trigger: file.changed
+---
+
+Some prompt.
+`
+	_, err := ParseAgentDef([]byte(input), "no-path.md")
+	if err == nil {
+		t.Fatal("expected error for file.changed without path, got nil")
+	}
+}
+
+func TestErrorOnFileMovedWithoutPath(t *testing.T) {
+	input := `---
+name: No Path Agent
+agent: claude_code
+trigger: file.moved
+---
+
+Some prompt.
+`
+	_, err := ParseAgentDef([]byte(input), "no-path.md")
+	if err == nil {
+		t.Fatal("expected error for file.moved without path, got nil")
+	}
+}
+
+func TestErrorOnFileDeletedWithoutPath(t *testing.T) {
+	input := `---
+name: No Path Agent
+agent: claude_code
+trigger: file.deleted
+---
+
+Some prompt.
+`
+	_, err := ParseAgentDef([]byte(input), "no-path.md")
+	if err == nil {
+		t.Fatal("expected error for file.deleted without path, got nil")
+	}
+}
+
+func TestCronAgentIgnoresPath(t *testing.T) {
+	input := `---
+name: Daily Summary
+agent: claude_code
+trigger: cron
+schedule: "0 9 * * *"
+---
+
+Generate a daily summary.
+`
+	def, err := ParseAgentDef([]byte(input), "daily-summary.md")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if def.Path != "" {
+		t.Errorf("Path = %q, want empty for cron trigger", def.Path)
 	}
 }

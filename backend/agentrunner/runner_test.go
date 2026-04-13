@@ -23,6 +23,7 @@ const disabledAgentMD = `---
 name: disabled-agent
 agent: claude_code
 trigger: file.created
+path: "**"
 enabled: false
 ---
 
@@ -33,6 +34,7 @@ const fileAgentMD = `---
 name: file-watcher
 agent: claude_code
 trigger: file.created
+path: "inbox/**"
 ---
 
 Process the new file.
