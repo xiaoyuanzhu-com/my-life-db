@@ -1,11 +1,15 @@
 package agentrunner
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/hooks"
 )
 
@@ -203,5 +207,74 @@ Generate a daily summary.`
 
 	if prompt != expected {
 		t.Errorf("buildPrompt mismatch.\nGot:\n%s\n\nWant:\n%s", prompt, expected)
+	}
+}
+
+func TestExecuteMatchingAgentsPathFilter(t *testing.T) {
+	dir := t.TempDir()
+
+	agentDef := `---
+name: inbox-watcher
+agent: claude_code
+trigger: file.created
+path: "inbox/**"
+---
+
+Process the new file.
+`
+	if err := os.WriteFile(filepath.Join(dir, "inbox-watcher.md"), []byte(agentDef), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var mu sync.Mutex
+	var executed []string
+	registry := hooks.NewRegistry()
+	r := New(Config{
+		AgentsDir: dir,
+		Registry:  registry,
+		CreateSession: func(ctx context.Context, params SessionParams) (agentsdk.Session, <-chan struct{}, error) {
+			mu.Lock()
+			executed = append(executed, params.Title)
+			mu.Unlock()
+			return nil, nil, fmt.Errorf("test: skip session")
+		},
+	})
+
+	if _, err := r.LoadDefs(); err != nil {
+		t.Fatal(err)
+	}
+
+	// File in inbox/ — should match
+	r.executeMatchingAgents(context.Background(), "file.created", hooks.Payload{
+		EventType: hooks.EventFileCreated,
+		Timestamp: time.Now(),
+		Data: map[string]any{
+			"path":   "inbox/receipt.pdf",
+			"name":   "receipt.pdf",
+			"folder": "inbox",
+		},
+	})
+
+	// File outside inbox/ — should NOT match
+	r.executeMatchingAgents(context.Background(), "file.created", hooks.Payload{
+		EventType: hooks.EventFileCreated,
+		Timestamp: time.Now(),
+		Data: map[string]any{
+			"path":   "explore/post.svg",
+			"name":   "post.svg",
+			"folder": "explore",
+		},
+	})
+
+	// Give execute goroutines a moment to run (they're fire-and-forget)
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(executed) != 1 {
+		t.Fatalf("expected 1 execution, got %d: %v", len(executed), executed)
+	}
+	if executed[0] != "inbox-watcher" {
+		t.Errorf("expected inbox-watcher, got %q", executed[0])
 	}
 }

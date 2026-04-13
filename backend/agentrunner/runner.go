@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/fsnotify/fsnotify"
 	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/hooks"
@@ -241,10 +242,22 @@ func (r *Runner) subscribeOnce(eventType hooks.EventType, fn func(context.Contex
 // executeMatchingAgents finds all enabled agents matching the given trigger
 // and executes them.
 func (r *Runner) executeMatchingAgents(ctx context.Context, trigger string, p hooks.Payload) {
+	eventPath, _ := p.Data["path"].(string)
+
 	r.mu.RLock()
 	var matching []*AgentDef
 	for _, def := range r.defs {
 		if def.Trigger == trigger && def.Enabled != nil && *def.Enabled {
+			if def.Path != "" && eventPath != "" {
+				matched, err := doublestar.Match(def.Path, eventPath)
+				if err != nil {
+					log.Error().Err(err).Str("agent", def.Name).Str("pattern", def.Path).Msg("bad path glob pattern")
+					continue
+				}
+				if !matched {
+					continue
+				}
+			}
 			matching = append(matching, def)
 		}
 	}
