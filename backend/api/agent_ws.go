@@ -150,6 +150,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 
 	persistReadState := func() {
 		if n := int(seenResultCount.Load()); n > 0 {
+			log.Info().Str("sessionId", sessionID).Int("seenResultCount", n).Msg("WS disconnect: persisting read state")
 			if err := db.MarkAgentSessionRead(sessionID, n); err != nil {
 				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist read state")
 			} else {
@@ -163,6 +164,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 	sessionState.Mu.RLock()
 	rc := sessionState.ResultCount
 	sessionState.Mu.RUnlock()
+	log.Info().Str("sessionId", sessionID).Int("resultCount", rc).Msg("WS connect: marking session read")
 	if rc > 0 {
 		if err := db.MarkAgentSessionRead(sessionID, rc); err != nil {
 			log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to mark session read on connect")

@@ -324,8 +324,24 @@ func computeSessionState(
 	if hasRuntime && rt.ResultCount > 0 {
 		lastRead := readStates[sessionID] // 0 if not found
 		if rt.ResultCount > lastRead {
+			log.Info().
+				Str("sessionId", sessionID).
+				Int("resultCount", rt.ResultCount).
+				Int("lastRead", lastRead).
+				Msg("computeSessionState: unread")
 			return "unread"
 		}
+	}
+
+	// Log non-trivial idle transitions (had runtime state but not unread)
+	if hasRuntime && rt.ResultCount > 0 {
+		lastRead := readStates[sessionID]
+		log.Info().
+			Str("sessionId", sessionID).
+			Bool("isProcessing", rt.IsProcessing).
+			Int("resultCount", rt.ResultCount).
+			Int("lastRead", lastRead).
+			Msg("computeSessionState: idle (results already read)")
 	}
 
 	return "idle"

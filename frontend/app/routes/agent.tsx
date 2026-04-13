@@ -372,6 +372,12 @@ export default function AgentPage() {
       const data = await response.json()
       const newSessionList: Session[] = data.sessions || []
 
+      // Diagnostic: log non-idle session states to debug working→idle skip
+      const nonIdle = newSessionList.filter(s => s.sessionState !== 'idle')
+      if (nonIdle.length > 0) {
+        console.log('[agent] refreshSessions states:', nonIdle.map(s => `${s.id.slice(0, 8)}=${s.sessionState}`).join(', '))
+      }
+
       setSessions((prevSessions) => {
         const newMap = new Map(newSessionList.map((s) => [s.id, s]))
 
