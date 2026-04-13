@@ -163,6 +163,11 @@ func setupStaticRoutes(r *gin.Engine) {
 	// SPA fallback - serve index.html for non-API routes
 	// HTML should not be cached (or very short cache)
 	r.NoRoute(func(c *gin.Context) {
+		path := c.Request.URL.Path
+		if strings.HasPrefix(path, "/api/") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+			return
+		}
 		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
 		c.Header("Pragma", "no-cache")
 		c.Header("Expires", "0")

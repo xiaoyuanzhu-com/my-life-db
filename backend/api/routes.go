@@ -1,6 +1,8 @@
 package api
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/xiaoyuanzhu-com/my-life-db/explore"
 )
@@ -28,6 +30,9 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		// Explore MCP endpoint — uses server's internal MCP token
 		exploreMCP := explore.NewMCPHandler(h.server.Explore(), h.server.MCPToken())
 		public.POST("/explore/mcp", exploreMCP.HandleMCP)
+		public.GET("/explore/mcp", func(c *gin.Context) {
+			c.Status(http.StatusMethodNotAllowed)
+		})
 	}
 
 	// Protected routes (require auth when auth mode is enabled)
