@@ -248,7 +248,10 @@ func (r *Runner) executeMatchingAgents(ctx context.Context, trigger string, p ho
 	var matching []*AgentDef
 	for _, def := range r.defs {
 		if def.Trigger == trigger && def.Enabled != nil && *def.Enabled {
-			if def.Path != "" && eventPath != "" {
+			if def.Path != "" {
+				if eventPath == "" {
+					continue
+				}
 				matched, err := doublestar.Match(def.Path, eventPath)
 				if err != nil {
 					log.Error().Err(err).Str("agent", def.Name).Str("pattern", def.Path).Msg("bad path glob pattern")
