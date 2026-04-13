@@ -57,7 +57,7 @@ export function ChangedFilesPopover({ sessionId, refreshKey }: ChangedFilesPopov
     }
   }, [sessionId, refreshKey])
 
-  if (!data || data.files.length === 0) return null
+  if (!data || !data.files || data.files.length === 0) return null
 
   return (
     <Popover>

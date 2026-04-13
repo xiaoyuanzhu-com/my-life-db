@@ -76,7 +76,7 @@ func gitChangedFiles(dir string) []ChangedFile {
 		return []ChangedFile{}
 	}
 
-	var files []ChangedFile
+	files := []ChangedFile{}
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		if len(line) < 4 {
 			continue
