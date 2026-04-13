@@ -45,7 +45,7 @@ type SessionState struct {
 	PromptDone   chan struct{}       // closed when current prompt goroutine exits
 	PromptCancel context.CancelFunc // cancels the current prompt's context
 
-	// Stuck-prompt watchdog: updated by onFrame, read by watchdog goroutine.
+	// Diagnostics: tracks when the last ACP frame arrived for logging.
 	LastFrameAt time.Time  // last time an ACP frame arrived via onFrame
 	sessionID   string     // for logging
 }

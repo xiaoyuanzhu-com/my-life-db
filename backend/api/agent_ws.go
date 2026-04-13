@@ -480,7 +480,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				sessionState.SetProcessing(true, "ws-prompt")
 				sessionState.IsActive = true
 				sessionState.Killed = false // reset from previous force-kill
-				sessionState.TouchFrame()   // initialize watchdog baseline
+				sessionState.TouchFrame()   // record prompt start time for diagnostics
 				sessionState.Mu.Unlock()
 				h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "working")
 
@@ -492,33 +492,6 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 						log.Info().Str("sessionId", sessionID).Msg("agent process exited during WS prompt")
 						pCancel()
 					case <-pCtx.Done():
-					}
-				}()
-
-				// Stuck-prompt watchdog: if no ACP frames arrive for 5 minutes
-				// while the prompt is still running, force-cancel and log diagnostics.
-				go func() {
-					const stuckTimeout = 5 * time.Minute
-					ticker := time.NewTicker(30 * time.Second)
-					defer ticker.Stop()
-					for {
-						select {
-						case <-pCtx.Done():
-							return
-						case <-ticker.C:
-							sessionState.Mu.RLock()
-							last := sessionState.LastFrameAt
-							processing := sessionState.IsProcessing()
-							sessionState.Mu.RUnlock()
-							if processing && !last.IsZero() && time.Since(last) > stuckTimeout {
-								log.Error().
-									Str("sessionId", sessionID).
-									Dur("idle", time.Since(last)).
-									Msg("stuck-prompt watchdog: no ACP frames for 5 minutes, force-cancelling")
-								pCancel()
-								return
-							}
-						}
 					}
 				}()
 
@@ -551,6 +524,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 					return
 				}
 
+				frameCount := 0
 				for frame := range events {
 					// Skip frames if session was force-killed (kill handler
 					// already emitted turn.complete).
@@ -560,17 +534,40 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 					if killed {
 						continue
 					}
+					frameCount++
 					sessionState.AppendAndBroadcast(frame)
 				}
 				// Channel closed = turn complete
 				sessionState.Mu.Lock()
-				if !sessionState.Killed {
+				killed := sessionState.Killed
+				if !killed {
 					sessionState.ResultCount++
 					sessionState.SetProcessing(false, "ws-prompt-complete")
 				}
 				sessionState.ClearPrompt()
 				sessionState.Mu.Unlock()
-				if !sessionState.Killed {
+
+				if !killed {
+					// Detect zero-output turns: the ACP process accepted the
+					// prompt but produced no content. This typically means the
+					// session's internal state is corrupted (e.g. after a
+					// cancellation). Emit an error frame so the user sees
+					// feedback instead of an invisible empty response.
+					if frameCount <= 1 {
+						// frameCount <= 1 means only turn.complete (or nothing).
+						// No actual content, tool calls, or text was produced.
+						log.Info().
+							Str("sessionId", sessionID).
+							Int("frameCount", frameCount).
+							Msg("zero-output turn detected: agent produced no content")
+						if errBytes, err := json.Marshal(map[string]any{
+							"type":    "error",
+							"message": "The agent returned an empty response. This can happen when the session state is corrupted — try sending your message again or start a new session.",
+							"code":    "EMPTY_RESPONSE",
+						}); err == nil {
+							sessionState.AppendAndBroadcast(errBytes)
+						}
+					}
 					h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "result")
 				}
 			}(acpSession, promptText, promptCtx, pCancel)

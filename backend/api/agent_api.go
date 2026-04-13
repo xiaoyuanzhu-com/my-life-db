@@ -127,7 +127,7 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 			sessionState.Mu.Lock()
 			sessionState.SetProcessing(true, "rest-prompt")
 			sessionState.IsActive = true
-			sessionState.TouchFrame() // initialize watchdog baseline
+			sessionState.TouchFrame() // record prompt start time for diagnostics
 			sessionState.Mu.Unlock()
 			h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "working")
 
@@ -168,7 +168,9 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 				return
 			}
 
+			frameCount := 0
 			for frame := range events {
+				frameCount++
 				sessionState.AppendAndBroadcast(frame)
 			}
 			// Channel closed = turn complete
@@ -177,6 +179,21 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 			sessionState.SetProcessing(false, "rest-prompt-complete")
 			sessionState.ClearPrompt()
 			sessionState.Mu.Unlock()
+
+			// Detect zero-output turns (see ws handler for rationale)
+			if frameCount <= 1 {
+				log.Info().
+					Str("sessionId", sessionID).
+					Int("frameCount", frameCount).
+					Msg("zero-output turn detected: agent produced no content")
+				if errBytes, err := json.Marshal(map[string]any{
+					"type":    "error",
+					"message": "The agent returned an empty response. This can happen when the session state is corrupted — try sending your message again or start a new session.",
+					"code":    "EMPTY_RESPONSE",
+				}); err == nil {
+					sessionState.AppendAndBroadcast(errBytes)
+				}
+			}
 			h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "result")
 		}(sess, req.Message)
 
