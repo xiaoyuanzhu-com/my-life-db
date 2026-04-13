@@ -114,6 +114,8 @@ function DataContent() {
   const [createFolderTrigger, setCreateFolderTrigger] = useState(0);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const dragCounterRef = useRef(0);
 
   const handleNavigate = useCallback((path: string) => {
     if (path) {
@@ -127,6 +129,97 @@ function DataContent() {
   const { results: searchResults, isSearching, search, clear: clearSearch } = useSearch();
 
   useUploadNotifications();
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    if (e.dataTransfer.types.includes("Files")) {
+      setIsDragOver(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) {
+      setIsDragOver(false);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
+    setIsDragOver(false);
+
+    const items = e.dataTransfer.items;
+    if (!items || items.length === 0) return;
+
+    try {
+      const { getUploadQueueManager } = await import("~/lib/send-queue/upload-queue-manager");
+      const uploadManager = getUploadQueueManager();
+      await uploadManager.init();
+
+      // Collect files, preserving folder structure via webkitGetAsEntry
+      const batch: { file: File; destination: string }[] = [];
+
+      const readEntry = (entry: FileSystemEntry, basePath: string): Promise<void> => {
+        return new Promise((resolve) => {
+          if (entry.isFile) {
+            (entry as FileSystemFileEntry).file((file) => {
+              batch.push({ file, destination: basePath });
+              resolve();
+            });
+          } else if (entry.isDirectory) {
+            const reader = (entry as FileSystemDirectoryEntry).createReader();
+            const dirPath = basePath ? `${basePath}/${entry.name}` : entry.name;
+            const readAll = (allEntries: FileSystemEntry[] = []) => {
+              reader.readEntries((entries) => {
+                if (entries.length === 0) {
+                  Promise.all(allEntries.map((e) => readEntry(e, dirPath))).then(() => resolve());
+                } else {
+                  readAll([...allEntries, ...entries]);
+                }
+              });
+            };
+            readAll();
+          } else {
+            resolve();
+          }
+        });
+      };
+
+      const entries: FileSystemEntry[] = [];
+      for (let i = 0; i < items.length; i++) {
+        const entry = items[i].webkitGetAsEntry?.();
+        if (entry) entries.push(entry);
+      }
+
+      if (entries.length > 0) {
+        await Promise.all(entries.map((entry) => readEntry(entry, currentPath)));
+      } else {
+        // Fallback for browsers without webkitGetAsEntry
+        const files = e.dataTransfer.files;
+        for (let i = 0; i < files.length; i++) {
+          batch.push({ file: files[i], destination: currentPath });
+        }
+      }
+
+      if (batch.length > 0) {
+        await uploadManager.enqueueBatch(batch);
+      }
+    } catch (error) {
+      console.error("Failed to upload dropped files:", error);
+      toast.error(`Failed to upload files: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }, [currentPath]);
 
   const handleFileOpen = useCallback((path: string, _name: string) => {
     openModal(fileNodeToFileWithDigests({ path, type: "file" }));
@@ -209,7 +302,26 @@ function DataContent() {
   }, [searchExpanded]);
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+    <div
+      className="flex-1 flex flex-col min-h-0 overflow-hidden relative"
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {/* Drag-and-drop overlay */}
+      {isDragOver && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm pointer-events-none">
+          <div className="flex flex-col items-center gap-2 text-primary">
+            <Upload className="h-12 w-12" />
+            <p className="text-lg font-medium">Drop files to upload</p>
+            {currentPath && (
+              <p className="text-sm text-muted-foreground">to {currentPath}</p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Hidden file inputs */}
       <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileInputChange} />
       <input
