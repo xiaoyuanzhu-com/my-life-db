@@ -331,10 +331,10 @@ const ComposerOptionsMenu: FC<{
         <Button
           variant="ghost"
           size="icon"
-          className="h-9 w-9 shrink-0"
+          className="py-1 sm:py-1.5 px-1.5 sm:px-2 shrink-0"
           title="Options"
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="bottom" sideOffset={4}>
