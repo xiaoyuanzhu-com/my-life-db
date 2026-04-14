@@ -425,13 +425,22 @@ const Composer: FC = () => {
                 resultCount={resultCount}
               />
               {workingDir !== undefined && (
-                <FolderPicker
-                  value={workingDir}
-                  onChange={onWorkingDirChange ?? undefined}
-                  readOnly={!onWorkingDirChange || hasActiveSession}
-                  changedFilesCount={hasActiveSession && resultCount > 0 ? resultCount : undefined}
-                  onChangedFilesClick={() => setFilesPopoverOpen(true)}
-                />
+                <>
+                  <FolderPicker
+                    value={workingDir}
+                    onChange={onWorkingDirChange ?? undefined}
+                    onChangedFilesClick={hasActiveSession ? () => setFilesPopoverOpen(true) : undefined}
+                  />
+                  {sessionId && (
+                    <ChangedFilesPopover
+                      sessionId={sessionId}
+                      refreshKey={resultCount}
+                      open={filesPopoverOpen}
+                      onOpenChange={setFilesPopoverOpen}
+                      hideTrigger
+                    />
+                  )}
+                </>
               )}
             </div>
             <div className="flex items-center gap-1">

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { FolderOpen, Check, Clock } from 'lucide-react'
 import { cn } from '~/lib/utils'
 import { api } from '~/lib/api'
@@ -30,28 +30,24 @@ function saveRecentFolder(path: string) {
 
 interface FolderPickerProps {
   value: string // full path
-  onChange?: (path: string) => void // receives full path (optional for readOnly)
+  onChange?: (path: string) => void // receives full path
   disabled?: boolean
-  readOnly?: boolean // if true, just display, not clickable
-  changedFilesCount?: number
-  onChangedFilesClick?: () => void
+  onChangedFilesClick?: () => void // if set, clicking opens changed files instead of folder picker
 }
 
-export function FolderPicker({ value, onChange, disabled = false, readOnly = false, changedFilesCount, onChangedFilesClick }: FolderPickerProps) {
+export function FolderPicker({ value, onChange, disabled = false, onChangedFilesClick }: FolderPickerProps) {
   const [open, setOpen] = useState(false)
   const [basePath, setBasePath] = useState('')
   const [currentPath, setCurrentPath] = useState('') // path being browsed
   const [children, setChildren] = useState<string[]>([]) // children of currentPath
   const [recentFolders, setRecentFolders] = useState<string[]>([])
-  const badgeRef = useRef<HTMLButtonElement>(null)
 
   // Fetch children of a given full path
   const fetchChildren = useCallback(async (fullPath: string, knownBasePath?: string) => {
     try {
       const base = knownBasePath || basePath
-      // Convert full path to relative path for API
       const relativePath = base && fullPath.startsWith(base)
-        ? fullPath.slice(base.length + 1) // +1 for the /
+        ? fullPath.slice(base.length + 1)
         : ''
 
       const params = new URLSearchParams({
@@ -66,12 +62,10 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
         const data = await response.json()
         const responseBasePath = data.basePath || ''
 
-        // Store basePath if not yet known
         if (!basePath && responseBasePath) {
           setBasePath(responseBasePath)
         }
 
-        // Convert children to full paths (node.path is just the name)
         const responsePath = data.path || ''
         const childPaths = (data.children || []).map(
           (node: { path: string }) => responsePath
@@ -119,7 +113,6 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
     }
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // When user selects a folder, navigate into it and update value immediately
   const handleSelect = (path: string) => {
     setCurrentPath(path)
     fetchChildren(path)
@@ -128,7 +121,6 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
     }
   }
 
-  // Select a folder and close the popover (used for recent folders quick select)
   const handleQuickSelect = (path: string) => {
     saveRecentFolder(path)
     if (onChange) {
@@ -137,7 +129,6 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
     setOpen(false)
   }
 
-  // Save to recent when popover closes with a selection
   useEffect(() => {
     if (!open && value) {
       saveRecentFolder(value)
@@ -149,7 +140,6 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
     return segments[segments.length - 1] || ''
   }
 
-  // Get last N segments for display (e.g., "data/bookmarks" instead of full path)
   const getLastNSegments = (path: string, n: number) => {
     if (!path) return ''
     if (n <= 0) return ''
@@ -160,48 +150,37 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
 
   const displayValue = value ? getLastSegment(value) : '.'
 
-  // Read-only mode: display only, same visual style but not interactive
-  if (readOnly) {
+  // When onChangedFilesClick is set (active session), clicking opens changed files popover
+  if (onChangedFilesClick) {
     return (
-      <div
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          onChangedFilesClick()
+        }}
         className={cn(
           'flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-lg',
           'text-[11px] sm:text-xs text-muted-foreground',
-          'opacity-50 transition-colors',
-          changedFilesCount ? 'cursor-default' : 'cursor-not-allowed',
+          'hover:text-foreground hover:bg-foreground/10',
+          'cursor-pointer transition-colors'
         )}
       >
         <FolderOpen className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" />
         <span className="truncate max-w-[100px] sm:max-w-[200px]">{displayValue}</span>
-        {changedFilesCount !== undefined && changedFilesCount > 0 && (
-          <button
-            ref={badgeRef}
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              onChangedFilesClick?.()
-            }}
-            className={cn(
-              'rounded-full w-2 h-2',
-              'bg-primary'
-            )}
-          />
-        )}
-      </div>
+      </button>
     )
   }
 
   // Get parent path (stop at basePath - the data directory)
   const getParentPath = (path: string) => {
     if (!path) return null
-    // Don't show ".." when at basePath (data directory is the root)
     if (path === basePath) return null
     const lastSlash = path.lastIndexOf('/')
     if (lastSlash <= 0) return null
     return path.slice(0, lastSlash)
   }
 
-  // Build full list: [parent?, current, ...children]
   const parentPath = getParentPath(currentPath)
   const options = [
     ...(parentPath ? [parentPath] : []),
@@ -209,62 +188,26 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
     ...children,
   ]
 
-  // When changedFilesCount is set, we can't use asChild (badge is nested in button).
-  // Use a div wrapper so we can distinguish badge clicks from folder path clicks.
-  const triggerContent = (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={(e) => {
-        // If click originated from badge, don't open folder popover
-        if (badgeRef.current && badgeRef.current.contains(e.target as Node)) return
-        if (!disabled) setOpen((v) => !v)
-      }}
-      className={cn(
-        'flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-lg',
-        'text-[11px] sm:text-xs text-muted-foreground',
-        'hover:text-foreground hover:bg-foreground/10',
-        'cursor-pointer transition-colors',
-        'disabled:opacity-50 disabled:cursor-not-allowed'
-      )}
-    >
-      <FolderOpen className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" />
-      <span className="truncate max-w-[100px] sm:max-w-[200px]">{displayValue}</span>
-      {changedFilesCount !== undefined && changedFilesCount > 0 && (
-        <button
-          ref={badgeRef}
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            setOpen(false)
-            onChangedFilesClick?.()
-          }}
-          className={cn(
-            'rounded-full w-2 h-2',
-            'bg-primary'
-          )}
-        />
-      )}
-    </button>
-  )
-
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        {changedFilesCount !== undefined ? (
-          // With badge: wrapper div so badge clicks don't trigger folder popover
-          <div onClick={(e) => {
-            if (badgeRef.current && badgeRef.current.contains(e.target as Node)) {
-              e.stopPropagation()
-            }
-          }}>
-            {triggerContent}
-          </div>
-        ) : triggerContent}
+        <button
+          type="button"
+          disabled={disabled}
+          className={cn(
+            'flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-lg',
+            'text-[11px] sm:text-xs text-muted-foreground',
+            'hover:text-foreground hover:bg-foreground/10',
+            'cursor-pointer transition-colors',
+            'disabled:opacity-50 disabled:cursor-not-allowed'
+          )}
+        >
+          <FolderOpen className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" />
+          <span className="truncate max-w-[100px] sm:max-w-[200px]">{displayValue}</span>
+        </button>
       </PopoverTrigger>
       <PopoverContent className="w-64 p-1" align="start" side="top">
         <div className="max-h-64 overflow-y-auto">
-          {/* Recent folders section - only show if there are filtered recent folders */}
           {recentFolders.length > 0 && (
             <>
               <div className="px-2 py-1 text-xs text-muted-foreground flex items-center gap-1">
@@ -294,13 +237,11 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
             </>
           )}
 
-          {/* Browse section */}
           <div className="space-y-0.5">
             {options.length === 0 ? (
               <div className="px-2 py-1.5 text-sm text-muted-foreground">No subfolders</div>
             ) : (
               options.map((folder) => {
-                // Display: ".." for parent, 1 segment for current, 2 segments for children
                 const isParent = folder === parentPath
                 const isCurrent = folder === currentPath
                 const displayName = isParent

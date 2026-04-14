@@ -27,9 +27,10 @@ interface ChangedFilesPopoverProps {
   refreshKey?: number
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  hideTrigger?: boolean // if true, only render content (controlled externally)
 }
 
-export function ChangedFilesPopover({ sessionId, refreshKey, open, onOpenChange }: ChangedFilesPopoverProps) {
+export function ChangedFilesPopover({ sessionId, refreshKey, open, onOpenChange, hideTrigger }: ChangedFilesPopoverProps) {
   const [data, setData] = useState<ChangedFilesResponse | null>(null)
 
   useEffect(() => {
@@ -56,39 +57,47 @@ export function ChangedFilesPopover({ sessionId, refreshKey, open, onOpenChange 
     }
   }, [sessionId, refreshKey])
 
-  if (!data || !data.files || data.files.length === 0) return null
-
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          className={cn(
-            "flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground",
-            "hover:bg-muted hover:text-foreground transition-colors"
-          )}
-        >
-          <FileText className="h-3.5 w-3.5" />
-          <span>{data.files.length}</span>
-        </button>
-      </PopoverTrigger>
+      {!hideTrigger && (
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className={cn(
+              "flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground",
+              "hover:bg-muted hover:text-foreground transition-colors"
+            )}
+          >
+            <FileText className="h-3.5 w-3.5" />
+            <span>{!data || !data.files ? '...' : data.files.length === 0 ? 'No files' : `${data.files.length} files`}</span>
+          </button>
+        </PopoverTrigger>
+      )}
       <PopoverContent side="top" align="start" className="w-80 p-0">
-        <div className="max-h-60 overflow-y-auto p-2">
-          {data.files.map((file) => {
-            const config = STATUS_CONFIG[file.status] ?? STATUS_CONFIG.untracked
-            return (
-              <div key={file.path} className="flex items-center gap-2 py-0.5 px-1">
-                <span className={cn("w-3 text-xs font-semibold shrink-0", config.className)}>
-                  {config.letter}
-                </span>
-                <span className="font-mono text-xs truncate">{file.path}</span>
-              </div>
-            )
-          })}
-        </div>
-        <div className="border-t px-3 py-1.5 text-[10px] text-muted-foreground">
-          from {data.source === "git" ? "git status" : "tool calls"}
-        </div>
+        {!data || !data.files ? (
+          <div className="py-4 text-center text-xs text-muted-foreground">Loading...</div>
+        ) : data.files.length === 0 ? (
+          <div className="py-4 text-center text-xs text-muted-foreground">No changed files</div>
+        ) : (
+          <>
+            <div className="max-h-60 overflow-y-auto p-2">
+              {data.files.map((file) => {
+                const config = STATUS_CONFIG[file.status] ?? STATUS_CONFIG.untracked
+                return (
+                  <div key={file.path} className="flex items-center gap-2 py-0.5 px-1">
+                    <span className={cn("w-3 text-xs font-semibold shrink-0", config.className)}>
+                      {config.letter}
+                    </span>
+                    <span className="font-mono text-xs truncate">{file.path}</span>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="border-t px-3 py-1.5 text-[10px] text-muted-foreground">
+              from {data.source === "git" ? "git status" : "tool calls"}
+            </div>
+          </>
+        )}
       </PopoverContent>
     </Popover>
   )
