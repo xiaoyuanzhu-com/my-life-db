@@ -22,7 +22,7 @@ import {
   SquareIcon,
 } from "lucide-react";
 import { useEffect, useRef, type FC } from "react";
-import type { PlanEntry } from "~/hooks/use-agent-runtime";
+import type { PlanEntry, AvailableMode } from "~/hooks/use-agent-runtime";
 import { useHasTouch } from "~/hooks/use-has-touch";
 
 // Our custom message components (with tool dispatch, markdown, reasoning, etc.)
@@ -311,7 +311,7 @@ const ComposerOptionsMenu: FC<{
   agentType?: string
   onAgentTypeChange?: (type: string) => void
   permissionMode?: string
-  availableModes?: Array<{ id: string; label: string }>
+  availableModes?: AvailableMode[]
   onPermissionModeChange?: (mode: string) => void
   sessionId?: string
   resultCount?: number
