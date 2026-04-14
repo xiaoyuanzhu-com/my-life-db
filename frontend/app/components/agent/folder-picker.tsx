@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { FolderOpen, Check, Clock } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { FolderOpen, Check, Clock, FileText } from 'lucide-react'
 import { cn } from '~/lib/utils'
 import { api } from '~/lib/api'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
@@ -33,14 +33,17 @@ interface FolderPickerProps {
   onChange?: (path: string) => void // receives full path (optional for readOnly)
   disabled?: boolean
   readOnly?: boolean // if true, just display, not clickable
+  changedFilesCount?: number
+  onChangedFilesClick?: () => void
 }
 
-export function FolderPicker({ value, onChange, disabled = false, readOnly = false }: FolderPickerProps) {
+export function FolderPicker({ value, onChange, disabled = false, readOnly = false, changedFilesCount, onChangedFilesClick }: FolderPickerProps) {
   const [open, setOpen] = useState(false)
   const [basePath, setBasePath] = useState('')
   const [currentPath, setCurrentPath] = useState('') // path being browsed
   const [children, setChildren] = useState<string[]>([]) // children of currentPath
   const [recentFolders, setRecentFolders] = useState<string[]>([])
+  const badgeRef = useRef<HTMLButtonElement>(null)
 
   // Fetch children of a given full path
   const fetchChildren = useCallback(async (fullPath: string, knownBasePath?: string) => {
@@ -164,11 +167,29 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
         className={cn(
           'flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-lg',
           'text-[11px] sm:text-xs text-muted-foreground',
-          'opacity-50 cursor-not-allowed transition-colors',
+          'opacity-50 transition-colors',
+          changedFilesCount ? 'cursor-default' : 'cursor-not-allowed',
         )}
       >
         <FolderOpen className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" />
         <span className="truncate max-w-[100px] sm:max-w-[200px]">{displayValue}</span>
+        {changedFilesCount !== undefined && changedFilesCount > 0 && (
+          <button
+            ref={badgeRef}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onChangedFilesClick?.()
+            }}
+            className={cn(
+              'flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs',
+              'text-muted-foreground hover:text-foreground hover:bg-foreground/10 transition-colors cursor-pointer'
+            )}
+          >
+            <FileText className="h-3 w-3" />
+            <span>{changedFilesCount}</span>
+          </button>
+        )}
       </div>
     )
   }
@@ -191,23 +212,61 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
     ...children,
   ]
 
+  // When changedFilesCount is set, we can't use asChild (badge is nested in button).
+  // Use a div wrapper so we can distinguish badge clicks from folder path clicks.
+  const triggerContent = (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={(e) => {
+        // If click originated from badge, don't open folder popover
+        if (badgeRef.current && badgeRef.current.contains(e.target as Node)) return
+        if (!disabled) setOpen((v) => !v)
+      }}
+      className={cn(
+        'flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-lg',
+        'text-[11px] sm:text-xs text-muted-foreground',
+        'hover:text-foreground hover:bg-foreground/10',
+        'cursor-pointer transition-colors',
+        'disabled:opacity-50 disabled:cursor-not-allowed'
+      )}
+    >
+      <FolderOpen className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" />
+      <span className="truncate max-w-[100px] sm:max-w-[200px]">{displayValue}</span>
+      {changedFilesCount !== undefined && changedFilesCount > 0 && (
+        <button
+          ref={badgeRef}
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            setOpen(false)
+            onChangedFilesClick?.()
+          }}
+          className={cn(
+            'flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs',
+            'text-muted-foreground hover:text-foreground hover:bg-foreground/10 transition-colors cursor-pointer'
+          )}
+        >
+          <FileText className="h-3 w-3" />
+          <span>{changedFilesCount}</span>
+        </button>
+      )}
+    </button>
+  )
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
-          type="button"
-          disabled={disabled}
-          className={cn(
-            'flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-lg',
-            'text-[11px] sm:text-xs text-muted-foreground',
-            'hover:text-foreground hover:bg-foreground/10',
-            'cursor-pointer transition-colors',
-            'disabled:opacity-50 disabled:cursor-not-allowed'
-          )}
-        >
-          <FolderOpen className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" />
-          <span className="truncate max-w-[100px] sm:max-w-[200px]">{displayValue}</span>
-        </button>
+        {changedFilesCount !== undefined ? (
+          // With badge: wrapper div so badge clicks don't trigger folder popover
+          <div onClick={(e) => {
+            if (badgeRef.current && badgeRef.current.contains(e.target as Node)) {
+              e.stopPropagation()
+            }
+          }}>
+            {triggerContent}
+          </div>
+        ) : triggerContent}
       </PopoverTrigger>
       <PopoverContent className="w-64 p-1" align="start" side="top">
         <div className="max-h-64 overflow-y-auto">

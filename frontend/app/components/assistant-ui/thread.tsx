@@ -5,6 +5,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
+import { Popover, PopoverContent } from "~/components/ui/popover";
 import {
   AuiIf,
   ComposerPrimitive,
@@ -21,7 +22,7 @@ import {
   Plus,
   SquareIcon,
 } from "lucide-react";
-import { useEffect, useRef, type FC } from "react";
+import { useEffect, useRef, useState, type FC } from "react";
 import type { PlanEntry, AvailableMode } from "~/hooks/use-agent-runtime";
 import { useHasTouch } from "~/hooks/use-has-touch";
 
@@ -357,9 +358,6 @@ const ComposerOptionsMenu: FC<{
             />
           </div>
         )}
-        {sessionId && (
-          <ChangedFilesPopover sessionId={sessionId} refreshKey={resultCount ?? 0} />
-        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -368,6 +366,7 @@ const ComposerOptionsMenu: FC<{
 const Composer: FC = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const hasTouch = useHasTouch();
+  const [filesPopoverOpen, setFilesPopoverOpen] = useState(false);
   const {
     connected,
     workingDir, onWorkingDirChange,
@@ -426,7 +425,13 @@ const Composer: FC = () => {
                 resultCount={resultCount}
               />
               {workingDir !== undefined && (
-                <FolderPicker value={workingDir} onChange={onWorkingDirChange ?? undefined} readOnly={!onWorkingDirChange || hasActiveSession} />
+                <FolderPicker
+                  value={workingDir}
+                  onChange={onWorkingDirChange ?? undefined}
+                  readOnly={!onWorkingDirChange || hasActiveSession}
+                  changedFilesCount={hasActiveSession && resultCount > 0 ? resultCount : undefined}
+                  onChangedFilesClick={() => setFilesPopoverOpen(true)}
+                />
               )}
             </div>
             <div className="flex items-center gap-1">

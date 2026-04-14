@@ -25,9 +25,11 @@ const STATUS_CONFIG: Record<string, { letter: string; className: string }> = {
 interface ChangedFilesPopoverProps {
   sessionId: string
   refreshKey?: number
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
-export function ChangedFilesPopover({ sessionId, refreshKey }: ChangedFilesPopoverProps) {
+export function ChangedFilesPopover({ sessionId, refreshKey, open, onOpenChange }: ChangedFilesPopoverProps) {
   const [data, setData] = useState<ChangedFilesResponse | null>(null)
 
   useEffect(() => {
@@ -57,7 +59,7 @@ export function ChangedFilesPopover({ sessionId, refreshKey }: ChangedFilesPopov
   if (!data || !data.files || data.files.length === 0) return null
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
         <button
           type="button"
