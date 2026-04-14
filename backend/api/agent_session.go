@@ -144,6 +144,14 @@ func CreateSession(
 				}
 			}()
 
+			// Emit turn.start so the frontend knows processing has begun.
+			// Stored in rawMessages for burst replay on reconnect.
+			if startBytes, err := json.Marshal(map[string]any{
+				"type": "turn.start",
+			}); err == nil {
+				sessionState.AppendAndBroadcast(startBytes)
+			}
+
 			events, err := acpSess.Send(sendCtx, prompt)
 			if err != nil {
 				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send prompt")
@@ -159,12 +167,16 @@ func CreateSession(
 				return
 			}
 
+			// The events channel contains synthetic frames (turn.complete,
+			// session.modeUpdate, session.modelsUpdate, errors) that are NOT
+			// delivered via onFrame — they must be broadcast explicitly.
 			frameCount := 0
 			for frame := range events {
 				frameCount++
-				_ = frame // frames already delivered via onFrame handler
+				sessionState.AppendAndBroadcast(frame)
 			}
 
+			// Channel closed = turn complete
 			sessionState.Mu.Lock()
 			sessionState.ResultCount++
 			sessionState.SetProcessing(false, params.Source+"-prompt-complete")
