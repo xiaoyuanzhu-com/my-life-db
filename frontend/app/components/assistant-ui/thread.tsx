@@ -338,8 +338,8 @@ const ComposerOptionsMenu: FC<{
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="bottom" sideOffset={4}>
         {agentType !== undefined && onAgentTypeChange && (
-          <div className="px-2 py-1.5">
-            <div className="text-xs text-muted-foreground mb-1.5">Agent</div>
+          <div className="flex items-center justify-between px-2 py-1.5 gap-4">
+            <span className="text-xs text-muted-foreground shrink-0">Agent</span>
             <AgentTypeSelector
               value={agentType as AgentType}
               onChange={(t) => onAgentTypeChange(t)}
@@ -348,8 +348,8 @@ const ComposerOptionsMenu: FC<{
           </div>
         )}
         {permissionMode !== undefined && availableModes && availableModes.length > 0 && onPermissionModeChange && (
-          <div className="px-2 py-1.5">
-            <div className="text-xs text-muted-foreground mb-1.5">Permission</div>
+          <div className="flex items-center justify-between px-2 py-1.5 gap-4">
+            <span className="text-xs text-muted-foreground shrink-0">Permission</span>
             <PermissionModeSelector
               value={permissionMode as PermissionMode}
               modes={availableModes}
@@ -358,9 +358,7 @@ const ComposerOptionsMenu: FC<{
           </div>
         )}
         {sessionId && (
-          <div className="px-2 py-1.5">
-            <ChangedFilesPopover sessionId={sessionId} refreshKey={resultCount ?? 0} />
-          </div>
+          <ChangedFilesPopover sessionId={sessionId} refreshKey={resultCount ?? 0} />
         )}
       </DropdownMenuContent>
     </DropdownMenu>
