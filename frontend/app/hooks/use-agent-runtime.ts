@@ -319,8 +319,21 @@ export function useAgentRuntime(options: {
             const last = findLastAssistant(updated, parentToolUseId)
 
             // If no open assistant message exists, create one.
-            // Active sessions use "running" (triggers WIP indicator);
-            // inactive (replay) use "incomplete" (allows appending without triggering running).
+            //
+            // Message status: use isRunningRef (not isActiveRef).
+            // assistant-ui derives thread.isRunning from the last message's
+            // status (lastMessage.status.type === "running"), NOT from the
+            // adapter's isRunning prop. Using isActiveRef ("has a prompt been
+            // sent") would mark ALL replay messages as "running" for any
+            // session that was ever used, causing the WIP indicator to appear.
+            //
+            // Scenarios covered:
+            // - Completed session reopened: isRunning=false → "incomplete" → no WIP ✓
+            // - Live turn in progress: isRunning=true → "running" → WIP shows ✓
+            // - Server restart mid-turn: isProcessing=false (fresh state),
+            //   ACP history replay has no turn markers → "incomplete" → idle ✓
+            // - Old sessions without turn.start/turn.complete in rawMessages:
+            //   isRunning stays false from session.info → "incomplete" ✓
             // Also create a new message if a user message is the most recent entry —
             // a user message always marks a turn boundary, so never append across it.
             // For scoped (subagent) frames, check the last message within that scope.
@@ -336,7 +349,7 @@ export function useAgentRuntime(options: {
                 role: "assistant",
                 content: [{ type: "text", text: chunk }],
                 createdAt: new Date(),
-                status: isActiveRef.current
+                status: isRunningRef.current
                   ? { type: "running" }
                   : { type: "incomplete", reason: "other" },
                 parentToolUseId,
@@ -387,7 +400,7 @@ export function useAgentRuntime(options: {
                 role: "assistant",
                 content: [{ type: "reasoning", text: chunk }],
                 createdAt: new Date(),
-                status: isActiveRef.current
+                status: isRunningRef.current
                   ? { type: "running" }
                   : { type: "incomplete", reason: "other" },
                 parentToolUseId,
@@ -450,7 +463,7 @@ export function useAgentRuntime(options: {
                   },
                 ],
                 createdAt: new Date(),
-                status: isActiveRef.current
+                status: isRunningRef.current
                   ? { type: "running" }
                   : { type: "incomplete", reason: "other" },
                 parentToolUseId,
