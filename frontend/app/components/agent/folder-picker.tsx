@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { FolderOpen, Check, Clock, FileText } from 'lucide-react'
+import { FolderOpen, Check, Clock } from 'lucide-react'
 import { cn } from '~/lib/utils'
 import { api } from '~/lib/api'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
@@ -182,12 +182,11 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
               onChangedFilesClick?.()
             }}
             className={cn(
-              'flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs',
+              'rounded-md px-1.5 py-0.5 text-xs font-medium',
               'text-muted-foreground hover:text-foreground hover:bg-foreground/10 transition-colors cursor-pointer'
             )}
           >
-            <FileText className="h-3 w-3" />
-            <span>{changedFilesCount}</span>
+            {changedFilesCount}
           </button>
         )}
       </div>
@@ -243,12 +242,11 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
             onChangedFilesClick?.()
           }}
           className={cn(
-            'flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs',
+            'rounded-md px-1.5 py-0.5 text-xs font-medium',
             'text-muted-foreground hover:text-foreground hover:bg-foreground/10 transition-colors cursor-pointer'
           )}
         >
-          <FileText className="h-3 w-3" />
-          <span>{changedFilesCount}</span>
+          {changedFilesCount}
         </button>
       )}
     </button>
