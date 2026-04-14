@@ -33,6 +33,10 @@ export const routes: RouteObject[] = [
         Component: Explore,
       },
       {
+        path: "explore/:postId",
+        Component: Explore,
+      },
+      {
         path: "agent",
         Component: Agent,
       },

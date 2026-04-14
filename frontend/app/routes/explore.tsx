@@ -1,19 +1,19 @@
-import { useState } from "react";
+import { useParams, useNavigate } from "react-router";
 import { useAuth } from "~/contexts/auth-context";
 import { ExploreFeed } from "~/components/explore/explore-feed";
 import { PostDetail } from "~/components/explore/post-detail";
-import type { ExplorePost } from "~/types/explore";
 
 function ExploreContent() {
-  const [selectedPost, setSelectedPost] = useState<ExplorePost | null>(null);
+  const { postId } = useParams<{ postId: string }>();
+  const navigate = useNavigate();
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-      <ExploreFeed onPostClick={setSelectedPost} />
-      {selectedPost && (
+      <ExploreFeed onPostClick={(post) => navigate(`/explore/${post.id}`)} />
+      {postId && (
         <PostDetail
-          postId={selectedPost.id}
-          onClose={() => setSelectedPost(null)}
+          postId={postId}
+          onClose={() => navigate("/explore", { replace: true })}
         />
       )}
     </div>
