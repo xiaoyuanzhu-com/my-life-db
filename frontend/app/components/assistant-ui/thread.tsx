@@ -1,6 +1,11 @@
 import { TooltipIconButton } from "~/components/assistant-ui/tooltip-icon-button";
 import { Button } from "~/components/ui/button";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu";
+import {
   AuiIf,
   ComposerPrimitive,
   ThreadPrimitive,
@@ -13,6 +18,7 @@ import {
 import {
   ArrowDownIcon,
   ArrowUpIcon,
+  Plus,
   SquareIcon,
 } from "lucide-react";
 import { useEffect, useRef, type FC } from "react";
@@ -301,6 +307,67 @@ const DraftPersistenceSync: FC = () => {
   return null;
 };
 
+const ComposerOptionsMenu: FC<{
+  agentType?: string
+  onAgentTypeChange?: (type: string) => void
+  permissionMode?: string
+  availableModes?: Array<{ id: string; label: string }>
+  onPermissionModeChange?: (mode: string) => void
+  sessionId?: string
+  resultCount?: number
+}> = ({
+  agentType,
+  onAgentTypeChange,
+  permissionMode,
+  availableModes,
+  onPermissionModeChange,
+  sessionId,
+  resultCount,
+}) => {
+  const hasActiveSession = !!sessionId
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 shrink-0"
+          title="Options"
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" side="bottom" sideOffset={4}>
+        {agentType !== undefined && onAgentTypeChange && (
+          <div className="px-2 py-1.5">
+            <div className="text-xs text-muted-foreground mb-1.5">Agent</div>
+            <AgentTypeSelector
+              value={agentType as AgentType}
+              onChange={(t) => onAgentTypeChange(t)}
+              disabled={!onAgentTypeChange || hasActiveSession}
+            />
+          </div>
+        )}
+        {permissionMode !== undefined && availableModes && availableModes.length > 0 && onPermissionModeChange && (
+          <div className="px-2 py-1.5">
+            <div className="text-xs text-muted-foreground mb-1.5">Permission</div>
+            <PermissionModeSelector
+              value={permissionMode as PermissionMode}
+              modes={availableModes}
+              onChange={(m) => onPermissionModeChange(m)}
+            />
+          </div>
+        )}
+        {sessionId && (
+          <div className="px-2 py-1.5">
+            <ChangedFilesPopover sessionId={sessionId} refreshKey={resultCount ?? 0} />
+          </div>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 const Composer: FC = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const hasTouch = useHasTouch();
@@ -352,21 +419,17 @@ const Composer: FC = () => {
           />
           <div className="aui-composer-action-wrapper relative flex items-center justify-between">
             <div className="flex items-center gap-1">
+              <ComposerOptionsMenu
+                agentType={agentType}
+                onAgentTypeChange={onAgentTypeChange}
+                permissionMode={permissionMode}
+                availableModes={availableModes}
+                onPermissionModeChange={onPermissionModeChange}
+                sessionId={sessionId}
+                resultCount={resultCount}
+              />
               {workingDir !== undefined && (
                 <FolderPicker value={workingDir} onChange={onWorkingDirChange ?? undefined} readOnly={!onWorkingDirChange || hasActiveSession} />
-              )}
-              {agentType !== undefined && (
-                <AgentTypeSelector
-                  value={agentType as AgentType}
-                  onChange={(t) => onAgentTypeChange?.(t)}
-                  disabled={!onAgentTypeChange || hasActiveSession}
-                />
-              )}
-              {permissionMode !== undefined && availableModes && availableModes.length > 0 && onPermissionModeChange && (
-                <PermissionModeSelector value={permissionMode as PermissionMode} modes={availableModes} onChange={(m) => onPermissionModeChange(m)} />
-              )}
-              {sessionId && (
-                <ChangedFilesPopover sessionId={sessionId} refreshKey={resultCount} />
               )}
             </div>
             <div className="flex items-center gap-1">
