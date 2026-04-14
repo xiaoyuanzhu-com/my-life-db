@@ -182,12 +182,10 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
               onChangedFilesClick?.()
             }}
             className={cn(
-              'rounded-md px-1.5 py-0.5 text-xs font-medium',
-              'text-muted-foreground hover:text-foreground hover:bg-foreground/10 transition-colors cursor-pointer'
+              'rounded-full w-2 h-2',
+              'bg-primary'
             )}
-          >
-            {changedFilesCount}
-          </button>
+          />
         )}
       </div>
     )
@@ -242,12 +240,10 @@ export function FolderPicker({ value, onChange, disabled = false, readOnly = fal
             onChangedFilesClick?.()
           }}
           className={cn(
-            'rounded-md px-1.5 py-0.5 text-xs font-medium',
-            'text-muted-foreground hover:text-foreground hover:bg-foreground/10 transition-colors cursor-pointer'
+            'rounded-full w-2 h-2',
+            'bg-primary'
           )}
-        >
-          {changedFilesCount}
-        </button>
+        />
       )}
     </button>
   )
