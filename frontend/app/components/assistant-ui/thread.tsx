@@ -328,14 +328,13 @@ const ComposerOptionsMenu: FC<{
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="py-1 sm:py-1.5 px-1.5 sm:px-2 shrink-0"
+        <button
+          type="button"
+          className="flex items-center px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/10 cursor-pointer transition-colors shrink-0"
           title="Options"
         >
-          <Plus className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-        </Button>
+          <Plus className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" />
+        </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="bottom" sideOffset={4}>
         {agentType !== undefined && onAgentTypeChange && (
