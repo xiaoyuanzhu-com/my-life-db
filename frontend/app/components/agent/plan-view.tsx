@@ -45,6 +45,9 @@ function StatusIcon({ status }: { status: PlanEntry["status"] }) {
 export function PlanView({ entries, className }: PlanViewProps) {
   if (entries.length === 0) return null
 
+  const priorities = entries.map(e => e.priority).filter(Boolean)
+  const showPriority = priorities.length > 0 && new Set(priorities).size > 1
+
   return (
     <div className={cn("font-mono text-[13px] leading-[1.5]", className)}>
       {/* Header */}
@@ -79,7 +82,7 @@ export function PlanView({ entries, className }: PlanViewProps) {
               >
                 {entry.content}
               </span>
-              {entry.priority && (
+              {showPriority && entry.priority && (
                 <span className={cn(
                   "shrink-0 rounded px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide",
                   entry.priority === "high" || entry.priority === "p0"
