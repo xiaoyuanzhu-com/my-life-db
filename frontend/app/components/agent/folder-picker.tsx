@@ -5,7 +5,7 @@ import { api } from '~/lib/api'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 
 const RECENT_FOLDERS_KEY = 'claude-recent-folders'
-const MAX_RECENT_FOLDERS = 5
+const MAX_RECENT_FOLDERS = 10
 
 function getRecentFolders(): string[] {
   if (typeof window === 'undefined') return []
