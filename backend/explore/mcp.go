@@ -148,7 +148,7 @@ func (m *MCPHandler) handleToolsList(req jsonrpcRequest) *jsonrpcResponse {
 					},
 					"content": map[string]any{
 						"type":        "string",
-						"description": "Text content of the post (only visible after user opens the post)",
+						"description": "Plain text content of the post. Markdown is not supported (only visible after user opens the post)",
 					},
 					"mediaType": map[string]any{
 						"type":        "string",
