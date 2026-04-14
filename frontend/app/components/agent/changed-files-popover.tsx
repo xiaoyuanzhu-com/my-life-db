@@ -39,14 +39,11 @@ export function ChangedFilesPopover({ sessionId, refreshKey }: ChangedFilesPopov
       try {
         const res = await fetchWithRefresh(`/api/agent/sessions/${sessionId}/changed-files`)
         if (cancelled) return
-        if (!res.ok) {
-          setData(null)
-          return
-        }
+        if (!res.ok) return // keep stale data visible on transient errors
         const json = await res.json()
         setData(json)
       } catch {
-        if (!cancelled) setData(null)
+        // keep stale data visible on network errors
       }
     }
 

@@ -1,10 +1,12 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
@@ -61,14 +63,18 @@ func (h *Handlers) GetAgentChangedFiles(c *gin.Context) {
 
 // isGitDir checks if a directory is inside a git repository.
 func isGitDir(dir string) bool {
-	cmd := exec.Command("git", "rev-parse", "--git-dir")
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--git-dir")
 	cmd.Dir = dir
 	return cmd.Run() == nil
 }
 
 // gitChangedFiles runs git status --porcelain and parses the output.
 func gitChangedFiles(dir string) []ChangedFile {
-	cmd := exec.Command("git", "status", "--porcelain")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "--no-optional-locks", "status", "--porcelain")
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err != nil {
