@@ -162,6 +162,19 @@ function DataContent() {
     const items = e.dataTransfer.items;
     if (!items || items.length === 0) return;
 
+    // Extract entries SYNCHRONOUSLY before any await — the DataTransfer object
+    // is cleared once the event handler yields (any await), making items/files
+    // inaccessible after that point.
+    const entries: FileSystemEntry[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const entry = items[i].webkitGetAsEntry?.();
+      if (entry) entries.push(entry);
+    }
+    // Fallback: snapshot files synchronously too
+    const fallbackFiles: File[] = entries.length === 0
+      ? Array.from(e.dataTransfer.files)
+      : [];
+
     try {
       const { getUploadQueueManager } = await import("~/lib/send-queue/upload-queue-manager");
       const uploadManager = getUploadQueueManager();
@@ -196,19 +209,11 @@ function DataContent() {
         });
       };
 
-      const entries: FileSystemEntry[] = [];
-      for (let i = 0; i < items.length; i++) {
-        const entry = items[i].webkitGetAsEntry?.();
-        if (entry) entries.push(entry);
-      }
-
       if (entries.length > 0) {
         await Promise.all(entries.map((entry) => readEntry(entry, currentPath)));
       } else {
-        // Fallback for browsers without webkitGetAsEntry
-        const files = e.dataTransfer.files;
-        for (let i = 0; i < files.length; i++) {
-          batch.push({ file: files[i], destination: currentPath });
+        for (const file of fallbackFiles) {
+          batch.push({ file, destination: currentPath });
         }
       }
 
