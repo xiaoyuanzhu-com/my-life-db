@@ -15,6 +15,22 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
+// allowedImageExts lists image formats supported across web and native apps.
+var allowedImageExts = map[string]bool{
+	".jpg":  true,
+	".jpeg": true,
+	".png":  true,
+	".gif":  true,
+	".webp": true,
+}
+
+// allowedVideoExts lists accepted video formats.
+var allowedVideoExts = map[string]bool{
+	".mp4":  true,
+	".mov":  true,
+	".webm": true,
+}
+
 // Service manages explore posts and their media files.
 type Service struct {
 	baseDir string // e.g. /path/to/user-data/explore
@@ -99,6 +115,24 @@ func (s *Service) CreatePost(input CreatePostInput) (*db.ExplorePostWithComments
 	var mediaPaths []string
 
 	if len(input.Media) > 0 {
+		// Validate media file formats
+		mediaType := ""
+		if input.MediaType != nil {
+			mediaType = *input.MediaType
+		}
+		for _, m := range input.Media {
+			ext := strings.ToLower(filepath.Ext(m.Filename))
+			if mediaType == "video" {
+				if !allowedVideoExts[ext] {
+					return nil, fmt.Errorf("unsupported video format %q — accepted formats: mp4, mov, webm", ext)
+				}
+			} else {
+				if !allowedImageExts[ext] {
+					return nil, fmt.Errorf("unsupported image format %q — accepted formats: jpg, png, gif, webp", ext)
+				}
+			}
+		}
+
 		authorSlug := sanitizeForPath(input.Author)
 		titleSlug := sanitizeForPath(input.Title)
 		yymm := time.Now().Format("0601") // Go format: 06=2-digit year, 01=2-digit month

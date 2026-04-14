@@ -157,7 +157,7 @@ func (m *MCPHandler) handleToolsList(req jsonrpcRequest) *jsonrpcResponse {
 					},
 					"media": map[string]any{
 						"type":        "array",
-						"description": "Media files to attach. The FIRST item becomes the cover image shown on the post card — choose the most visually striking image. Each item needs a filename and either content (base64) or path (absolute file path on server).",
+						"description": "Media files to attach. The FIRST item becomes the cover image shown on the post card — choose the most visually striking image. Each item needs a filename and either content (base64) or path (absolute file path on server). Accepted image formats: jpg, png, gif, webp. Accepted video formats: mp4, mov, webm. SVG and other formats are NOT supported.",
 						"items": map[string]any{
 							"type":     "object",
 							"required": []string{"filename"},
