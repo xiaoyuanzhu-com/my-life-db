@@ -30,6 +30,9 @@ import "encoding/json"
 //   - _meta.claudeCode.toolResponse.originalFile: full file snapshot from the Edit
 //     tool. The frontend renders diffs from oldString/newString; originalFile is unused.
 //
+//   - _meta.claudeCode.toolResponse.content: full file content from the Write tool.
+//     The frontend only needs filePath and type; the actual content is not rendered.
+//
 // Preserved fields (used by frontend renderers):
 //
 //   - rawInput.old_string, rawInput.new_string, rawInput.file_path, rawInput.replace_all
@@ -93,6 +96,10 @@ func StripHeavyToolCallContent(data []byte) []byte {
 			}
 		case "Edit":
 			if stripEditToolResponseContent(cc) {
+				stripped = true
+			}
+		case "Write":
+			if stripWriteToolResponseContent(cc) {
 				stripped = true
 			}
 		}
@@ -179,6 +186,28 @@ func stripEditToolResponseContent(cc map[string]interface{}) bool {
 		return false
 	}
 	delete(resp, "originalFile")
+	return true
+}
+
+// stripWriteToolResponseContent removes the full file content from the Write
+// tool's toolResponse. The frontend only needs filePath and type for rendering;
+// the actual file content is not displayed.
+//
+// Write toolResponse shape:
+//
+//	{ content, filePath, originalFile, structuredPatch, type }
+//
+// Stripped:  content (full file text being written)
+// Preserved: filePath, originalFile, structuredPatch, type
+func stripWriteToolResponseContent(cc map[string]interface{}) bool {
+	resp, ok := cc["toolResponse"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	if _, has := resp["content"]; !has {
+		return false
+	}
+	delete(resp, "content")
 	return true
 }
 
