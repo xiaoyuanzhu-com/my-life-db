@@ -400,6 +400,20 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			acpSession, exists := acpSessions[sessionID]
 			acpSessionsMu.Unlock()
 
+			// Diagnostic: check if existing session's process is still alive
+			if exists {
+				select {
+				case <-acpSession.Done():
+					log.Info().Str("sessionId", sessionID).Msg("[diag] existing ACP session process is dead, removing for lazy recreation")
+					acpSessionsMu.Lock()
+					delete(acpSessions, sessionID)
+					acpSessionsMu.Unlock()
+					exists = false
+				default:
+					log.Info().Str("sessionId", sessionID).Msg("[diag] existing ACP session process is alive")
+				}
+			}
+
 			if !exists {
 				log.Info().Str("sessionId", sessionID).Msg("no ACP session in memory, creating lazily for prompt")
 				// Look up session metadata from DB for agent type, working dir, permission mode
@@ -537,9 +551,17 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 						continue
 					}
 					frameCount++
+
+					// Diagnostic: log error/turn.complete events from events channel
+					var ft struct{ Type string `json:"type"` }
+					if json.Unmarshal(frame, &ft) == nil && (ft.Type == "error" || ft.Type == "turn.complete") {
+						log.Info().Str("sessionId", sessionID).Str("eventType", ft.Type).Int("frameCount", frameCount).Msg("[diag] events-channel frame")
+					}
+
 					sessionState.AppendAndBroadcast(frame)
 				}
 				// Channel closed = turn complete
+				log.Info().Str("sessionId", sessionID).Int("frameCount", frameCount).Msg("[diag] events channel closed")
 				sessionState.Mu.Lock()
 				killed := sessionState.Killed
 				if !killed {

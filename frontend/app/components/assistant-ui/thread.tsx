@@ -379,6 +379,22 @@ const Composer: FC = () => {
     resultCount,
   } = useAgentContext();
   const hasSession = useAuiState((s) => !s.thread.isEmpty);
+  const threadIsRunning = useAuiState((s) => s.thread.isRunning);
+  const composerIsEmpty = useAuiState((s) => s.composer.isEmpty);
+  const lastMsgStatus = useAuiState((s) => {
+    const msgs = s.thread.messages;
+    const last = msgs[msgs.length - 1];
+    return last ? { role: last.role, status: (last as { status?: { type: string } }).status?.type } : null;
+  });
+
+  // Diagnostic: log whenever send-ability changes
+  useEffect(() => {
+    const canSend = !threadIsRunning && !composerIsEmpty;
+    console.info(
+      `[agent-diag] [${sessionId}] composer-state`,
+      { threadIsRunning, composerIsEmpty, canSend, connected, lastMsgStatus },
+    );
+  }, [threadIsRunning, composerIsEmpty, connected, sessionId, lastMsgStatus]);
 
   return (
     <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">

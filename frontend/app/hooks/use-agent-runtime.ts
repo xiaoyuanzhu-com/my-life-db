@@ -127,6 +127,19 @@ export function useAgentRuntime(options: {
 
   const [messages, setMessages] = useState<InternalMessage[]>([])
   const [isRunning, setIsRunning] = useState(false)
+
+  // ── Diagnostics ─────────────────────────────────────────────────────
+  // Tagged console logger for post-mortem debugging when send-after-error
+  // fails. Use sessionId prefix so logs can be filtered in the console.
+  const diagLog = useCallback(
+    (event: string, data?: Record<string, unknown>) => {
+      console.info(
+        `[agent-diag] [${sessionId || "new"}] ${event}`,
+        data ?? "",
+      )
+    },
+    [sessionId],
+  )
   const [sessionMeta, setSessionMeta] = useState<SessionMeta>({})
   const [planEntries, setPlanEntries] = useState<PlanEntry[]>([])
   // Map of toolCallId → { toolName, options } for pending permission.request frames
@@ -201,6 +214,7 @@ export function useAgentRuntime(options: {
       switch (frameType) {
         case "session.info": {
           const f = frame as SessionInfoFrame
+          diagLog("session.info", { isActive: f.isActive, isProcessing: f.isProcessing })
           isActiveRef.current = f.isActive
           // The backend replays full history on every WS connection (including
           // reconnects).  Clear existing messages so the replay doesn't create
@@ -662,6 +676,7 @@ export function useAgentRuntime(options: {
           // Backend signals that prompt processing has begun. Sets isRunning
           // so the stop button is available even before content frames arrive.
           // Also present in burst replay on reconnect.
+          diagLog("turn.start", { isActive: isActiveRef.current, wasRunning: isRunningRef.current })
 
           if (isActiveRef.current) {
             setIsRunning(true)
@@ -698,6 +713,7 @@ export function useAgentRuntime(options: {
         }
 
         case "turn.complete": {
+          diagLog("turn.complete", { wasRunning: isRunningRef.current, msgCount: messagesRef.current.length })
           setIsRunning(false)
           // Clear all pending permissions — the turn is done
           setPendingPermissions((prev) => {
@@ -745,6 +761,15 @@ export function useAgentRuntime(options: {
 
         case "error": {
           const f = frame as ErrorFrame
+          const lastMsg = messagesRef.current[messagesRef.current.length - 1]
+          diagLog("error", {
+            code: f.code,
+            message: f.message,
+            wasRunning: isRunningRef.current,
+            msgCount: messagesRef.current.length,
+            lastMsgRole: lastMsg?.role,
+            lastMsgStatus: lastMsg?.status?.type,
+          })
           setIsRunning(false)
           if (messagesRef.current.length === 0) {
             setSessionError(f.message)
@@ -986,7 +1011,15 @@ export function useAgentRuntime(options: {
             localStorage.setItem(`agent-input:${sessionId}`, text)
             // Try to send via WS — if not connected, restore to composer
             const sent = sendPrompt(text)
+            diagLog("onNew:send", {
+              sent,
+              wasRunning: isRunningRef.current,
+              msgCount: messagesRef.current.length,
+              lastMsgRole: messagesRef.current[messagesRef.current.length - 1]?.role,
+              lastMsgStatus: messagesRef.current[messagesRef.current.length - 1]?.status?.type,
+            })
             if (!sent) {
+              diagLog("onNew:send-failed", { reason: "WS not connected" })
               setPendingComposerText(text)
               return
             }
