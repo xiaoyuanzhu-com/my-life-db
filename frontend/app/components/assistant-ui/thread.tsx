@@ -384,7 +384,9 @@ const Composer: FC = () => {
   const lastMsgStatus = useAuiState((s) => {
     const msgs = s.thread.messages;
     const last = msgs[msgs.length - 1];
-    return last ? { role: last.role, status: (last as { status?: { type: string } }).status?.type } : null;
+    if (!last) return null;
+    const status = (last as { status?: { type: string } }).status?.type ?? "none";
+    return `${last.role}:${status}`;
   });
 
   // Diagnostic: log whenever send-ability changes
