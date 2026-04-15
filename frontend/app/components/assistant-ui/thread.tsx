@@ -338,12 +338,12 @@ const ComposerOptionsMenu: FC<{
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="bottom" sideOffset={4}>
-        {agentType !== undefined && onAgentTypeChange && (
+        {agentType !== undefined && (
           <div className="flex items-center justify-between px-2 py-1.5 gap-4">
             <span className="text-xs text-muted-foreground shrink-0">Agent</span>
             <AgentTypeSelector
               value={agentType as AgentType}
-              onChange={(t) => onAgentTypeChange(t)}
+              onChange={onAgentTypeChange ? (t) => onAgentTypeChange(t) : () => {}}
               disabled={!onAgentTypeChange || hasActiveSession}
             />
           </div>
