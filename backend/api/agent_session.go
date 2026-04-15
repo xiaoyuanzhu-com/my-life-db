@@ -170,9 +170,7 @@ func CreateSession(
 			// The events channel contains synthetic frames (turn.complete,
 			// session.modeUpdate, session.modelsUpdate, errors) that are NOT
 			// delivered via onFrame — they must be broadcast explicitly.
-			frameCount := 0
 			for frame := range events {
-				frameCount++
 				sessionState.AppendAndBroadcast(frame)
 			}
 
@@ -183,20 +181,6 @@ func CreateSession(
 			sessionState.ClearPrompt()
 			sessionState.Mu.Unlock()
 
-			// Detect zero-output turns
-			if frameCount <= 1 {
-				log.Info().
-					Str("sessionId", sessionID).
-					Int("frameCount", frameCount).
-					Msg("zero-output turn detected: agent produced no content")
-				if errBytes, err := json.Marshal(map[string]any{
-					"type":    "error",
-					"message": "The agent returned an empty response. This can happen when the session state is corrupted — try sending your message again or start a new session.",
-					"code":    "EMPTY_RESPONSE",
-				}); err == nil {
-					sessionState.AppendAndBroadcast(errBytes)
-				}
-			}
 			notifService.NotifyAgentSessionUpdated(sessionID, "result")
 		}(sess, params.Message)
 	}

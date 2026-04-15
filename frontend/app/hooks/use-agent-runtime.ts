@@ -809,6 +809,23 @@ export function useAgentRuntime(options: {
                 changed = true
               }
             }
+            // No assistant message to attach the error to (e.g. AGENT_ERROR
+            // arrived right after turn.start with no content). Create one so
+            // the error is visible in the thread.
+            if (!changed) {
+              updated.push({
+                id: nextId(),
+                role: "assistant",
+                content: [{ type: "text", text: "" }],
+                createdAt: new Date(),
+                status: {
+                  type: "incomplete",
+                  reason: "error",
+                  error: f.message,
+                },
+              })
+              changed = true
+            }
             return changed ? updated : prev
           })
           break

@@ -572,26 +572,6 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				sessionState.Mu.Unlock()
 
 				if !killed {
-					// Detect zero-output turns: the ACP process accepted the
-					// prompt but produced no content. This typically means the
-					// session's internal state is corrupted (e.g. after a
-					// cancellation). Emit an error frame so the user sees
-					// feedback instead of an invisible empty response.
-					if frameCount <= 1 {
-						// frameCount <= 1 means only turn.complete (or nothing).
-						// No actual content, tool calls, or text was produced.
-						log.Info().
-							Str("sessionId", sessionID).
-							Int("frameCount", frameCount).
-							Msg("zero-output turn detected: agent produced no content")
-						if errBytes, err := json.Marshal(map[string]any{
-							"type":    "error",
-							"message": "The agent returned an empty response. This can happen when the session state is corrupted — try sending your message again or start a new session.",
-							"code":    "EMPTY_RESPONSE",
-						}); err == nil {
-							sessionState.AppendAndBroadcast(errBytes)
-						}
-					}
 					h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "result")
 				}
 			}(acpSession, promptText, promptCtx, pCancel)
