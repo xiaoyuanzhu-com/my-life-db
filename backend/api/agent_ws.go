@@ -270,22 +270,11 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				return
 			}
 
-			sess.SetOnFrame(func(data []byte) {
-				sessionState.Mu.Lock()
-				sessionState.TouchFrame()
-				sessionState.Mu.Unlock()
-				sessionState.AppendAndBroadcast(data)
-			})
-			// Set mode AFTER onFrame so the mode-change event is captured
-			if mode != "" {
-				if err := sess.SetMode(h.server.ShutdownContext(), mode); err != nil {
-					log.Warn().Err(err).Str("sessionId", sessionID).Str("mode", mode).Msg("failed to set mode on history-load session")
-				}
+			var defaultModel string
+			if models := h.server.Cfg().AgentLLM.Models; len(models) > 0 {
+				defaultModel = models[0].ID
 			}
-
-			acpSessionsMu.Lock()
-			acpSessions[sessionID] = sess
-			acpSessionsMu.Unlock()
+			SetupACPSession(sess, sessionID, mode, defaultModel)
 
 			if err := sess.LoadSession(h.server.ShutdownContext(), sessionID, sessionRecord.WorkingDir); err != nil {
 				log.Warn().Err(err).Str("sessionId", sessionID).Msg("LoadSession failed")
@@ -442,21 +431,11 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 					}
 					continue
 				}
-				sess.SetOnFrame(func(data []byte) {
-					sessionState.Mu.Lock()
-					sessionState.TouchFrame()
-					sessionState.Mu.Unlock()
-					sessionState.AppendAndBroadcast(data)
-				})
-				// Set mode AFTER onFrame so the mode-change event is captured
-				if mode != "" {
-					if err := sess.SetMode(h.server.ShutdownContext(), mode); err != nil {
-						log.Warn().Err(err).Str("sessionId", sessionID).Str("mode", mode).Msg("failed to set mode on lazy session")
-					}
+				var defaultModel string
+				if models := h.server.Cfg().AgentLLM.Models; len(models) > 0 {
+					defaultModel = models[0].ID
 				}
-				acpSessionsMu.Lock()
-				acpSessions[sessionID] = sess
-				acpSessionsMu.Unlock()
+				SetupACPSession(sess, sessionID, mode, defaultModel)
 				acpSession = sess
 			}
 

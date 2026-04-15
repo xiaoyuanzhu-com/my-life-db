@@ -55,6 +55,12 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 		agentTypeStr = "claude_code"
 	}
 
+	// Default model from AGENT_MODELS config
+	var defaultModel string
+	if models := h.server.Cfg().AgentLLM.Models; len(models) > 0 {
+		defaultModel = models[0].ID
+	}
+
 	handle, err := CreateSession(
 		context.Background(), // ACP process must outlive this HTTP request
 		h.server.AgentClient(),
@@ -66,6 +72,7 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 			Title:          req.Title,
 			Message:        req.Message,
 			PermissionMode: req.PermissionMode,
+			DefaultModel:   defaultModel,
 			Source:         "user",
 		},
 	)

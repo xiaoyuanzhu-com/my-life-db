@@ -108,8 +108,19 @@ func New(cfg *Config) (*Server, error) {
 			if cfg.AgentLLM.CustomerID != "" {
 				ccEnv["ANTHROPIC_CUSTOM_HEADERS"] = "x-litellm-customer-id: " + cfg.AgentLLM.CustomerID
 			}
+			// Set default model from AGENT_MODELS so the agent doesn't use
+			// its built-in default (which may not exist on the gateway).
+			if len(cfg.AgentLLM.Models) > 0 {
+				defaultModel := cfg.AgentLLM.Models[0].ID
+				ccEnv["ANTHROPIC_MODEL"] = defaultModel
+				ccEnv["ANTHROPIC_SMALL_FAST_MODEL"] = defaultModel
+			}
+
 			codexEnv["OPENAI_BASE_URL"] = cfg.AgentLLM.BaseURL
 			codexEnv["OPENAI_API_KEY"] = cfg.AgentLLM.APIKey
+			if len(cfg.AgentLLM.Models) > 0 {
+				codexEnv["OPENAI_MODEL"] = cfg.AgentLLM.Models[0].ID
+			}
 		}
 
 		ccAgent := agentsdk.AgentConfig{
@@ -157,7 +168,9 @@ func New(cfg *Config) (*Server, error) {
 
 		log.Info().
 			Bool("agent_llm", cfg.AgentLLM.HasAgentLLM()).
+			Str("agent_base_url", cfg.AgentLLM.BaseURL).
 			Int("agent_models", len(cfg.AgentLLM.Models)).
+			Str("cc_model", ccEnv["ANTHROPIC_MODEL"]).
 			Int("mcp_servers", len(mcpServers)).
 			Msg("agent client initialized")
 	}

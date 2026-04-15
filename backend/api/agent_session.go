@@ -18,8 +18,40 @@ type SessionParams struct {
 	Title          string
 	Message        string // initial prompt; empty = no prompt sent
 	PermissionMode string // e.g. "bypassPermissions"; empty = default
+	DefaultModel   string // default model to set via ACP (from AGENT_MODELS)
 	Source         string // "user" or "auto"
 	AgentFile      string // agent definition file (auto-run only)
+}
+
+// SetupACPSession wires frame broadcasting, sets mode/model, and stores the
+// session in the in-memory map. This is the single entrypoint for session
+// setup after ACP process creation — used by CreateSession, history-load,
+// and lazy-create paths.
+func SetupACPSession(sess agentsdk.Session, sessionID, mode, defaultModel string) *agentsdk.SessionState {
+	sessionState := GetOrCreateSessionState(sessionID)
+	sess.SetOnFrame(func(data []byte) {
+		sessionState.Mu.Lock()
+		sessionState.TouchFrame()
+		sessionState.Mu.Unlock()
+		sessionState.AppendAndBroadcast(data)
+	})
+
+	// Set mode after onFrame so the mode-change event is captured
+	if mode != "" {
+		if err := sess.SetMode(context.Background(), mode); err != nil {
+			log.Warn().Err(err).Str("sessionId", sessionID).Str("mode", mode).Msg("failed to set initial mode")
+		}
+	}
+
+	// Set default model from AGENT_MODELS so the agent uses the gateway model
+	if defaultModel != "" {
+		if err := sess.SetModel(context.Background(), defaultModel); err != nil {
+			log.Warn().Err(err).Str("sessionId", sessionID).Str("model", defaultModel).Msg("failed to set initial model")
+		}
+	}
+
+	StoreAcpSession(sessionID, sess)
+	return sessionState
 }
 
 // SessionHandle is returned by CreateSession so the caller can manage
@@ -81,24 +113,8 @@ func CreateSession(
 		db.SaveAgentSessionPermissionMode(sessionID, params.PermissionMode)
 	}
 
-	// Wire frame broadcasting
-	sessionState := GetOrCreateSessionState(sessionID)
-	sess.SetOnFrame(func(data []byte) {
-		sessionState.Mu.Lock()
-		sessionState.TouchFrame()
-		sessionState.Mu.Unlock()
-		sessionState.AppendAndBroadcast(data)
-	})
-
-	// Set mode after onFrame so the mode-change event is captured
-	if params.PermissionMode != "" {
-		if err := sess.SetMode(context.Background(), params.PermissionMode); err != nil {
-			log.Warn().Err(err).Str("sessionId", sessionID).Str("mode", params.PermissionMode).Msg("failed to set initial mode")
-		}
-	}
-
-	// Store in the in-memory map for WebSocket handler access
-	StoreAcpSession(sessionID, sess)
+	// Common setup: wire broadcasting, set mode/model, store in map
+	sessionState := SetupACPSession(sess, sessionID, params.PermissionMode, params.DefaultModel)
 
 	log.Info().
 		Str("sessionId", sessionID).
