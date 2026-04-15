@@ -421,6 +421,16 @@ func (s *acpSession) SetModel(ctx context.Context, modelID string) error {
 	return err
 }
 
+// SetConfigOption sets a generic config option via ACP SetSessionConfigOption.
+func (s *acpSession) SetConfigOption(ctx context.Context, configID string, value string) error {
+	_, err := s.conn.SetSessionConfigOption(ctx, acp.SetSessionConfigOptionRequest{
+		SessionId: acp.SessionId(s.sessionID),
+		ConfigId:  acp.SessionConfigId(configID),
+		Value:     acp.SessionConfigValueId(value),
+	})
+	return err
+}
+
 // Stop cancels the current operation (sends SIGINT equivalent via ACP Cancel).
 func (s *acpSession) Stop() error {
 	return s.conn.Cancel(context.Background(), acp.CancelNotification{

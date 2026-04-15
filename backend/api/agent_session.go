@@ -27,6 +27,10 @@ type SessionParams struct {
 // session in the in-memory map. This is the single entrypoint for session
 // setup after ACP process creation — used by CreateSession, history-load,
 // and lazy-create paths.
+//
+// Model is set via the generic SetSessionConfigOption RPC (both agents support it).
+// Mode uses the legacy SetSessionMode RPC (only Claude Code has modes;
+// Codex doesn't expose mode as a configOption).
 func SetupACPSession(sess agentsdk.Session, sessionID, mode, defaultModel string) *agentsdk.SessionState {
 	sessionState := GetOrCreateSessionState(sessionID)
 	sess.SetOnFrame(func(data []byte) {
@@ -36,16 +40,17 @@ func SetupACPSession(sess agentsdk.Session, sessionID, mode, defaultModel string
 		sessionState.AppendAndBroadcast(data)
 	})
 
-	// Set mode after onFrame so the mode-change event is captured
+	// Set mode after onFrame so the mode-change event is captured.
+	// Uses legacy SetSessionMode — only Claude Code supports modes.
 	if mode != "" {
 		if err := sess.SetMode(context.Background(), mode); err != nil {
 			log.Warn().Err(err).Str("sessionId", sessionID).Str("mode", mode).Msg("failed to set initial mode")
 		}
 	}
 
-	// Set default model from AGENT_MODELS so the agent uses the gateway model
+	// Set default model via SetSessionConfigOption (works for both agents).
 	if defaultModel != "" {
-		if err := sess.SetModel(context.Background(), defaultModel); err != nil {
+		if err := sess.SetConfigOption(context.Background(), "model", defaultModel); err != nil {
 			log.Warn().Err(err).Str("sessionId", sessionID).Str("model", defaultModel).Msg("failed to set initial model")
 		}
 	}

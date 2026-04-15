@@ -6,7 +6,7 @@
 import { createContext, useContext } from "react"
 import type { ThreadMessageLike } from "@assistant-ui/react"
 import type { PermissionOption } from "~/hooks/use-agent-websocket"
-import type { PlanEntry, AvailableMode, AvailableModel } from "~/hooks/use-agent-runtime"
+import type { PlanEntry, AvailableMode, AvailableModel, ConfigOption } from "~/hooks/use-agent-runtime"
 
 export interface PendingPermissionEntry {
   toolName: string
@@ -38,6 +38,10 @@ export interface AgentContextValue {
   currentModel?: string
   availableModels?: AvailableModel[]
   onModelChange?: (model: string) => void
+  /** ACP config options from the agent (generic selectors for model, reasoning_effort, etc.) */
+  configOptions?: ConfigOption[]
+  /** Send a config option change to the agent */
+  onConfigOptionChange?: (configId: string, value: string) => void
   /** Session metadata (commands, models, etc.) */
   sessionCommands?: Array<{ name: string; description?: string }>
   /** Active session ID (empty string when no session) */

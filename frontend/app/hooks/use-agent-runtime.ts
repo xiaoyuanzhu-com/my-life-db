@@ -69,11 +69,23 @@ export interface AvailableModel {
   description: string
 }
 
+/** A single config option reported by the agent via config_option_update. */
+export interface ConfigOption {
+  id: string
+  category: string
+  name: string
+  description?: string
+  currentValue: string
+  options: Array<{ value: string; name: string; description: string }>
+}
+
 export interface SessionMeta {
   mode?: string
   availableModes?: AvailableMode[]
   currentModel?: string
   availableModels?: AvailableModel[]
+  /** Raw configOptions from the ACP agent (Codex uses these for model, reasoning_effort, etc.) */
+  configOptions?: ConfigOption[]
   commands?: unknown[]
 }
 
@@ -857,13 +869,24 @@ export function useAgentRuntime(options: {
 
         case "config_option_update": {
           // ACP native frame: unified config options (mode, model, etc.)
-          const configOptions = frame.configOptions as Array<{
-            id: string; category: string; currentValue: string;
+          const rawConfigOptions = frame.configOptions as Array<{
+            id: string; name?: string; category: string; description?: string; currentValue: string;
             options: Array<{ value: string; name: string; description: string }>
           }> | undefined
-          if (configOptions) {
-            const update: Partial<SessionMeta> = {}
-            for (const opt of configOptions) {
+          if (rawConfigOptions) {
+            const update: Partial<SessionMeta> = {
+              // Store full configOptions for generic rendering
+              configOptions: rawConfigOptions.map(opt => ({
+                id: opt.id,
+                category: opt.category,
+                name: opt.name ?? opt.id,
+                description: opt.description,
+                currentValue: opt.currentValue,
+                options: opt.options,
+              })),
+            }
+            // Also extract mode/model into legacy fields for backward compatibility
+            for (const opt of rawConfigOptions) {
               if (opt.category === "mode") {
                 update.mode = opt.currentValue
                 update.availableModes = opt.options.map(o => ({
@@ -876,9 +899,7 @@ export function useAgentRuntime(options: {
                 }))
               }
             }
-            if (Object.keys(update).length > 0) {
-              setSessionMeta((prev) => ({ ...prev, ...update }))
-            }
+            setSessionMeta((prev) => ({ ...prev, ...update }))
           }
           break
         }
@@ -917,7 +938,7 @@ export function useAgentRuntime(options: {
 
   // ── WebSocket Connection ──────────────────────────────────────────
 
-  const { connected, sendPrompt, sendCancel, sendKill, sendPermissionResponse, sendSetMode, sendSetModel } =
+  const { connected, sendPrompt, sendCancel, sendKill, sendPermissionResponse, sendSetMode, sendSetModel, sendSetConfigOption } =
     useAgentWebSocket({
       sessionId,
       token,
@@ -1138,6 +1159,7 @@ export function useAgentRuntime(options: {
     sendPermissionResponse: handlePermissionResponse,
     sendSetMode,
     sendSetModel,
+    sendSetConfigOption,
     historyLoadError,
     sessionError,
     subagentChildrenMap,

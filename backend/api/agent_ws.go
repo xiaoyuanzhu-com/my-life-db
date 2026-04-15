@@ -347,13 +347,15 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 
 		// Parse incoming ACP message
 		var inMsg struct {
-			Type       string          `json:"type"`
-			SessionID  string          `json:"sessionId"`
-			Content    json.RawMessage `json:"content,omitempty"`
-			ModeID     string          `json:"modeId,omitempty"`
-			ModelID    string          `json:"modelId,omitempty"`
-			ToolCallID string          `json:"toolCallId,omitempty"`
-			OptionID   string          `json:"optionId,omitempty"`
+			Type        string          `json:"type"`
+			SessionID   string          `json:"sessionId"`
+			Content     json.RawMessage `json:"content,omitempty"`
+			ModeID      string          `json:"modeId,omitempty"`
+			ModelID     string          `json:"modelId,omitempty"`
+			ToolCallID  string          `json:"toolCallId,omitempty"`
+			OptionID    string          `json:"optionId,omitempty"`
+			ConfigID    string          `json:"configId,omitempty"`
+			ConfigValue string          `json:"configValue,omitempty"`
 		}
 		if err := json.Unmarshal(msg, &inMsg); err != nil {
 			log.Debug().Err(err).Msg("failed to parse agent WS message")
@@ -633,6 +635,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			}
 
 		case "session.setMode":
+			// Mode uses legacy SetSessionMode RPC (only Claude Code has modes)
 			acpSessionsMu.Lock()
 			acpSession, exists := acpSessions[sessionID]
 			acpSessionsMu.Unlock()
@@ -648,18 +651,24 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			}
 
 		case "session.setModel":
+			// Legacy message type — route through SetConfigOption
+			inMsg.ConfigID = "model"
+			inMsg.ConfigValue = inMsg.ModelID
+			fallthrough
+
+		case "session.setConfigOption":
 			acpSessionsMu.Lock()
 			acpSession, exists := acpSessions[sessionID]
 			acpSessionsMu.Unlock()
 
 			if exists {
-				modelCtx, modelCancel := context.WithTimeout(context.Background(), 10*time.Second)
-				if err := acpSession.SetModel(modelCtx, inMsg.ModelID); err != nil {
-					log.Error().Err(err).Str("sessionId", sessionID).Str("modelId", inMsg.ModelID).Msg("failed to set model")
+				cfgCtx, cfgCancel := context.WithTimeout(context.Background(), 10*time.Second)
+				if err := acpSession.SetConfigOption(cfgCtx, inMsg.ConfigID, inMsg.ConfigValue); err != nil {
+					log.Error().Err(err).Str("sessionId", sessionID).Str("configId", inMsg.ConfigID).Str("value", inMsg.ConfigValue).Msg("failed to set config option")
 				} else {
-					log.Info().Str("sessionId", sessionID).Str("modelId", inMsg.ModelID).Msg("model set via WebSocket")
+					log.Info().Str("sessionId", sessionID).Str("configId", inMsg.ConfigID).Str("value", inMsg.ConfigValue).Msg("config option set via WebSocket")
 				}
-				modelCancel()
+				cfgCancel()
 			}
 
 		case "permission.respond":

@@ -658,7 +658,7 @@ export default function AgentPage() {
         workingDir: newSessionWorkingDir,
         permissionMode: newSessionPermissionMode,
         agentType: newSessionAgentType,
-        model: newSessionModel || undefined,
+        model: newSessionAgentType !== 'codex' ? (newSessionModel || undefined) : undefined,
       })
 
       if (!response.ok) {
@@ -801,7 +801,7 @@ export default function AgentPage() {
       ? effectiveActiveSession.agentType
       : undefined
   const onSendForRuntime = !hasActiveSession ? createSessionWithMessage : undefined
-  const { runtime, connected, sessionMeta, pendingPermissions, planEntries, sendPermissionResponse, sendSetMode, sendSetModel, historyLoadError, sessionError, subagentChildrenMap, pendingComposerText, clearPendingComposerText } =
+  const { runtime, connected, sessionMeta, pendingPermissions, planEntries, sendPermissionResponse, sendSetMode, sendSetModel, sendSetConfigOption, historyLoadError, sessionError, subagentChildrenMap, pendingComposerText, clearPendingComposerText } =
     useAgentRuntime({
       sessionId: activeSessionId || "",
       token: "",
@@ -844,6 +844,11 @@ export default function AgentPage() {
   }
 
   // Shared context value for AgentContextProvider — keeps the reference stable
+  // Server-configured models (from AGENT_MODELS) only apply to Claude Code.
+  // Codex reports its own models via configOptions.
+  const effectiveAgentType = activeSessionAgentType ?? newSessionAgentType
+  const effectiveIsClaudeCode = effectiveAgentType !== 'codex'
+
   // across the multiple conditional render branches below.
   const agentContextValue = {
     sendPermissionResponse,
@@ -879,14 +884,20 @@ export default function AgentPage() {
           }
         },
     currentModel: hasActiveSession
-      ? (sessionMeta?.currentModel ?? (serverModels.length > 0 ? serverModels[0].id : undefined))
-      : (newSessionModel || (serverModels.length > 0 ? serverModels[0].id : undefined)),
-    availableModels: serverModels.length > 0 ? serverModels : sessionMeta?.availableModels,
+      ? (sessionMeta?.currentModel ?? (effectiveIsClaudeCode && serverModels.length > 0 ? serverModels[0].id : undefined))
+      : (effectiveIsClaudeCode ? (newSessionModel || (serverModels.length > 0 ? serverModels[0].id : undefined)) : undefined),
+    availableModels: hasActiveSession
+      ? (serverModels.length > 0 && effectiveIsClaudeCode ? serverModels : sessionMeta?.availableModels)
+      : (effectiveIsClaudeCode && serverModels.length > 0 ? serverModels : undefined),
     onModelChange: hasActiveSession
-      ? (model: string) => sendSetModel(model)
-      : serverModels.length > 0
+      ? (model: string) => sendSetConfigOption("model", model)
+      : effectiveIsClaudeCode && serverModels.length > 0
         ? (model: string) => setNewSessionModel(model)
         : undefined,
+    configOptions: sessionMeta?.configOptions,
+    onConfigOptionChange: hasActiveSession
+      ? (configId: string, value: string) => sendSetConfigOption(configId, value)
+      : undefined,
     sessionCommands: sessionMeta?.commands,
     sessionId: activeSessionId || "",
     hasActiveSession,

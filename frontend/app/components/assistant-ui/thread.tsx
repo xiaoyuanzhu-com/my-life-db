@@ -38,6 +38,7 @@ import { FolderPicker } from "~/components/agent/folder-picker";
 import { PermissionModeSelector, type PermissionMode } from "~/components/agent/permission-mode-selector";
 import { AgentTypeSelector, type AgentType } from "~/components/agent/agent-type-selector";
 import { ModelSelector } from "~/components/agent/model-selector";
+import { ConfigOptionSelector } from "~/components/agent/config-option-selector";
 import { SlashCommandPopover } from "~/components/agent/slash-command-popover";
 import { FileTagPopover } from "~/components/agent/file-tag-popover";
 import { ChangedFilesPopover } from "~/components/agent/changed-files-popover";
@@ -314,9 +315,16 @@ const ComposerOptionsMenu: FC = () => {
     agentType, onAgentTypeChange,
     currentModel, availableModels, onModelChange,
     permissionMode, availableModes, onPermissionModeChange,
+    configOptions, onConfigOptionChange,
     sessionId,
   } = useAgentContext()
   const hasActiveSession = !!sessionId
+
+  // Config options not already covered by the model/mode selectors
+  const extraConfigOptions = configOptions?.filter(
+    (opt) => opt.category !== "mode" && opt.category !== "model"
+  ) ?? []
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -360,6 +368,16 @@ const ComposerOptionsMenu: FC = () => {
             />
           </div>
         )}
+        {extraConfigOptions.map((opt) => (
+          <div key={opt.id} className="flex items-center justify-between px-2 py-1.5 gap-4">
+            <span className="text-xs text-muted-foreground shrink-0">{opt.name}</span>
+            <ConfigOptionSelector
+              option={opt}
+              onChange={(value) => onConfigOptionChange?.(opt.id, value)}
+              disabled={!onConfigOptionChange}
+            />
+          </div>
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
   )

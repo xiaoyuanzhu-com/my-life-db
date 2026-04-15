@@ -169,6 +169,10 @@ export function useAgentWebSocket({
     send({ type: "session.setModel", modelId })
   }, [send])
 
+  const sendSetConfigOption = useCallback((configId: string, configValue: string) => {
+    send({ type: "session.setConfigOption", configId, configValue })
+  }, [send])
+
   useEffect(() => {
     if (!enabled || !sessionId) return
 
@@ -233,5 +237,5 @@ export function useAgentWebSocket({
     }
   }, [sessionId, token, enabled])
 
-  return { connected, sendPrompt, sendCancel, sendKill, sendPermissionResponse, sendSetMode, sendSetModel }
+  return { connected, sendPrompt, sendCancel, sendKill, sendPermissionResponse, sendSetMode, sendSetModel, sendSetConfigOption }
 }

@@ -56,11 +56,15 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 		agentTypeStr = "claude_code"
 	}
 
-	// Use requested model, or fall back to first from AGENT_MODELS config
-	model := req.Model
-	if model == "" {
-		if models := h.server.Cfg().AgentLLM.Models; len(models) > 0 {
-			model = models[0].ID
+	// Use requested model, or fall back to first from AGENT_MODELS config.
+	// Only applicable to Claude Code — Codex manages its own models via configOptions.
+	var model string
+	if agentTypeStr != "codex" {
+		model = req.Model
+		if model == "" {
+			if models := h.server.Cfg().AgentLLM.Models; len(models) > 0 {
+				model = models[0].ID
+			}
 		}
 	}
 

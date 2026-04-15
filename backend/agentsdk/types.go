@@ -190,6 +190,11 @@ type Session interface {
 	// SetModel changes the active model for this session.
 	SetModel(ctx context.Context, modelID string) error
 
+	// SetConfigOption sets a generic config option by ID and value.
+	// This is the unified ACP mechanism used by agents like Codex that
+	// report configOptions instead of separate mode/model concepts.
+	SetConfigOption(ctx context.Context, configID string, value string) error
+
 	// Stop cancels the current operation (SIGINT). Agent stays alive.
 	Stop() error
 
