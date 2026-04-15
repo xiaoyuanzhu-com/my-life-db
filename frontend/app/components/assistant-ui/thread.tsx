@@ -35,9 +35,7 @@ import { PlanView } from "~/components/agent/plan-view";
 import { AgentWIP } from "~/components/agent/agent-wip";
 import { PermissionCard } from "~/components/agent/permission-card";
 import { FolderPicker } from "~/components/agent/folder-picker";
-import { PermissionModeSelector, type PermissionMode } from "~/components/agent/permission-mode-selector";
 import { AgentTypeSelector, type AgentType } from "~/components/agent/agent-type-selector";
-import { ModelSelector } from "~/components/agent/model-selector";
 import { ConfigOptionSelector } from "~/components/agent/config-option-selector";
 import { SlashCommandPopover } from "~/components/agent/slash-command-popover";
 import { FileTagPopover } from "~/components/agent/file-tag-popover";
@@ -313,17 +311,10 @@ const DraftPersistenceSync: FC = () => {
 const ComposerOptionsMenu: FC = () => {
   const {
     agentType, onAgentTypeChange,
-    currentModel, availableModels, onModelChange,
-    permissionMode, availableModes, onPermissionModeChange,
     configOptions, onConfigOptionChange,
     sessionId,
   } = useAgentContext()
   const hasActiveSession = !!sessionId
-
-  // Config options not already covered by the model/mode selectors
-  const extraConfigOptions = configOptions?.filter(
-    (opt) => opt.category !== "mode" && opt.category !== "model"
-  ) ?? []
 
   return (
     <DropdownMenu>
@@ -347,28 +338,7 @@ const ComposerOptionsMenu: FC = () => {
             />
           </div>
         )}
-        {currentModel !== undefined && availableModels && availableModels.length > 0 && (
-          <div className="flex items-center justify-between px-2 py-1.5 gap-4">
-            <span className="text-xs text-muted-foreground shrink-0">Model</span>
-            <ModelSelector
-              value={currentModel}
-              models={availableModels}
-              onChange={onModelChange ? (m) => onModelChange(m) : () => {}}
-              disabled={!onModelChange}
-            />
-          </div>
-        )}
-        {permissionMode !== undefined && availableModes && availableModes.length > 0 && onPermissionModeChange && (
-          <div className="flex items-center justify-between px-2 py-1.5 gap-4">
-            <span className="text-xs text-muted-foreground shrink-0">Permission</span>
-            <PermissionModeSelector
-              value={permissionMode as PermissionMode}
-              modes={availableModes}
-              onChange={(m) => onPermissionModeChange(m)}
-            />
-          </div>
-        )}
-        {extraConfigOptions.map((opt) => (
+        {configOptions?.map((opt) => (
           <div key={opt.id} className="flex items-center justify-between px-2 py-1.5 gap-4">
             <span className="text-xs text-muted-foreground shrink-0">{opt.name}</span>
             <ConfigOptionSelector

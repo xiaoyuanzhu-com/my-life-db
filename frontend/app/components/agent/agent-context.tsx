@@ -1,12 +1,12 @@
 /**
  * AgentContext — React context that exposes ACP-specific state and functions
- * (permissions, plan entries, connection status, sendSetMode) to deeply nested
+ * (permissions, plan entries, connection status, config options) to deeply nested
  * components without prop drilling.
  */
 import { createContext, useContext } from "react"
 import type { ThreadMessageLike } from "@assistant-ui/react"
 import type { PermissionOption } from "~/hooks/use-agent-websocket"
-import type { PlanEntry, AvailableMode, AvailableModel, ConfigOption } from "~/hooks/use-agent-runtime"
+import type { PlanEntry, ConfigOption } from "~/hooks/use-agent-runtime"
 
 export interface PendingPermissionEntry {
   toolName: string
@@ -22,25 +22,15 @@ export interface AgentContextValue {
   connected: boolean
   /** Plan entries from the agent runtime */
   planEntries: PlanEntry[]
-  /** Send a setMode command to the agent */
-  sendSetMode: (mode: string) => void
   /** Composer controls — working directory */
   workingDir?: string
   onWorkingDirChange?: (path: string) => void
-  /** Composer controls — permission mode */
-  permissionMode?: string
-  availableModes?: AvailableMode[]
-  onPermissionModeChange?: (mode: string) => void
   /** Composer controls — agent type */
   agentType?: string
   onAgentTypeChange?: (type: string) => void
-  /** Composer controls — model */
-  currentModel?: string
-  availableModels?: AvailableModel[]
-  onModelChange?: (model: string) => void
-  /** ACP config options from the agent (generic selectors for model, reasoning_effort, etc.) */
+  /** Unified config options (model, mode, reasoning_effort, etc.) */
   configOptions?: ConfigOption[]
-  /** Send a config option change to the agent */
+  /** Send a config option change */
   onConfigOptionChange?: (configId: string, value: string) => void
   /** Session metadata (commands, models, etc.) */
   sessionCommands?: Array<{ name: string; description?: string }>

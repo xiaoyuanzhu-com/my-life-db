@@ -2,8 +2,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import { ThreadList } from '~/components/assistant-ui/thread-list'
-import type { PermissionMode } from '~/components/agent/permission-mode-selector'
 import { DEFAULT_MODES, type AgentType } from '~/components/agent/agent-type-selector'
+import type { ConfigOption } from '~/hooks/use-agent-runtime'
 import { AgentChat } from '~/components/agent/agent-chat'
 import { AgentContextProvider } from '~/components/agent/agent-context'
 import { useAgentRuntime } from '~/hooks/use-agent-runtime'
@@ -224,13 +224,6 @@ export default function AgentPage() {
   // - Stored locally until session is created
   // - Changing this does NOT create a session or send any request
   // - Passed to createSessionWithMessage API when user sends first message
-  const [newSessionPermissionMode, setNewSessionPermissionMode] = useState<PermissionMode>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('agent-permission-mode')
-      if (saved) return saved
-    }
-    return 'default'
-  })
   // Agent type for new session
   const [newSessionAgentType, setNewSessionAgentType] = useState<AgentType>(() => {
     if (typeof window !== 'undefined') {
@@ -242,23 +235,57 @@ export default function AgentPage() {
     return 'claude_code'
   })
 
-  // Server-managed model list (from AGENT_MODELS env var via /api/agent/config)
-  const [serverModels, setServerModels] = useState<Array<{id: string, name: string, description: string}>>([])
-  // Model for new session (before creation)
-  const [newSessionModel, setNewSessionModel] = useState<string>('')
+  // Per-agent-type user-preferred defaults for new sessions (configId → value)
+  const [newSessionDefaults, setNewSessionDefaults] = useState<Record<string, Record<string, string>>>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('agent-session-defaults')
+      if (saved) {
+        try { return JSON.parse(saved) } catch { /* ignore */ }
+      }
+    }
+    return { claude_code: { mode: 'default' }, codex: {} }
+  })
+
+  // Per-agent-type cached available config options (populated from server config + active sessions)
+  const [cachedConfigOptions, setCachedConfigOptions] = useState<Record<string, ConfigOption[]>>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('agent-config-cache')
+      if (saved) {
+        try { return JSON.parse(saved) } catch { /* ignore */ }
+      }
+    }
+    return {}
+  })
+
+  // Fetch server-managed model list and build Claude Code config options
   useEffect(() => {
     fetch('/api/agent/config')
       .then(res => res.json())
       .then(data => {
         if (data.models && data.models.length > 0) {
-          setServerModels(data.models)
-          // Initialize new session model from localStorage or first available model
-          const saved = localStorage.getItem('agent-model')
-          if (saved && data.models.some((m: { id: string }) => m.id === saved)) {
-            setNewSessionModel(saved)
-          } else {
-            setNewSessionModel(data.models[0].id)
+          const options: ConfigOption[] = []
+          // Model config option from AGENT_MODELS
+          options.push({
+            id: 'model',
+            category: 'model',
+            name: 'Model',
+            currentValue: data.models[0].id,
+            options: data.models.map((m: { id: string; name: string; description: string }) => ({
+              value: m.id, name: m.name, description: m.description,
+            })),
+          })
+          // Mode config option from DEFAULT_MODES
+          const modes = DEFAULT_MODES.claude_code
+          if (modes.length > 0) {
+            options.push({
+              id: 'mode',
+              category: 'mode',
+              name: 'Permission',
+              currentValue: 'default',
+              options: modes.map(m => ({ value: m.id, name: m.name, description: m.description })),
+            })
           }
+          setCachedConfigOptions(prev => ({ ...prev, claude_code: options }))
         }
       })
       .catch(() => {}) // silently ignore — self-hosted may not have models configured
@@ -296,22 +323,18 @@ export default function AgentPage() {
     localStorage.setItem('agent-session-filter', statusFilter)
   }, [statusFilter])
 
-  // Persist permission mode to localStorage
-  useEffect(() => {
-    localStorage.setItem('agent-permission-mode', newSessionPermissionMode)
-  }, [newSessionPermissionMode])
-
   // Persist agent type to localStorage
   useEffect(() => {
     localStorage.setItem('mld-agent-type', newSessionAgentType)
   }, [newSessionAgentType])
 
-  // Persist model to localStorage
+  // Persist session defaults and config cache to localStorage
   useEffect(() => {
-    if (newSessionModel) {
-      localStorage.setItem('agent-model', newSessionModel)
-    }
-  }, [newSessionModel])
+    localStorage.setItem('agent-session-defaults', JSON.stringify(newSessionDefaults))
+  }, [newSessionDefaults])
+  useEffect(() => {
+    localStorage.setItem('agent-config-cache', JSON.stringify(cachedConfigOptions))
+  }, [cachedConfigOptions])
 
   // Persist sidebar collapsed state
   useEffect(() => {
@@ -328,18 +351,6 @@ export default function AgentPage() {
       panel.expand()
     }
   }, [isSidebarCollapsed])
-
-  // Sync permission mode from localStorage when returning to new-session view
-  // (mode may have been changed inside an active session's ChatInterface)
-  useEffect(() => {
-    if (!activeSessionId) {
-      const saved = localStorage.getItem('agent-permission-mode') as PermissionMode | null
-      if (saved && saved !== newSessionPermissionMode) {
-        setNewSessionPermissionMode(saved)
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only sync when activeSessionId changes
-  }, [activeSessionId])
 
   // Reset resultCount when session changes
   useEffect(() => {
@@ -652,13 +663,14 @@ export default function AgentPage() {
 
     setIsCreatingSession(true)
     try {
+      const defaults = newSessionDefaults[newSessionAgentType] ?? {}
       const response = await api.post('/api/agent/sessions', {
         title: message,
         message: message,
         workingDir: newSessionWorkingDir,
-        permissionMode: newSessionPermissionMode,
+        permissionMode: defaults.mode || undefined,
         agentType: newSessionAgentType,
-        model: newSessionAgentType !== 'codex' ? (newSessionModel || undefined) : undefined,
+        model: defaults.model || undefined,
       })
 
       if (!response.ok) {
@@ -674,7 +686,7 @@ export default function AgentPage() {
         lastActivity: Date.now(),
         lastUserActivity: Date.now(),
         sessionState: 'idle',
-        permissionMode: newSessionPermissionMode,
+        permissionMode: defaults.mode || 'default',
         agentType: session.agentType ?? newSessionAgentType,
       }
 
@@ -801,7 +813,7 @@ export default function AgentPage() {
       ? effectiveActiveSession.agentType
       : undefined
   const onSendForRuntime = !hasActiveSession ? createSessionWithMessage : undefined
-  const { runtime, connected, sessionMeta, pendingPermissions, planEntries, sendPermissionResponse, sendSetMode, sendSetModel, sendSetConfigOption, historyLoadError, sessionError, subagentChildrenMap, pendingComposerText, clearPendingComposerText } =
+  const { runtime, connected, sessionMeta, pendingPermissions, planEntries, sendPermissionResponse, sendSetConfigOption, historyLoadError, sessionError, subagentChildrenMap, pendingComposerText, clearPendingComposerText } =
     useAgentRuntime({
       sessionId: activeSessionId || "",
       token: "",
@@ -816,6 +828,24 @@ export default function AgentPage() {
       onUnarchiveThread: unarchiveSession,
       onDeleteThread: () => {},
     })
+
+  // Cache configOptions from active sessions so new sessions of the same type
+  // can show the same options. This is especially important for Codex, whose
+  // model and reasoning_effort options are only known after a session starts.
+  useEffect(() => {
+    if (!sessionMeta?.configOptions || !activeSessionAgentType) return
+    setCachedConfigOptions(prev => ({ ...prev, [activeSessionAgentType]: sessionMeta.configOptions! }))
+  }, [sessionMeta?.configOptions, activeSessionAgentType])
+
+  // Build effective configOptions for new sessions: cached options with user-preferred values
+  const newSessionConfigOptions = useMemo(() => {
+    const cached = cachedConfigOptions[newSessionAgentType] ?? []
+    const defaults = newSessionDefaults[newSessionAgentType] ?? {}
+    return cached.map(opt => ({
+      ...opt,
+      currentValue: defaults[opt.id] ?? opt.currentValue,
+    }))
+  }, [cachedConfigOptions, newSessionAgentType, newSessionDefaults])
 
   // Show loading state while checking authentication
   if (authLoading || loading) {
@@ -844,60 +874,29 @@ export default function AgentPage() {
   }
 
   // Shared context value for AgentContextProvider — keeps the reference stable
-  // Server-configured models (from AGENT_MODELS) only apply to Claude Code.
-  // Codex reports its own models via configOptions.
-  const effectiveAgentType = activeSessionAgentType ?? newSessionAgentType
-  const effectiveIsClaudeCode = effectiveAgentType !== 'codex'
-
   // across the multiple conditional render branches below.
   const agentContextValue = {
     sendPermissionResponse,
     pendingPermissions,
     connected,
     planEntries,
-    sendSetMode,
     workingDir: hasActiveSession ? (effectiveActiveSession?.workingDir ?? newSessionWorkingDir) : newSessionWorkingDir,
     onWorkingDirChange: hasActiveSession
       ? undefined
       : setNewSessionWorkingDir,
-    permissionMode: hasActiveSession ? (sessionMeta?.mode ?? newSessionPermissionMode) : newSessionPermissionMode,
-    availableModes: hasActiveSession
-      ? sessionMeta?.availableModes ?? DEFAULT_MODES[newSessionAgentType as AgentType]
-      : DEFAULT_MODES[newSessionAgentType as AgentType],
-    onPermissionModeChange: (mode: string) => {
-      if (hasActiveSession) {
-        sendSetMode(mode)
-      } else {
-        setNewSessionPermissionMode(mode as PermissionMode)
-      }
-    },
     agentType: activeSessionAgentType ?? newSessionAgentType,
     onAgentTypeChange: hasActiveSession
       ? undefined
-      : (type: string) => {
-          const newType = type as AgentType
-          setNewSessionAgentType(newType)
-          // Reset mode if current selection isn't valid for the new agent type
-          const modes = DEFAULT_MODES[newType] ?? []
-          if (modes.length > 0 && !modes.some((m) => m.id === newSessionPermissionMode)) {
-            setNewSessionPermissionMode('default')
-          }
-        },
-    currentModel: hasActiveSession
-      ? (sessionMeta?.currentModel ?? (effectiveIsClaudeCode && serverModels.length > 0 ? serverModels[0].id : undefined))
-      : (effectiveIsClaudeCode ? (newSessionModel || (serverModels.length > 0 ? serverModels[0].id : undefined)) : undefined),
-    availableModels: hasActiveSession
-      ? (serverModels.length > 0 && effectiveIsClaudeCode ? serverModels : sessionMeta?.availableModels)
-      : (effectiveIsClaudeCode && serverModels.length > 0 ? serverModels : undefined),
-    onModelChange: hasActiveSession
-      ? (model: string) => sendSetConfigOption("model", model)
-      : effectiveIsClaudeCode && serverModels.length > 0
-        ? (model: string) => setNewSessionModel(model)
-        : undefined,
-    configOptions: sessionMeta?.configOptions,
+      : (type: string) => setNewSessionAgentType(type as AgentType),
+    configOptions: hasActiveSession ? sessionMeta?.configOptions : newSessionConfigOptions,
     onConfigOptionChange: hasActiveSession
       ? (configId: string, value: string) => sendSetConfigOption(configId, value)
-      : undefined,
+      : (configId: string, value: string) => {
+          setNewSessionDefaults(prev => ({
+            ...prev,
+            [newSessionAgentType]: { ...(prev[newSessionAgentType] ?? {}), [configId]: value },
+          }))
+        },
     sessionCommands: sessionMeta?.commands,
     sessionId: activeSessionId || "",
     hasActiveSession,
