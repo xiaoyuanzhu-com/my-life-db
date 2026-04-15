@@ -55,24 +55,15 @@ func (h *Handlers) Summarize(c *gin.Context) {
 
 	cfg := config.Get()
 
-	// Determine LLM endpoint: proxy or direct
+	// Determine LLM endpoint
 	var apiURL, apiKey, model string
-	if proxy := h.server.LLMProxy(); proxy != nil && proxy.Token() != "" && (cfg.LLMOpenAIKey != "" || cfg.OpenAIAPIKey != "") {
-		// Use LLM proxy
-		apiURL = fmt.Sprintf("http://localhost:%d/api/openai/v1/chat/completions", cfg.Port)
-		apiKey = proxy.Token()
-		model = cfg.OpenAIModel
-		if model == "" {
-			model = "gpt-4o-mini"
-		}
-	} else if cfg.OpenAIAPIKey != "" {
-		// Direct OpenAI fallback
+	if cfg.OpenAIAPIKey != "" {
 		apiURL = cfg.OpenAIBaseURL + "/chat/completions"
 		apiKey = cfg.OpenAIAPIKey
 		model = cfg.OpenAIModel
 	} else {
 		c.JSON(http.StatusServiceUnavailable, gin.H{
-			"error": "No LLM provider configured. Set MLD_LLM_OPENAI_KEY or OPENAI_API_KEY.",
+			"error": "No LLM provider configured. Set OPENAI_API_KEY.",
 		})
 		return
 	}

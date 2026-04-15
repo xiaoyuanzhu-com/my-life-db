@@ -23,7 +23,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/explore"
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
 	"github.com/xiaoyuanzhu-com/my-life-db/hooks"
-	"github.com/xiaoyuanzhu-com/my-life-db/llm"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 	"github.com/xiaoyuanzhu-com/my-life-db/skills"
@@ -43,7 +42,6 @@ type Server struct {
 	meiliIndexer    *meiliworker.Indexer
 	notifService    *notifications.Service
 	agent               *agent.Agent
-	llmProxy        *llm.Proxy
 	agentClient     *agentsdk.Client
 	agentApps       *agentapps.Service
 	explore         *explore.Service
@@ -100,22 +98,18 @@ func New(cfg *Config) (*Server, error) {
 	// 1.5.1. Initialize explore service
 	s.explore = explore.NewService(cfg.UserDataDir)
 
-	// 1.6. Initialize LLM proxy
-	s.llmProxy = llm.NewProxy(cfg.LLM)
-	if cfg.LLM.HasAnthropic() || cfg.LLM.HasOpenAI() {
-		log.Info().
-			Bool("anthropic", cfg.LLM.HasAnthropic()).
-			Bool("openai", cfg.LLM.HasOpenAI()).
-			Msg("LLM proxy initialized")
-	}
-
 	// 1.6. Initialize Agent Client (ACP-based)
 	{
 		ccEnv := map[string]string{}
-		if cfg.LLM.HasAnthropic() {
-			ccEnv["ANTHROPIC_BASE_URL"] = fmt.Sprintf("http://localhost:%d/api/anthropic", cfg.Port)
-			ccEnv["ANTHROPIC_API_KEY"] = "dummy"
-			ccEnv["MLD_PROXY_TOKEN"] = s.llmProxy.Token()
+		codexEnv := map[string]string{}
+		if cfg.AgentLLM.HasAgentLLM() {
+			ccEnv["ANTHROPIC_BASE_URL"] = cfg.AgentLLM.BaseURL
+			ccEnv["ANTHROPIC_API_KEY"] = cfg.AgentLLM.APIKey
+			if cfg.AgentLLM.CustomerID != "" {
+				ccEnv["ANTHROPIC_CUSTOM_HEADERS"] = "x-litellm-customer-id: " + cfg.AgentLLM.CustomerID
+			}
+			codexEnv["OPENAI_BASE_URL"] = cfg.AgentLLM.BaseURL
+			codexEnv["OPENAI_API_KEY"] = cfg.AgentLLM.APIKey
 		}
 
 		ccAgent := agentsdk.AgentConfig{
@@ -129,6 +123,7 @@ func New(cfg *Config) (*Server, error) {
 			Name:     "Codex",
 			Command:  "codex-acp",
 			CleanEnv: true,
+			Env:      codexEnv,
 		}
 
 		// Build MCP servers to pass via ACP (no .mcp.json discovery needed)
@@ -158,11 +153,11 @@ func New(cfg *Config) (*Server, error) {
 			SystemPrompt: buildAgentSystemPrompt(cfg.UserDataDir),
 			McpServers:   mcpServers,
 		}, ccAgent, codexAgent)
-		s.agentClient.SetProxyBaseURL(fmt.Sprintf("http://localhost:%d", cfg.Port))
 		s.agentClient.StartPool(ctx, agentsdk.AgentClaudeCode, 3)
 
 		log.Info().
-			Bool("llm_proxy", cfg.LLM.HasAnthropic() || cfg.LLM.HasOpenAI()).
+			Bool("agent_llm", cfg.AgentLLM.HasAgentLLM()).
+			Int("agent_models", len(cfg.AgentLLM.Models)).
 			Int("mcp_servers", len(mcpServers)).
 			Msg("agent client initialized")
 	}
@@ -217,17 +212,7 @@ func New(cfg *Config) (*Server, error) {
 	if cfg.InboxAgentEnabled {
 		log.Info().Msg("initializing inbox agent")
 		appClient := appclient.NewLocalClient(s.database.Conn(), s.fsService)
-
-		// Use LLM proxy if configured, otherwise fall back to direct OpenAI
-		var llmClient agent.LLMClient
-		if cfg.LLM.HasOpenAI() {
-			proxyURL := fmt.Sprintf("http://localhost:%d", cfg.Port)
-			llmClient = agent.NewProxyLLMClient(proxyURL, s.llmProxy.Token(), cfg.OpenAIModel)
-			log.Info().Msg("inbox agent using LLM proxy")
-		} else {
-			llmClient = agent.NewOpenAILLMClient()
-			log.Info().Msg("inbox agent using direct OpenAI")
-		}
+		llmClient := agent.NewOpenAILLMClient()
 		s.agent = agent.NewAgent(appClient, llmClient)
 	} else {
 		log.Info().Msg("inbox agent disabled")
@@ -529,7 +514,6 @@ func (s *Server) MeiliSync() *meiliworker.SyncWorker          { return s.meiliSy
 func (s *Server) MeiliIndexer() *meiliworker.Indexer          { return s.meiliIndexer }
 func (s *Server) Notifications() *notifications.Service       { return s.notifService }
 func (s *Server) Agent() *agent.Agent                         { return s.agent }
-func (s *Server) LLMProxy() *llm.Proxy                        { return s.llmProxy }
 func (s *Server) AgentClient() *agentsdk.Client                { return s.agentClient }
 func (s *Server) AgentApps() *agentapps.Service                 { return s.agentApps }
 func (s *Server) Explore() *explore.Service                      { return s.explore }
@@ -537,6 +521,7 @@ func (s *Server) HookRegistry() *hooks.Registry                  { return s.hook
 func (s *Server) FSHook() *hooks.FSHook                          { return s.fsHook }
 func (s *Server) AgentRunner() *agentrunner.Runner               { return s.agentRunner }
 func (s *Server) MCPToken() string                            { return s.mcpToken }
+func (s *Server) Cfg() *Config                               { return s.cfg }
 func (s *Server) Router() *gin.Engine                         { return s.router }
 func (s *Server) ShutdownContext() context.Context            { return s.shutdownCtx }
 

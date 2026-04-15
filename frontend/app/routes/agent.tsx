@@ -242,6 +242,19 @@ export default function AgentPage() {
     return 'claude_code'
   })
 
+  // Server-managed model list (from AGENT_MODELS env var via /api/agent/config)
+  const [serverModels, setServerModels] = useState<Array<{id: string, name: string, description: string}>>([])
+  useEffect(() => {
+    fetch('/api/agent/config')
+      .then(res => res.json())
+      .then(data => {
+        if (data.models && data.models.length > 0) {
+          setServerModels(data.models)
+        }
+      })
+      .catch(() => {}) // silently ignore — self-hosted may not have models configured
+  }, [])
+
   // Result count — increments on each agent session update, used as refreshKey for changed files popover
   const [resultCount, setResultCount] = useState(0)
 
@@ -848,8 +861,8 @@ export default function AgentPage() {
             setNewSessionPermissionMode('default')
           }
         },
-    currentModel: sessionMeta?.currentModel,
-    availableModels: sessionMeta?.availableModels,
+    currentModel: sessionMeta?.currentModel ?? (serverModels.length > 0 ? serverModels[0].id : undefined),
+    availableModels: serverModels.length > 0 ? serverModels : sessionMeta?.availableModels,
     onModelChange: hasActiveSession
       ? (model: string) => sendSetModel(model)
       : undefined,

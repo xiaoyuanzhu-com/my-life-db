@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -19,7 +20,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/api"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
-	"github.com/xiaoyuanzhu-com/my-life-db/llm"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/server"
 	"github.com/xiaoyuanzhu-com/my-life-db/vendors"
@@ -49,22 +49,22 @@ func main() {
 		OpenAIAPIKey:     cfg.OpenAIAPIKey,
 		OpenAIBaseURL:    cfg.OpenAIBaseURL,
 		OpenAIModel:      cfg.OpenAIModel,
-		LLM: llm.Config{
-			Anthropic: llm.ProviderConfig{
-				APIKey:  cfg.LLMAnthropicKey,
-				BaseURL: cfg.LLMAnthropicURL,
-			},
-			OpenAI: llm.ProviderConfig{
-				APIKey:  cfg.LLMOpenAIKey,
-				BaseURL: cfg.LLMOpenAIURL,
-			},
-		},
+		AgentLLM: func() server.AgentLLMConfig {
+			var agentModels []server.AgentModelInfo
+			if cfg.AgentModels != "" {
+				if err := json.Unmarshal([]byte(cfg.AgentModels), &agentModels); err != nil {
+					log.Warn().Err(err).Msg("failed to parse AGENT_MODELS, ignoring")
+				}
+			}
+			return server.AgentLLMConfig{
+				BaseURL:    cfg.AgentBaseURL,
+				APIKey:     cfg.AgentAPIKey,
+				CustomerID: cfg.AgentCustomerID,
+				Models:     agentModels,
+			}
+		}(),
 		InboxAgentEnabled: cfg.InboxAgentEnabled,
 	}
-
-	// Generate ephemeral proxy token (LLM config loaded from env,
-	// but token is generated fresh each startup)
-	serverCfg.LLM.ProxyToken = llm.GenerateToken()
 
 	// Create server
 	srv, err := server.New(serverCfg)

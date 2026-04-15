@@ -5,7 +5,6 @@ import (
 
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
-	"github.com/xiaoyuanzhu-com/my-life-db/llm"
 	"github.com/xiaoyuanzhu-com/my-life-db/workers/digest"
 )
 
@@ -38,8 +37,8 @@ type Config struct {
 	MeiliAPIKey string
 	MeiliIndex  string
 
-	// LLM proxy
-	LLM llm.Config
+	// Agent LLM
+	AgentLLM AgentLLMConfig
 
 	// Feature flags
 	InboxAgentEnabled bool
@@ -91,5 +90,25 @@ func (c *Config) ToDigestConfig() digest.Config {
 		OpenAIBaseURL:    c.OpenAIBaseURL,
 		OpenAIModel:      c.OpenAIModel,
 	}
+}
+
+// AgentLLMConfig holds configuration for the agent LLM gateway.
+type AgentLLMConfig struct {
+	BaseURL    string
+	APIKey     string
+	CustomerID string
+	Models     []AgentModelInfo
+}
+
+// AgentModelInfo describes an available model from the LLM gateway.
+type AgentModelInfo struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+// HasAgentLLM returns true if an agent LLM gateway is configured.
+func (c *AgentLLMConfig) HasAgentLLM() bool {
+	return c.BaseURL != ""
 }
 

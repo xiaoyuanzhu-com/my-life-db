@@ -130,6 +130,7 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 	agentRoutes := r.Group("/api/agent")
 	agentRoutes.Use(wsAuth)
 	{
+		agentRoutes.GET("/config", h.GetAgentConfig)
 		agentRoutes.GET("/info", h.GetAgentInfo)
 		agentRoutes.GET("/sessions", h.GetAgentSessions)
 		agentRoutes.GET("/sessions/all", h.GetAgentSessions)
@@ -146,13 +147,6 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		agentRoutes.DELETE("/sessions/:id/share", h.UnshareAgentSession)
 	}
 	r.GET("/api/agent/sessions/:id/subscribe", wsAuth, h.AgentSessionWebSocket)
-
-	// LLM proxy routes (token-authenticated, used by agent CLIs)
-	if proxy := h.server.LLMProxy(); proxy != nil {
-		r.Any("/api/anthropic/*path", gin.WrapH(proxy.AnthropicHandler()))
-		r.Any("/api/openai/*path", gin.WrapH(proxy.OpenAIHandler()))
-		r.GET("/api/llm/v1/models", gin.WrapH(proxy.ModelsHandler()))
-	}
 
 	// Explore routes
 	api.GET("/explore/posts", h.GetExplorePosts)

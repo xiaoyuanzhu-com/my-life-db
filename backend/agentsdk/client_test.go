@@ -119,14 +119,6 @@ func TestClient_UnknownAgent_ReturnsError(t *testing.T) {
 	}
 }
 
-func TestClient_SetProxyBaseURL(t *testing.T) {
-	client := NewClient(SessionConfig{})
-	client.SetProxyBaseURL("http://localhost:8080")
-	if client.proxyBaseURL != "http://localhost:8080" {
-		t.Errorf("proxyBaseURL = %q, want http://localhost:8080", client.proxyBaseURL)
-	}
-}
-
 func TestAgentError_Format(t *testing.T) {
 	err := &AgentError{
 		Type:    ErrAgentCrash,

@@ -12,9 +12,8 @@ import (
 // Client is the entry point for all agent interactions.
 // It wraps ACP connections with MyLifeDB-specific concerns.
 type Client struct {
-	agents       map[AgentType]AgentConfig
-	defaults     SessionConfig
-	proxyBaseURL string
+	agents   map[AgentType]AgentConfig
+	defaults SessionConfig
 
 	mu     sync.Mutex
 	active map[string]Session // sessionID → Session
@@ -34,9 +33,6 @@ func NewClient(defaults SessionConfig, agents ...AgentConfig) *Client {
 		active:   make(map[string]Session),
 	}
 }
-
-// SetProxyBaseURL sets the LLM proxy base URL for Complete() calls.
-func (c *Client) SetProxyBaseURL(url string) { c.proxyBaseURL = url }
 
 // StartPool begins pre-warming ACP connections for the given agent type.
 // Call this once during server startup. poolSize=0 uses the default (3).
