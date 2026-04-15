@@ -771,7 +771,7 @@ export default function AgentPage() {
       ? effectiveActiveSession.agentType
       : undefined
   const onSendForRuntime = !hasActiveSession ? createSessionWithMessage : undefined
-  const { runtime, connected, sessionMeta, pendingPermissions, planEntries, sendPermissionResponse, sendSetMode, historyLoadError, sessionError, subagentChildrenMap, pendingComposerText, clearPendingComposerText } =
+  const { runtime, connected, sessionMeta, pendingPermissions, planEntries, sendPermissionResponse, sendSetMode, sendSetModel, historyLoadError, sessionError, subagentChildrenMap, pendingComposerText, clearPendingComposerText } =
     useAgentRuntime({
       sessionId: activeSessionId || "",
       token: "",
@@ -848,6 +848,11 @@ export default function AgentPage() {
             setNewSessionPermissionMode('default')
           }
         },
+    currentModel: sessionMeta?.currentModel,
+    availableModels: sessionMeta?.availableModels,
+    onModelChange: hasActiveSession
+      ? (model: string) => sendSetModel(model)
+      : undefined,
     sessionCommands: sessionMeta?.commands,
     sessionId: activeSessionId || "",
     hasActiveSession,

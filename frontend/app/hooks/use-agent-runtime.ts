@@ -63,11 +63,17 @@ export interface AvailableMode {
   description: string
 }
 
+export interface AvailableModel {
+  id: string
+  name: string
+  description: string
+}
+
 export interface SessionMeta {
   mode?: string
   availableModes?: AvailableMode[]
   currentModel?: string
-  availableModels?: unknown[]
+  availableModels?: AvailableModel[]
   commands?: unknown[]
 }
 
@@ -891,7 +897,7 @@ export function useAgentRuntime(options: {
 
         case "session.modelsUpdate": {
           // Legacy synthesized frame — kept for backward compatibility
-          const f = frame as AcpFrame & { modelId?: string; availableModels?: unknown[] }
+          const f = frame as AcpFrame & { modelId?: string; availableModels?: AvailableModel[] }
           const update: Partial<SessionMeta> = {}
           if (f.modelId) update.currentModel = f.modelId
           if (f.availableModels) update.availableModels = f.availableModels
@@ -911,7 +917,7 @@ export function useAgentRuntime(options: {
 
   // ── WebSocket Connection ──────────────────────────────────────────
 
-  const { connected, sendPrompt, sendCancel, sendKill, sendPermissionResponse, sendSetMode } =
+  const { connected, sendPrompt, sendCancel, sendKill, sendPermissionResponse, sendSetMode, sendSetModel } =
     useAgentWebSocket({
       sessionId,
       token,
@@ -1131,6 +1137,7 @@ export function useAgentRuntime(options: {
     planEntries,
     sendPermissionResponse: handlePermissionResponse,
     sendSetMode,
+    sendSetModel,
     historyLoadError,
     sessionError,
     subagentChildrenMap,

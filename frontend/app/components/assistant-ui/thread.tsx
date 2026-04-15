@@ -23,7 +23,7 @@ import {
   SquareIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState, type FC } from "react";
-import type { PlanEntry, AvailableMode } from "~/hooks/use-agent-runtime";
+import type { PlanEntry } from "~/hooks/use-agent-runtime";
 import { useHasTouch } from "~/hooks/use-has-touch";
 
 // Our custom message components (with tool dispatch, markdown, reasoning, etc.)
@@ -37,6 +37,7 @@ import { PermissionCard } from "~/components/agent/permission-card";
 import { FolderPicker } from "~/components/agent/folder-picker";
 import { PermissionModeSelector, type PermissionMode } from "~/components/agent/permission-mode-selector";
 import { AgentTypeSelector, type AgentType } from "~/components/agent/agent-type-selector";
+import { ModelSelector } from "~/components/agent/model-selector";
 import { SlashCommandPopover } from "~/components/agent/slash-command-popover";
 import { FileTagPopover } from "~/components/agent/file-tag-popover";
 import { ChangedFilesPopover } from "~/components/agent/changed-files-popover";
@@ -308,23 +309,13 @@ const DraftPersistenceSync: FC = () => {
   return null;
 };
 
-const ComposerOptionsMenu: FC<{
-  agentType?: string
-  onAgentTypeChange?: (type: string) => void
-  permissionMode?: string
-  availableModes?: AvailableMode[]
-  onPermissionModeChange?: (mode: string) => void
-  sessionId?: string
-  resultCount?: number
-}> = ({
-  agentType,
-  onAgentTypeChange,
-  permissionMode,
-  availableModes,
-  onPermissionModeChange,
-  sessionId,
-  resultCount,
-}) => {
+const ComposerOptionsMenu: FC = () => {
+  const {
+    agentType, onAgentTypeChange,
+    currentModel, availableModels, onModelChange,
+    permissionMode, availableModes, onPermissionModeChange,
+    sessionId,
+  } = useAgentContext()
   const hasActiveSession = !!sessionId
   return (
     <DropdownMenu>
@@ -345,6 +336,17 @@ const ComposerOptionsMenu: FC<{
               value={agentType as AgentType}
               onChange={onAgentTypeChange ? (t) => onAgentTypeChange(t) : () => {}}
               disabled={!onAgentTypeChange || hasActiveSession}
+            />
+          </div>
+        )}
+        {currentModel !== undefined && availableModels && availableModels.length > 0 && (
+          <div className="flex items-center justify-between px-2 py-1.5 gap-4">
+            <span className="text-xs text-muted-foreground shrink-0">Model</span>
+            <ModelSelector
+              value={currentModel}
+              models={availableModels}
+              onChange={onModelChange ? (m) => onModelChange(m) : () => {}}
+              disabled={!onModelChange}
             />
           </div>
         )}
@@ -370,8 +372,6 @@ const Composer: FC = () => {
   const {
     connected,
     workingDir, onWorkingDirChange,
-    permissionMode, availableModes, onPermissionModeChange,
-    agentType, onAgentTypeChange,
     sessionCommands,
     sessionId,
     hasActiveSession,
@@ -433,15 +433,7 @@ const Composer: FC = () => {
           />
           <div className="aui-composer-action-wrapper relative flex items-center justify-between">
             <div className="flex items-center gap-1">
-              <ComposerOptionsMenu
-                agentType={agentType}
-                onAgentTypeChange={onAgentTypeChange}
-                permissionMode={permissionMode}
-                availableModes={availableModes}
-                onPermissionModeChange={onPermissionModeChange}
-                sessionId={sessionId}
-                resultCount={resultCount}
-              />
+              <ComposerOptionsMenu />
               {workingDir !== undefined && (
                 <>
                   <FolderPicker
