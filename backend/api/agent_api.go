@@ -44,6 +44,7 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 		WorkingDir     string `json:"workingDir"`
 		AgentType      string `json:"agentType"`
 		PermissionMode string `json:"permissionMode"`
+		Model          string `json:"model"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -55,10 +56,12 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 		agentTypeStr = "claude_code"
 	}
 
-	// Default model from AGENT_MODELS config
-	var defaultModel string
-	if models := h.server.Cfg().AgentLLM.Models; len(models) > 0 {
-		defaultModel = models[0].ID
+	// Use requested model, or fall back to first from AGENT_MODELS config
+	model := req.Model
+	if model == "" {
+		if models := h.server.Cfg().AgentLLM.Models; len(models) > 0 {
+			model = models[0].ID
+		}
 	}
 
 	handle, err := CreateSession(
@@ -72,7 +75,7 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 			Title:          req.Title,
 			Message:        req.Message,
 			PermissionMode: req.PermissionMode,
-			DefaultModel:   defaultModel,
+			DefaultModel:   model,
 			Source:         "user",
 		},
 	)

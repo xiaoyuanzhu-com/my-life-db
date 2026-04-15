@@ -244,12 +244,21 @@ export default function AgentPage() {
 
   // Server-managed model list (from AGENT_MODELS env var via /api/agent/config)
   const [serverModels, setServerModels] = useState<Array<{id: string, name: string, description: string}>>([])
+  // Model for new session (before creation)
+  const [newSessionModel, setNewSessionModel] = useState<string>('')
   useEffect(() => {
     fetch('/api/agent/config')
       .then(res => res.json())
       .then(data => {
         if (data.models && data.models.length > 0) {
           setServerModels(data.models)
+          // Initialize new session model from localStorage or first available model
+          const saved = localStorage.getItem('agent-model')
+          if (saved && data.models.some((m: { id: string }) => m.id === saved)) {
+            setNewSessionModel(saved)
+          } else {
+            setNewSessionModel(data.models[0].id)
+          }
         }
       })
       .catch(() => {}) // silently ignore — self-hosted may not have models configured
@@ -296,6 +305,13 @@ export default function AgentPage() {
   useEffect(() => {
     localStorage.setItem('mld-agent-type', newSessionAgentType)
   }, [newSessionAgentType])
+
+  // Persist model to localStorage
+  useEffect(() => {
+    if (newSessionModel) {
+      localStorage.setItem('agent-model', newSessionModel)
+    }
+  }, [newSessionModel])
 
   // Persist sidebar collapsed state
   useEffect(() => {
@@ -642,6 +658,7 @@ export default function AgentPage() {
         workingDir: newSessionWorkingDir,
         permissionMode: newSessionPermissionMode,
         agentType: newSessionAgentType,
+        model: newSessionModel || undefined,
       })
 
       if (!response.ok) {
@@ -861,11 +878,15 @@ export default function AgentPage() {
             setNewSessionPermissionMode('default')
           }
         },
-    currentModel: sessionMeta?.currentModel ?? (serverModels.length > 0 ? serverModels[0].id : undefined),
+    currentModel: hasActiveSession
+      ? (sessionMeta?.currentModel ?? (serverModels.length > 0 ? serverModels[0].id : undefined))
+      : (newSessionModel || (serverModels.length > 0 ? serverModels[0].id : undefined)),
     availableModels: serverModels.length > 0 ? serverModels : sessionMeta?.availableModels,
     onModelChange: hasActiveSession
       ? (model: string) => sendSetModel(model)
-      : undefined,
+      : serverModels.length > 0
+        ? (model: string) => setNewSessionModel(model)
+        : undefined,
     sessionCommands: sessionMeta?.commands,
     sessionId: activeSessionId || "",
     hasActiveSession,
