@@ -124,8 +124,6 @@ func New(cfg *Config) (*Server, error) {
 			// Isolate Codex config dir so it doesn't pick up the user's
 			// stored ChatGPT OAuth token (~/.codex/auth.json). Pre-seed with
 			// auth_mode=apikey so Codex uses OPENAI_API_KEY against our gateway.
-			// Also force chat-completions wire API since LiteLLM-routed models
-			// (Minimax, Kimi, etc.) often don't implement the Responses API.
 			codexHome := filepath.Join(cfg.AppDataDir, "codex-home")
 			if err := os.MkdirAll(codexHome, 0700); err != nil {
 				log.Warn().Err(err).Str("path", codexHome).Msg("failed to create isolated CODEX_HOME")
@@ -135,11 +133,8 @@ func New(cfg *Config) (*Server, error) {
 				if err := os.WriteFile(authPath, []byte(authJSON), 0600); err != nil {
 					log.Warn().Err(err).Str("path", authPath).Msg("failed to write codex auth.json")
 				}
-				configTOML := "[model_providers.openai]\nwire_api = \"chat\"\n"
-				configPath := filepath.Join(codexHome, "config.toml")
-				if err := os.WriteFile(configPath, []byte(configTOML), 0600); err != nil {
-					log.Warn().Err(err).Str("path", configPath).Msg("failed to write codex config.toml")
-				}
+				// Clean up any stale config.toml from earlier attempts.
+				_ = os.Remove(filepath.Join(codexHome, "config.toml"))
 				codexEnv["CODEX_HOME"] = codexHome
 			}
 		}
