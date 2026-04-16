@@ -174,22 +174,6 @@ func toolChangedFiles(sessionID string) []ChangedFile {
 			if fp, ok := input["file_path"].(string); ok && fp != "" {
 				seen[fp] = "modified"
 			}
-		case "mcp__agent-apps__putFile":
-			if app, ok := input["app"].(string); ok {
-				path := "apps/" + app
-				if p, ok := input["path"].(string); ok {
-					path += "/" + p
-				}
-				seen[path] = "added"
-			}
-		case "mcp__agent-apps__deleteFile":
-			if app, ok := input["app"].(string); ok {
-				path := "apps/" + app
-				if p, ok := input["path"].(string); ok {
-					path += "/" + p
-				}
-				seen[path] = "deleted"
-			}
 		}
 	}
 

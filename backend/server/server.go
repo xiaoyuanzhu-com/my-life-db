@@ -150,16 +150,6 @@ func New(cfg *Config) (*Server, error) {
 
 		// Build MCP servers to pass via ACP (no .mcp.json discovery needed)
 		var mcpServers []acp.McpServer
-		if binaryPath, err := os.Executable(); err == nil {
-			mcpServers = append(mcpServers, acp.McpServer{
-				Stdio: &acp.McpServerStdio{
-					Name:    "agent-apps",
-					Command: binaryPath,
-					Args:    []string{"mcp-agent-apps", "--user-data-dir", cfg.UserDataDir},
-					Env:     []acp.EnvVariable{},
-				},
-			})
-		}
 		mcpServers = append(mcpServers, acp.McpServer{
 			Http: &acp.McpServerHttpInline{
 				Name: "explore",

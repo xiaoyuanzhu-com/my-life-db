@@ -118,14 +118,9 @@ MyLifeDB has a publish-post MCP tool that creates posts visible on the explore p
 
 Don't force it — only suggest when the use case fits (e.g., organizing interesting files, summarizing new content, daily reports). Don't suggest it for purely mechanical tasks (backups, cleanup).
 
-### Step 6: Assemble, validate, and save
+### Step 6: Assemble and save
 
 Build the frontmatter + prompt and show the user the complete file for review.
-
-Before saving, **always validate** the agent definition by calling the `mcp__agent-apps__validateAgent` tool with the full markdown content (frontmatter + prompt body). This catches schema errors (missing required fields, invalid trigger types, missing cron schedule, etc.) before the agent runner tries to use it.
-
-- If validation passes, save the file.
-- If validation fails, fix the reported issues and validate again until it passes.
 
 The filename should be kebab-case: `organize-inbox.md`, `daily-backup.md`, `process-receipts.md`.
 
