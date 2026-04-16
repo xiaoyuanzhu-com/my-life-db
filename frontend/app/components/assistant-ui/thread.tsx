@@ -259,14 +259,44 @@ const DraftPersistenceSync: FC = () => {
   // draft from localStorage before the deferred setTimeout restores it.
   const hasRestoredRef = useRef(false);
 
+  // --- Instrumentation: sequence counter for diagnosing duplicated input ---
+  const seqRef = useRef(0);
+  const prevTextRef = useRef(text);
+
+  useEffect(() => {
+    const seq = ++seqRef.current;
+    const prev = prevTextRef.current;
+    prevTextRef.current = text;
+    // Truncate for readability but show enough to spot duplication
+    const trunc = (s: string) => s.length > 120 ? s.slice(0, 120) + `…(${s.length})` : s;
+    console.info(
+      `[draft-sync] #${seq} text-changed`,
+      {
+        len: text.length,
+        prevLen: prev.length,
+        storageKey,
+        hasRestored: hasRestoredRef.current,
+        text: trunc(text),
+        prev: trunc(prev),
+        // Check if new text looks like prev duplicated
+        isDupOfPrev: text.length > 0 && prev.length > 0 && text.includes(prev) && text !== prev
+          ? `YES — new text contains previous text (prev appears at index ${text.indexOf(prev)})`
+          : "no",
+      },
+    );
+  }, [text, storageKey]);
+  // --- End instrumentation ---
+
   // Restore from localStorage when session changes (mount, navigation).
   // Deferred via setTimeout so it runs AFTER assistant-ui's internal
   // thread-switch reset, which would otherwise overwrite our setText.
   useEffect(() => {
     hasRestoredRef.current = false;
     const draft = localStorage.getItem(storageKey);
+    console.info(`[draft-sync] restore-effect fired`, { storageKey, hasDraft: !!draft, draftLen: draft?.length ?? 0 });
     if (draft) {
       const timer = setTimeout(() => {
+        console.info(`[draft-sync] restoring from localStorage`, { storageKey, draftLen: draft.length, draft: draft.length > 120 ? draft.slice(0, 120) + "…" : draft });
         composerRef.current.setText(draft);
         hasRestoredRef.current = true;
       }, 0);
@@ -285,8 +315,12 @@ const DraftPersistenceSync: FC = () => {
   // when storageKey just changed (text may be stale from the previous session).
   const activeKeyRef = useRef(storageKey);
   useEffect(() => {
-    if (!hasRestoredRef.current) return;
+    if (!hasRestoredRef.current) {
+      console.info(`[draft-sync] persist SKIPPED (not yet restored)`, { storageKey, textLen: text.length });
+      return;
+    }
     if (activeKeyRef.current !== storageKey) {
+      console.info(`[draft-sync] persist SKIPPED (key changed)`, { activeKey: activeKeyRef.current, storageKey });
       activeKeyRef.current = storageKey;
       return;
     }
@@ -300,6 +334,7 @@ const DraftPersistenceSync: FC = () => {
   // Restore from failed send (runtime signals via pendingComposerText)
   useEffect(() => {
     if (pendingComposerText && clearPendingComposerText) {
+      console.info(`[draft-sync] restoring from pendingComposerText`, { len: pendingComposerText.length });
       composerRef.current.setText(pendingComposerText);
       clearPendingComposerText();
     }
