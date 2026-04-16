@@ -57,9 +57,13 @@ func SetupACPSession(sess agentsdk.Session, sessionID, mode, defaultModel string
 		}
 	}
 
-	// Set default model via SetSessionConfigOption (works for both agents).
+	// Set default model via UnstableSetSessionModel. Using SetConfigOption for
+	// "model" would hit claude-agent-acp's allowlist (built from the CLI's
+	// advertised model list + ANTHROPIC_MODEL) and reject arbitrary gateway
+	// model names. UnstableSetSessionModel bypasses that check and calls the
+	// CLI's set_model directly, which accepts any string.
 	if defaultModel != "" {
-		if err := sess.SetConfigOption(context.Background(), "model", defaultModel); err != nil {
+		if err := sess.SetModel(context.Background(), defaultModel); err != nil {
 			log.Warn().Err(err).Str("sessionId", sessionID).Str("model", defaultModel).Msg("failed to set initial model")
 		}
 	}
@@ -102,7 +106,24 @@ func rewriteModelOptions(data []byte, gatewayModels []server.AgentModelInfo) []b
 			}
 		}
 		full["options"] = opts
-		full["currentValue"] = gatewayModels[0].Value
+
+		// Preserve the agent-reported currentValue if it's a known gateway
+		// model. Only fall back to gatewayModels[0] when the agent reports
+		// something we don't recognize (e.g., an SDK internal default like
+		// "default" or "claude-sonnet-4-6"). Without this guard, switching to
+		// a non-first gateway model would appear to the UI as still-selecting
+		// the first one.
+		currentVal, _ := full["currentValue"].(string)
+		known := false
+		for _, m := range gatewayModels {
+			if m.Value == currentVal {
+				known = true
+				break
+			}
+		}
+		if !known {
+			full["currentValue"] = gatewayModels[0].Value
+		}
 
 		if rewritten, err := json.Marshal(full); err == nil {
 			frame.ConfigOptions[i] = rewritten
@@ -160,11 +181,31 @@ func CreateSession(
 		agentType = agentsdk.AgentCodex
 	}
 
+	// When the caller picked a non-default gateway model, override the env
+	// vars the agent process would normally inherit from the pre-warmed pool.
+	// This keeps the spawned process's ANTHROPIC_MODEL / ANTHROPIC_SMALL_FAST_MODEL
+	// (or OPENAI_MODEL) consistent with the session's selected model, so
+	// fallback paths and secondary requests use the same model the user chose.
+	// Passing a non-empty Env also causes the pool to be skipped for this call
+	// (pool env is baked at process spawn and can't be changed post-hoc).
+	var sessionEnv map[string]string
+	if params.DefaultModel != "" && len(params.GatewayModels) > 0 && params.DefaultModel != params.GatewayModels[0].Value {
+		sessionEnv = make(map[string]string, 2)
+		switch agentType {
+		case agentsdk.AgentClaudeCode:
+			sessionEnv["ANTHROPIC_MODEL"] = params.DefaultModel
+			sessionEnv["ANTHROPIC_SMALL_FAST_MODEL"] = params.DefaultModel
+		case agentsdk.AgentCodex:
+			sessionEnv["OPENAI_MODEL"] = params.DefaultModel
+		}
+	}
+
 	// Spawn ACP agent process.
 	sess, err := agentClient.CreateSession(ctx, agentsdk.SessionConfig{
 		Agent:      agentType,
 		Mode:       params.PermissionMode,
 		WorkingDir: params.WorkingDir,
+		Env:        sessionEnv,
 	})
 	if err != nil {
 		return nil, err

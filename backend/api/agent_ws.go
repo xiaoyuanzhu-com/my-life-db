@@ -289,9 +289,11 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			} else {
 				log.Info().Str("sessionId", sessionID).Msg("historical session replay complete")
 				// Override the loaded session's stored model with a gateway-compatible one.
+				// Use UnstableSetSessionModel (SetModel) to bypass claude-agent-acp's
+				// allowlist check, which would reject custom gateway model names.
 				if defaultModel != "" {
 					modelCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-					if err := sess.SetConfigOption(modelCtx, "model", defaultModel); err != nil {
+					if err := sess.SetModel(modelCtx, defaultModel); err != nil {
 						log.Warn().Err(err).Str("sessionId", sessionID).Str("model", defaultModel).Msg("failed to override model after LoadSession")
 					}
 					cancel()
@@ -683,11 +685,19 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				cfgCtx, cfgCancel := context.WithTimeout(context.Background(), 10*time.Second)
 				// Mode uses the legacy SetSessionMode RPC — SetSessionConfigOption
 				// in Claude Code only supports configId="model", not "mode".
+				// Model uses UnstableSetSessionModel to bypass claude-agent-acp's
+				// allowlist (which rejects custom gateway model names).
 				if inMsg.ConfigID == "mode" {
 					if err := acpSession.SetMode(cfgCtx, inMsg.ConfigValue); err != nil {
 						log.Error().Err(err).Str("sessionId", sessionID).Str("mode", inMsg.ConfigValue).Msg("failed to set mode")
 					} else {
 						log.Info().Str("sessionId", sessionID).Str("mode", inMsg.ConfigValue).Msg("mode set via WebSocket")
+					}
+				} else if inMsg.ConfigID == "model" {
+					if err := acpSession.SetModel(cfgCtx, inMsg.ConfigValue); err != nil {
+						log.Error().Err(err).Str("sessionId", sessionID).Str("model", inMsg.ConfigValue).Msg("failed to set model")
+					} else {
+						log.Info().Str("sessionId", sessionID).Str("model", inMsg.ConfigValue).Msg("model set via WebSocket")
 					}
 				} else {
 					if err := acpSession.SetConfigOption(cfgCtx, inMsg.ConfigID, inMsg.ConfigValue); err != nil {

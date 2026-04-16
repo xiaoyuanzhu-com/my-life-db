@@ -96,8 +96,12 @@ func (c *Client) CreateSession(ctx context.Context, config SessionConfig) (Sessi
 
 	var session *acpSession
 
-	// Try pool first (only for the pooled agent type)
-	if c.pool != nil && config.Agent == c.pool.cfg.AgentType {
+	// Use the pre-warmed pool only when there is no per-session env override.
+	// Pool processes are spawned once with a fixed env (from AgentConfig.Env),
+	// so a session that needs different env vars (e.g. ANTHROPIC_MODEL tied to
+	// a specific user-selected gateway model) must spawn fresh.
+	canUsePool := c.pool != nil && config.Agent == c.pool.cfg.AgentType && len(config.Env) == 0
+	if canUsePool {
 		warm, err := c.pool.Acquire(ctx)
 		if err != nil {
 			return nil, err
@@ -107,7 +111,7 @@ func (c *Client) CreateSession(ctx context.Context, config SessionConfig) (Sessi
 			return nil, err
 		}
 	} else {
-		// No pool or different agent type — spawn synchronously
+		// No pool, different agent type, or per-session env override — spawn synchronously
 		env := c.MergeEnv(agentCfg, config)
 		var err error
 		session, err = spawnACPSession(ctx, agentCfg, config, env)
