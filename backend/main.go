@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/xiaoyuanzhu-com/my-life-db/agentapps"
 	"github.com/xiaoyuanzhu-com/my-life-db/agentrunner"
 	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/api"
@@ -26,12 +25,6 @@ import (
 )
 
 func main() {
-	// Subcommand: run as MCP server for agent apps
-	if len(os.Args) > 1 && os.Args[1] == "mcp-agent-apps" {
-		runMCPAgentApps()
-		return
-	}
-
 	cfg := config.Get()
 
 	// Create server config from app config
@@ -310,28 +303,5 @@ func serveSitemapXml() gin.HandlerFunc {
 		c.Header("Content-Type", "application/xml; charset=utf-8")
 		c.Header("Cache-Control", "public, max-age=86400")
 		c.String(http.StatusOK, sitemap)
-	}
-}
-
-// runMCPAgentApps runs the binary in MCP server mode (stdio JSON-RPC).
-// Invoked via: ./my-life-db mcp-agent-apps [--user-data-dir <path>]
-func runMCPAgentApps() {
-	// Parse --user-data-dir flag (default from config)
-	userDataDir := ""
-	for i, arg := range os.Args[2:] {
-		if arg == "--user-data-dir" && i+1 < len(os.Args[2:]) {
-			userDataDir = os.Args[2+i+1]
-		}
-	}
-	if userDataDir == "" {
-		cfg := config.Get()
-		userDataDir = cfg.UserDataDir
-	}
-
-	svc := agentapps.NewService(userDataDir)
-	srv := agentapps.NewMCPServer(svc)
-	if err := srv.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "mcp-agent-apps error: %v\n", err)
-		os.Exit(1)
 	}
 }

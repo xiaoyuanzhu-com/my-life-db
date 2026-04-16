@@ -16,7 +16,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/xiaoyuanzhu-com/my-life-db/agent"
 	"github.com/xiaoyuanzhu-com/my-life-db/agent/appclient"
-	"github.com/xiaoyuanzhu-com/my-life-db/agentapps"
 	"github.com/xiaoyuanzhu-com/my-life-db/agentrunner"
 	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
@@ -43,7 +42,6 @@ type Server struct {
 	notifService    *notifications.Service
 	agent               *agent.Agent
 	agentClient     *agentsdk.Client
-	agentApps       *agentapps.Service
 	explore         *explore.Service
 	hookRegistry    *hooks.Registry
 	cronHook        *hooks.CronHook
@@ -92,10 +90,7 @@ func New(cfg *Config) (*Server, error) {
 	// Install bundled skills for agent discovery
 	skills.Install(cfg.UserDataDir)
 
-	// 1.5. Initialize agent apps service
-	s.agentApps = agentapps.NewService(cfg.UserDataDir)
-
-	// 1.5.1. Initialize explore service
+	// 1.5. Initialize explore service
 	s.explore = explore.NewService(cfg.UserDataDir)
 
 	// 1.6. Initialize Agent Client (ACP-based)
@@ -544,7 +539,6 @@ func (s *Server) MeiliIndexer() *meiliworker.Indexer          { return s.meiliIn
 func (s *Server) Notifications() *notifications.Service       { return s.notifService }
 func (s *Server) Agent() *agent.Agent                         { return s.agent }
 func (s *Server) AgentClient() *agentsdk.Client                { return s.agentClient }
-func (s *Server) AgentApps() *agentapps.Service                 { return s.agentApps }
 func (s *Server) Explore() *explore.Service                      { return s.explore }
 func (s *Server) HookRegistry() *hooks.Registry                  { return s.hookRegistry }
 func (s *Server) FSHook() *hooks.FSHook                          { return s.fsHook }

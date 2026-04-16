@@ -156,13 +156,6 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 
 	// Explore MCP endpoint — registered in public group (see above)
 
-	// Agent apps API - protected
-	api.GET("/agent-apps", h.GetAgentApps)
-	api.GET("/agent-apps/:app", h.GetAgentAppFiles)
-
-	// Agent app static files - protected
-	r.GET("/apps/*path", wsAuth, h.ServeAgentApp)
-
 	// Raw file serving - protected
 	r.GET("/raw/*path", wsAuth, h.ServeRawFile)
 	r.PUT("/raw/*path", wsAuth, h.SaveRawFile)
