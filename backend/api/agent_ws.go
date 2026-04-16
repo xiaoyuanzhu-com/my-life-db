@@ -276,7 +276,10 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			if len(agentModels) > 0 {
 				defaultModel = agentModels[0].Value
 			}
-			SetupACPSession(sess, sessionID, mode, defaultModel, agentModels)
+			// Pass empty defaultModel here — LoadSession would overwrite it anyway.
+			// We re-apply the model explicitly AFTER LoadSession so legacy sessions
+			// that stored an old (now-unavailable) model get reset to a valid one.
+			SetupACPSession(sess, sessionID, mode, "", agentModels)
 
 			if err := sess.LoadSession(h.server.ShutdownContext(), sessionID, sessionRecord.WorkingDir); err != nil {
 				log.Warn().Err(err).Str("sessionId", sessionID).Msg("LoadSession failed")
@@ -285,6 +288,14 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				sessionState.Mu.Unlock()
 			} else {
 				log.Info().Str("sessionId", sessionID).Msg("historical session replay complete")
+				// Override the loaded session's stored model with a gateway-compatible one.
+				if defaultModel != "" {
+					modelCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+					if err := sess.SetConfigOption(modelCtx, "model", defaultModel); err != nil {
+						log.Warn().Err(err).Str("sessionId", sessionID).Str("model", defaultModel).Msg("failed to override model after LoadSession")
+					}
+					cancel()
+				}
 			}
 		})
 	}
