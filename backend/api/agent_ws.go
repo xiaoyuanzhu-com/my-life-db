@@ -681,10 +681,20 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 
 			if exists {
 				cfgCtx, cfgCancel := context.WithTimeout(context.Background(), 10*time.Second)
-				if err := acpSession.SetConfigOption(cfgCtx, inMsg.ConfigID, inMsg.ConfigValue); err != nil {
-					log.Error().Err(err).Str("sessionId", sessionID).Str("configId", inMsg.ConfigID).Str("value", inMsg.ConfigValue).Msg("failed to set config option")
+				// Mode uses the legacy SetSessionMode RPC — SetSessionConfigOption
+				// in Claude Code only supports configId="model", not "mode".
+				if inMsg.ConfigID == "mode" {
+					if err := acpSession.SetMode(cfgCtx, inMsg.ConfigValue); err != nil {
+						log.Error().Err(err).Str("sessionId", sessionID).Str("mode", inMsg.ConfigValue).Msg("failed to set mode")
+					} else {
+						log.Info().Str("sessionId", sessionID).Str("mode", inMsg.ConfigValue).Msg("mode set via WebSocket")
+					}
 				} else {
-					log.Info().Str("sessionId", sessionID).Str("configId", inMsg.ConfigID).Str("value", inMsg.ConfigValue).Msg("config option set via WebSocket")
+					if err := acpSession.SetConfigOption(cfgCtx, inMsg.ConfigID, inMsg.ConfigValue); err != nil {
+						log.Error().Err(err).Str("sessionId", sessionID).Str("configId", inMsg.ConfigID).Str("value", inMsg.ConfigValue).Msg("failed to set config option")
+					} else {
+						log.Info().Str("sessionId", sessionID).Str("configId", inMsg.ConfigID).Str("value", inMsg.ConfigValue).Msg("config option set via WebSocket")
+					}
 				}
 				cfgCancel()
 			}
