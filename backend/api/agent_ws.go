@@ -15,6 +15,7 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
+	"github.com/xiaoyuanzhu-com/my-life-db/server"
 )
 
 // agentSessionStates is a registry of session ID → *SessionState.
@@ -270,11 +271,12 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				return
 			}
 
+			agentModels := server.FilterModelsForAgent(h.server.Cfg().AgentLLM.Models, sessionRecord.AgentType)
 			var defaultModel string
-			if models := h.server.Cfg().AgentLLM.Models; len(models) > 0 {
-				defaultModel = models[0].Value
+			if len(agentModels) > 0 {
+				defaultModel = agentModels[0].Value
 			}
-			SetupACPSession(sess, sessionID, mode, defaultModel, h.server.Cfg().AgentLLM.Models)
+			SetupACPSession(sess, sessionID, mode, defaultModel, agentModels)
 
 			if err := sess.LoadSession(h.server.ShutdownContext(), sessionID, sessionRecord.WorkingDir); err != nil {
 				log.Warn().Err(err).Str("sessionId", sessionID).Msg("LoadSession failed")
@@ -433,11 +435,16 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 					}
 					continue
 				}
-				var defaultModel string
-				if models := h.server.Cfg().AgentLLM.Models; len(models) > 0 {
-					defaultModel = models[0].Value
+				agentTypeStr := "claude_code"
+				if agentType == agentsdk.AgentCodex {
+					agentTypeStr = "codex"
 				}
-				SetupACPSession(sess, sessionID, mode, defaultModel, h.server.Cfg().AgentLLM.Models)
+				agentModels := server.FilterModelsForAgent(h.server.Cfg().AgentLLM.Models, agentTypeStr)
+				var defaultModel string
+				if len(agentModels) > 0 {
+					defaultModel = agentModels[0].Value
+				}
+				SetupACPSession(sess, sessionID, mode, defaultModel, agentModels)
 				acpSession = sess
 			}
 
