@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/xiaoyuanzhu-com/my-life-db/server"
 )
 
 // configOption mirrors the ACP ConfigOption structure for JSON serialization.
@@ -94,20 +95,23 @@ func (h *Handlers) GetAgentConfig(c *gin.Context) {
 	}
 
 	// When AGENT_MODELS is configured, replace the model config option
+	// per agent type, filtering models by their "agents" compatibility field.
 	if len(cfg.AgentLLM.Models) > 0 {
-		var replacementOptions []configOptionChoice
-		for _, m := range cfg.AgentLLM.Models {
-			replacementOptions = append(replacementOptions, configOptionChoice{
-				Value: m.Value, Name: m.Name, Description: m.Description,
-			})
-		}
-		defaultValue := cfg.AgentLLM.Models[0].Value
-
 		for agentType, opts := range result {
+			agentModels := server.FilterModelsForAgent(cfg.AgentLLM.Models, agentType)
+			if len(agentModels) == 0 {
+				continue // no gateway models support this agent; keep native defaults
+			}
+			replacementOptions := make([]configOptionChoice, len(agentModels))
+			for i, m := range agentModels {
+				replacementOptions[i] = configOptionChoice{
+					Value: m.Value, Name: m.Name, Description: m.Description,
+				}
+			}
 			for i, opt := range opts {
 				if opt.Category == "model" {
 					result[agentType][i].Options = replacementOptions
-					result[agentType][i].CurrentValue = defaultValue
+					result[agentType][i].CurrentValue = agentModels[0].Value
 				}
 			}
 		}

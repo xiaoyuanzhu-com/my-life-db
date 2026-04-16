@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
+	"github.com/xiaoyuanzhu-com/my-life-db/server"
 )
 
 // GetAgentInfo returns available agents and their metadata.
@@ -56,14 +57,11 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 		agentTypeStr = "claude_code"
 	}
 
-	// Use requested model, or fall back to first from AGENT_MODELS config.
-	// Both Claude Code and Codex route through the LiteLLM gateway, so both
-	// must use a gateway model rather than the agent's native default.
+	// Use requested model, or fall back to first gateway model compatible with this agent.
+	agentModels := server.FilterModelsForAgent(h.server.Cfg().AgentLLM.Models, agentTypeStr)
 	model := req.Model
-	if model == "" {
-		if models := h.server.Cfg().AgentLLM.Models; len(models) > 0 {
-			model = models[0].Value
-		}
+	if model == "" && len(agentModels) > 0 {
+		model = agentModels[0].Value
 	}
 
 	handle, err := CreateSession(
@@ -78,7 +76,7 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 			Message:        req.Message,
 			PermissionMode: req.PermissionMode,
 			DefaultModel:   model,
-			GatewayModels:  h.server.Cfg().AgentLLM.Models,
+			GatewayModels:  agentModels,
 			Source:         "user",
 		},
 	)

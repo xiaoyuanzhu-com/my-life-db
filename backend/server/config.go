@@ -102,10 +102,38 @@ type AgentLLMConfig struct {
 
 // AgentModelInfo describes an available model from the LLM gateway.
 // Field names match the ACP config_option_update frame: value/name/description.
+// Agents lists which agent types can use this model (e.g. ["claude_code", "codex"]).
+// Empty/omitted means the model is available to all agents.
 type AgentModelInfo struct {
-	Value       string `json:"value"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	Value       string   `json:"value"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Agents      []string `json:"agents,omitempty"`
+}
+
+// SupportsAgent returns true if this model can be used by the given agent type.
+// A model with no Agents restriction is available to all agents.
+func (m AgentModelInfo) SupportsAgent(agentType string) bool {
+	if len(m.Agents) == 0 {
+		return true
+	}
+	for _, a := range m.Agents {
+		if a == agentType {
+			return true
+		}
+	}
+	return false
+}
+
+// FilterModelsForAgent returns the subset of models that support the given agent type.
+func FilterModelsForAgent(models []AgentModelInfo, agentType string) []AgentModelInfo {
+	filtered := make([]AgentModelInfo, 0, len(models))
+	for _, m := range models {
+		if m.SupportsAgent(agentType) {
+			filtered = append(filtered, m)
+		}
+	}
+	return filtered
 }
 
 // HasAgentLLM returns true if an agent LLM gateway is configured.

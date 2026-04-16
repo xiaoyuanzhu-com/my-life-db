@@ -108,22 +108,24 @@ func New(cfg *Config) (*Server, error) {
 			if cfg.AgentLLM.CustomerID != "" {
 				ccEnv["ANTHROPIC_CUSTOM_HEADERS"] = "x-litellm-customer-id: " + cfg.AgentLLM.CustomerID
 			}
-			// Set default model from AGENT_MODELS so the agent doesn't use
-			// its built-in default (which may not exist on the gateway).
-			if len(cfg.AgentLLM.Models) > 0 {
-				defaultModel := cfg.AgentLLM.Models[0].Value
+			// Set default model from AGENT_MODELS (filtered per agent type) so the
+			// agent doesn't use its built-in default (which may not exist on the gateway).
+			if ccModels := FilterModelsForAgent(cfg.AgentLLM.Models, "claude_code"); len(ccModels) > 0 {
+				defaultModel := ccModels[0].Value
 				ccEnv["ANTHROPIC_MODEL"] = defaultModel
 				ccEnv["ANTHROPIC_SMALL_FAST_MODEL"] = defaultModel
 			}
 
 			codexEnv["OPENAI_BASE_URL"] = cfg.AgentLLM.BaseURL
 			codexEnv["OPENAI_API_KEY"] = cfg.AgentLLM.APIKey
-			if len(cfg.AgentLLM.Models) > 0 {
-				codexEnv["OPENAI_MODEL"] = cfg.AgentLLM.Models[0].Value
+			if codexModels := FilterModelsForAgent(cfg.AgentLLM.Models, "codex"); len(codexModels) > 0 {
+				codexEnv["OPENAI_MODEL"] = codexModels[0].Value
 			}
 			// Isolate Codex config dir so it doesn't pick up the user's
 			// stored ChatGPT OAuth token (~/.codex/auth.json). Pre-seed with
 			// auth_mode=apikey so Codex uses OPENAI_API_KEY against our gateway.
+			// Also force chat-completions wire API since LiteLLM-routed models
+			// (Minimax, Kimi, etc.) often don't implement the Responses API.
 			codexHome := filepath.Join(cfg.AppDataDir, "codex-home")
 			if err := os.MkdirAll(codexHome, 0700); err != nil {
 				log.Warn().Err(err).Str("path", codexHome).Msg("failed to create isolated CODEX_HOME")
@@ -132,6 +134,11 @@ func New(cfg *Config) (*Server, error) {
 				authPath := filepath.Join(codexHome, "auth.json")
 				if err := os.WriteFile(authPath, []byte(authJSON), 0600); err != nil {
 					log.Warn().Err(err).Str("path", authPath).Msg("failed to write codex auth.json")
+				}
+				configTOML := "[model_providers.openai]\nwire_api = \"chat\"\n"
+				configPath := filepath.Join(codexHome, "config.toml")
+				if err := os.WriteFile(configPath, []byte(configTOML), 0600); err != nil {
+					log.Warn().Err(err).Str("path", configPath).Msg("failed to write codex config.toml")
 				}
 				codexEnv["CODEX_HOME"] = codexHome
 			}
