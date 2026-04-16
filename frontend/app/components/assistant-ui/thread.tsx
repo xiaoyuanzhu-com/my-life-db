@@ -22,7 +22,7 @@ import {
   Plus,
   SquareIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState, type FC } from "react";
+import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import type { PlanEntry } from "~/hooks/use-agent-runtime";
 import { useHasTouch } from "~/hooks/use-has-touch";
 
@@ -316,6 +316,15 @@ const ComposerOptionsMenu: FC = () => {
   } = useAgentContext()
   const hasActiveSession = !!sessionId
 
+  // Stable render order: model → mode → everything else (by category)
+  const CONFIG_ORDER: Record<string, number> = { model: 0, mode: 1 }
+  const sortedOptions = useMemo(() => {
+    if (!configOptions) return []
+    return [...configOptions].sort((a, b) =>
+      (CONFIG_ORDER[a.category] ?? 2) - (CONFIG_ORDER[b.category] ?? 2)
+    )
+  }, [configOptions])
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -338,7 +347,7 @@ const ComposerOptionsMenu: FC = () => {
             />
           </div>
         )}
-        {configOptions?.map((opt) => (
+        {sortedOptions.map((opt) => (
           <div key={opt.id} className="flex items-center justify-between px-2 py-1.5 gap-4">
             <span className="text-xs text-muted-foreground shrink-0">{opt.name}</span>
             <ConfigOptionSelector

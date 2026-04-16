@@ -97,6 +97,7 @@ func main() {
 				Title:          params.Title,
 				Message:        params.Message,
 				PermissionMode: params.PermissionMode,
+				GatewayModels:  srv.Cfg().AgentLLM.Models,
 				Source:         params.Source,
 				AgentFile:      params.AgentFile,
 			},

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import { ThreadList } from '~/components/assistant-ui/thread-list'
-import { DEFAULT_MODES, type AgentType } from '~/components/agent/agent-type-selector'
+import { type AgentType } from '~/components/agent/agent-type-selector'
 import type { ConfigOption } from '~/hooks/use-agent-runtime'
 import { AgentChat } from '~/components/agent/agent-chat'
 import { AgentContextProvider } from '~/components/agent/agent-context'
@@ -246,49 +246,19 @@ export default function AgentPage() {
     return { claude_code: { mode: 'default' }, codex: {} }
   })
 
-  // Per-agent-type cached available config options (populated from server config + active sessions)
-  const [cachedConfigOptions, setCachedConfigOptions] = useState<Record<string, ConfigOption[]>>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('agent-config-cache')
-      if (saved) {
-        try { return JSON.parse(saved) } catch { /* ignore */ }
-      }
-    }
-    return {}
-  })
-
-  // Fetch server-managed model list and build Claude Code config options
+  // Per-agent-type default config options from the backend.
+  // Backend returns defaults for each agent type, with AGENT_MODELS overriding
+  // the model options when configured.
+  const [defaultConfigOptions, setDefaultConfigOptions] = useState<Record<string, ConfigOption[]>>({})
   useEffect(() => {
     fetch('/api/agent/config')
       .then(res => res.json())
       .then(data => {
-        if (data.models && data.models.length > 0) {
-          const options: ConfigOption[] = []
-          // Model config option from AGENT_MODELS
-          options.push({
-            id: 'model',
-            category: 'model',
-            name: 'Model',
-            currentValue: data.models[0].id,
-            options: data.models.map((m: { id: string; name: string; description: string }) => ({
-              value: m.id, name: m.name, description: m.description,
-            })),
-          })
-          // Mode config option from DEFAULT_MODES
-          const modes = DEFAULT_MODES.claude_code
-          if (modes.length > 0) {
-            options.push({
-              id: 'mode',
-              category: 'mode',
-              name: 'Permission',
-              currentValue: 'default',
-              options: modes.map(m => ({ value: m.id, name: m.name, description: m.description })),
-            })
-          }
-          setCachedConfigOptions(prev => ({ ...prev, claude_code: options }))
+        if (data.defaultConfigOptions) {
+          setDefaultConfigOptions(data.defaultConfigOptions)
         }
       })
-      .catch(() => {}) // silently ignore — self-hosted may not have models configured
+      .catch(() => {}) // silently ignore — self-hosted may not have agent configured
   }, [])
 
   // Result count — increments on each agent session update, used as refreshKey for changed files popover
@@ -328,13 +298,10 @@ export default function AgentPage() {
     localStorage.setItem('mld-agent-type', newSessionAgentType)
   }, [newSessionAgentType])
 
-  // Persist session defaults and config cache to localStorage
+  // Persist session defaults to localStorage
   useEffect(() => {
     localStorage.setItem('agent-session-defaults', JSON.stringify(newSessionDefaults))
   }, [newSessionDefaults])
-  useEffect(() => {
-    localStorage.setItem('agent-config-cache', JSON.stringify(cachedConfigOptions))
-  }, [cachedConfigOptions])
 
   // Persist sidebar collapsed state
   useEffect(() => {
@@ -829,23 +796,15 @@ export default function AgentPage() {
       onDeleteThread: () => {},
     })
 
-  // Cache configOptions from active sessions so new sessions of the same type
-  // can show the same options. This is especially important for Codex, whose
-  // model and reasoning_effort options are only known after a session starts.
-  useEffect(() => {
-    if (!sessionMeta?.configOptions || !activeSessionAgentType) return
-    setCachedConfigOptions(prev => ({ ...prev, [activeSessionAgentType]: sessionMeta.configOptions! }))
-  }, [sessionMeta?.configOptions, activeSessionAgentType])
-
-  // Build effective configOptions for new sessions: cached options with user-preferred values
+  // Build effective configOptions for new sessions: backend defaults with user-preferred overrides
   const newSessionConfigOptions = useMemo(() => {
-    const cached = cachedConfigOptions[newSessionAgentType] ?? []
-    const defaults = newSessionDefaults[newSessionAgentType] ?? {}
-    return cached.map(opt => ({
+    const defaults = defaultConfigOptions[newSessionAgentType] ?? []
+    const prefs = newSessionDefaults[newSessionAgentType] ?? {}
+    return defaults.map(opt => ({
       ...opt,
-      currentValue: defaults[opt.id] ?? opt.currentValue,
+      currentValue: prefs[opt.id] ?? opt.currentValue,
     }))
-  }, [cachedConfigOptions, newSessionAgentType, newSessionDefaults])
+  }, [defaultConfigOptions, newSessionAgentType, newSessionDefaults])
 
   // Show loading state while checking authentication
   if (authLoading || loading) {

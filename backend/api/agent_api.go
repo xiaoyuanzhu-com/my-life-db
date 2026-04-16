@@ -80,6 +80,7 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 			Message:        req.Message,
 			PermissionMode: req.PermissionMode,
 			DefaultModel:   model,
+			GatewayModels:  h.server.Cfg().AgentLLM.Models,
 			Source:         "user",
 		},
 	)

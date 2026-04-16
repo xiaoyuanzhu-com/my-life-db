@@ -274,7 +274,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			if models := h.server.Cfg().AgentLLM.Models; len(models) > 0 {
 				defaultModel = models[0].ID
 			}
-			SetupACPSession(sess, sessionID, mode, defaultModel)
+			SetupACPSession(sess, sessionID, mode, defaultModel, h.server.Cfg().AgentLLM.Models)
 
 			if err := sess.LoadSession(h.server.ShutdownContext(), sessionID, sessionRecord.WorkingDir); err != nil {
 				log.Warn().Err(err).Str("sessionId", sessionID).Msg("LoadSession failed")
@@ -437,7 +437,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				if models := h.server.Cfg().AgentLLM.Models; len(models) > 0 {
 					defaultModel = models[0].ID
 				}
-				SetupACPSession(sess, sessionID, mode, defaultModel)
+				SetupACPSession(sess, sessionID, mode, defaultModel, h.server.Cfg().AgentLLM.Models)
 				acpSession = sess
 			}
 

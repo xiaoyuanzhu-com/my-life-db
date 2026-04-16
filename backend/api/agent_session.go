@@ -8,19 +8,21 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
+	"github.com/xiaoyuanzhu-com/my-life-db/server"
 )
 
 // SessionParams configures a new agent session. Used by both the REST API
 // (user-initiated) and the agent runner (auto-triggered).
 type SessionParams struct {
-	AgentType      string // "claude_code" or "codex"
+	AgentType      string              // "claude_code" or "codex"
 	WorkingDir     string
 	Title          string
-	Message        string // initial prompt; empty = no prompt sent
-	PermissionMode string // e.g. "bypassPermissions"; empty = default
-	DefaultModel   string // default model to set via ACP (from AGENT_MODELS)
-	Source         string // "user" or "auto"
-	AgentFile      string // agent definition file (auto-run only)
+	Message        string              // initial prompt; empty = no prompt sent
+	PermissionMode string              // e.g. "bypassPermissions"; empty = default
+	DefaultModel   string              // default model to set via ACP (from AGENT_MODELS)
+	GatewayModels  []server.AgentModelInfo // when set, replaces model options in ACP frames
+	Source         string              // "user" or "auto"
+	AgentFile      string              // agent definition file (auto-run only)
 }
 
 // SetupACPSession wires frame broadcasting, sets mode/model, and stores the
@@ -31,9 +33,16 @@ type SessionParams struct {
 // Model is set via the generic SetSessionConfigOption RPC (both agents support it).
 // Mode uses the legacy SetSessionMode RPC (only Claude Code has modes;
 // Codex doesn't expose mode as a configOption).
-func SetupACPSession(sess agentsdk.Session, sessionID, mode, defaultModel string) *agentsdk.SessionState {
+//
+// When gatewayModels is non-empty, the model options in config_option_update
+// frames are replaced with the gateway model list so the UI only shows
+// models available through the LLM proxy.
+func SetupACPSession(sess agentsdk.Session, sessionID, mode, defaultModel string, gatewayModels []server.AgentModelInfo) *agentsdk.SessionState {
 	sessionState := GetOrCreateSessionState(sessionID)
 	sess.SetOnFrame(func(data []byte) {
+		if len(gatewayModels) > 0 {
+			data = rewriteModelOptions(data, gatewayModels)
+		}
 		sessionState.Mu.Lock()
 		sessionState.TouchFrame()
 		sessionState.Mu.Unlock()
@@ -57,6 +66,63 @@ func SetupACPSession(sess agentsdk.Session, sessionID, mode, defaultModel string
 
 	StoreAcpSession(sessionID, sess)
 	return sessionState
+}
+
+// rewriteModelOptions replaces the model config option in a config_option_update
+// frame with the gateway model list. Non-config_option_update frames pass through
+// unchanged. This ensures the UI only shows models available through the LLM proxy.
+func rewriteModelOptions(data []byte, gatewayModels []server.AgentModelInfo) []byte {
+	var frame struct {
+		SessionUpdate string            `json:"sessionUpdate"`
+		ConfigOptions []json.RawMessage `json:"configOptions"`
+	}
+	if err := json.Unmarshal(data, &frame); err != nil || frame.SessionUpdate != "config_option_update" {
+		return data // not a config_option_update frame
+	}
+
+	modified := false
+	for i, raw := range frame.ConfigOptions {
+		var opt struct {
+			Category string `json:"category"`
+		}
+		if err := json.Unmarshal(raw, &opt); err != nil || opt.Category != "model" {
+			continue
+		}
+
+		// Parse full option, replace options array and default
+		var full map[string]any
+		if err := json.Unmarshal(raw, &full); err != nil {
+			continue
+		}
+
+		opts := make([]map[string]string, len(gatewayModels))
+		for j, m := range gatewayModels {
+			opts[j] = map[string]string{
+				"value": m.ID, "name": m.Name, "description": m.Description,
+			}
+		}
+		full["options"] = opts
+		full["currentValue"] = gatewayModels[0].ID
+
+		if rewritten, err := json.Marshal(full); err == nil {
+			frame.ConfigOptions[i] = rewritten
+			modified = true
+		}
+	}
+
+	if !modified {
+		return data
+	}
+
+	// Rebuild the full frame
+	result := map[string]any{
+		"sessionUpdate": frame.SessionUpdate,
+		"configOptions": frame.ConfigOptions,
+	}
+	if out, err := json.Marshal(result); err == nil {
+		return out
+	}
+	return data
 }
 
 // SessionHandle is returned by CreateSession so the caller can manage
@@ -119,7 +185,7 @@ func CreateSession(
 	}
 
 	// Common setup: wire broadcasting, set mode/model, store in map
-	sessionState := SetupACPSession(sess, sessionID, params.PermissionMode, params.DefaultModel)
+	sessionState := SetupACPSession(sess, sessionID, params.PermissionMode, params.DefaultModel, params.GatewayModels)
 
 	log.Info().
 		Str("sessionId", sessionID).
