@@ -51,7 +51,7 @@ func SetupACPSession(sess agentsdk.Session, sessionID, mode, defaultModel string
 
 	// Set mode after onFrame so the mode-change event is captured.
 	// Uses legacy SetSessionMode — only Claude Code supports modes.
-	if mode != "" {
+	if mode != "" && sess.AgentType() == agentsdk.AgentClaudeCode {
 		if err := sess.SetMode(context.Background(), mode); err != nil {
 			log.Warn().Err(err).Str("sessionId", sessionID).Str("mode", mode).Msg("failed to set initial mode")
 		}
