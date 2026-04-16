@@ -98,11 +98,11 @@ func rewriteModelOptions(data []byte, gatewayModels []server.AgentModelInfo) []b
 		opts := make([]map[string]string, len(gatewayModels))
 		for j, m := range gatewayModels {
 			opts[j] = map[string]string{
-				"value": m.ID, "name": m.Name, "description": m.Description,
+				"value": m.Value, "name": m.Name, "description": m.Description,
 			}
 		}
 		full["options"] = opts
-		full["currentValue"] = gatewayModels[0].ID
+		full["currentValue"] = gatewayModels[0].Value
 
 		if rewritten, err := json.Marshal(full); err == nil {
 			frame.ConfigOptions[i] = rewritten

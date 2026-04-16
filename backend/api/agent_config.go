@@ -98,10 +98,10 @@ func (h *Handlers) GetAgentConfig(c *gin.Context) {
 		var replacementOptions []configOptionChoice
 		for _, m := range cfg.AgentLLM.Models {
 			replacementOptions = append(replacementOptions, configOptionChoice{
-				Value: m.ID, Name: m.Name, Description: m.Description,
+				Value: m.Value, Name: m.Name, Description: m.Description,
 			})
 		}
-		defaultValue := cfg.AgentLLM.Models[0].ID
+		defaultValue := cfg.AgentLLM.Models[0].Value
 
 		for agentType, opts := range result {
 			for i, opt := range opts {

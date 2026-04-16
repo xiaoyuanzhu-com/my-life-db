@@ -272,7 +272,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 
 			var defaultModel string
 			if models := h.server.Cfg().AgentLLM.Models; len(models) > 0 {
-				defaultModel = models[0].ID
+				defaultModel = models[0].Value
 			}
 			SetupACPSession(sess, sessionID, mode, defaultModel, h.server.Cfg().AgentLLM.Models)
 
@@ -435,7 +435,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				}
 				var defaultModel string
 				if models := h.server.Cfg().AgentLLM.Models; len(models) > 0 {
-					defaultModel = models[0].ID
+					defaultModel = models[0].Value
 				}
 				SetupACPSession(sess, sessionID, mode, defaultModel, h.server.Cfg().AgentLLM.Models)
 				acpSession = sess

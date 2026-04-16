@@ -101,8 +101,9 @@ type AgentLLMConfig struct {
 }
 
 // AgentModelInfo describes an available model from the LLM gateway.
+// Field names match the ACP config_option_update frame: value/name/description.
 type AgentModelInfo struct {
-	ID          string `json:"id"`
+	Value       string `json:"value"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 }

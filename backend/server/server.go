@@ -111,7 +111,7 @@ func New(cfg *Config) (*Server, error) {
 			// Set default model from AGENT_MODELS so the agent doesn't use
 			// its built-in default (which may not exist on the gateway).
 			if len(cfg.AgentLLM.Models) > 0 {
-				defaultModel := cfg.AgentLLM.Models[0].ID
+				defaultModel := cfg.AgentLLM.Models[0].Value
 				ccEnv["ANTHROPIC_MODEL"] = defaultModel
 				ccEnv["ANTHROPIC_SMALL_FAST_MODEL"] = defaultModel
 			}
@@ -119,7 +119,21 @@ func New(cfg *Config) (*Server, error) {
 			codexEnv["OPENAI_BASE_URL"] = cfg.AgentLLM.BaseURL
 			codexEnv["OPENAI_API_KEY"] = cfg.AgentLLM.APIKey
 			if len(cfg.AgentLLM.Models) > 0 {
-				codexEnv["OPENAI_MODEL"] = cfg.AgentLLM.Models[0].ID
+				codexEnv["OPENAI_MODEL"] = cfg.AgentLLM.Models[0].Value
+			}
+			// Isolate Codex config dir so it doesn't pick up the user's
+			// stored ChatGPT OAuth token (~/.codex/auth.json). Pre-seed with
+			// auth_mode=apikey so Codex uses OPENAI_API_KEY against our gateway.
+			codexHome := filepath.Join(cfg.AppDataDir, "codex-home")
+			if err := os.MkdirAll(codexHome, 0700); err != nil {
+				log.Warn().Err(err).Str("path", codexHome).Msg("failed to create isolated CODEX_HOME")
+			} else {
+				authJSON := fmt.Sprintf(`{"auth_mode":"apikey","OPENAI_API_KEY":%q,"tokens":null,"last_refresh":null}`, cfg.AgentLLM.APIKey)
+				authPath := filepath.Join(codexHome, "auth.json")
+				if err := os.WriteFile(authPath, []byte(authJSON), 0600); err != nil {
+					log.Warn().Err(err).Str("path", authPath).Msg("failed to write codex auth.json")
+				}
+				codexEnv["CODEX_HOME"] = codexHome
 			}
 		}
 

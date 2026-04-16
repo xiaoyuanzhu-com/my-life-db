@@ -57,14 +57,12 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 	}
 
 	// Use requested model, or fall back to first from AGENT_MODELS config.
-	// Only applicable to Claude Code — Codex manages its own models via configOptions.
-	var model string
-	if agentTypeStr != "codex" {
-		model = req.Model
-		if model == "" {
-			if models := h.server.Cfg().AgentLLM.Models; len(models) > 0 {
-				model = models[0].ID
-			}
+	// Both Claude Code and Codex route through the LiteLLM gateway, so both
+	// must use a gateway model rather than the agent's native default.
+	model := req.Model
+	if model == "" {
+		if models := h.server.Cfg().AgentLLM.Models; len(models) > 0 {
+			model = models[0].Value
 		}
 	}
 
