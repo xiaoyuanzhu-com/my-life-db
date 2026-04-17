@@ -57,7 +57,7 @@ func (h *Handlers) GetAgentChangedFiles(c *gin.Context) {
 	}
 
 	// Non-git: parse tool calls from session messages
-	files := toolChangedFiles(sessionID)
+	files := h.toolChangedFiles(sessionID)
 	c.JSON(http.StatusOK, ChangedFilesResponse{Source: "tools", Files: files})
 }
 
@@ -124,8 +124,8 @@ func parseGitStatus(xy string) string {
 }
 
 // toolChangedFiles extracts file paths from tool_call frames in session messages.
-func toolChangedFiles(sessionID string) []ChangedFile {
-	ss := PeekSessionState(sessionID)
+func (h *Handlers) toolChangedFiles(sessionID string) []ChangedFile {
+	ss := h.agentMgr.PeekState(sessionID)
 	if ss == nil {
 		return []ChangedFile{}
 	}

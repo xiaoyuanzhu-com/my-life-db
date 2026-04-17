@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
-	"github.com/xiaoyuanzhu-com/my-life-db/server"
 )
 
 // GetAgentInfo returns available agents and their metadata.
@@ -61,11 +60,11 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 	// Validate req.Model against the current gateway list — a stale value from the
 	// client (e.g. cached in localStorage) would otherwise bake a dead model name
 	// into ANTHROPIC_MODEL/OPENAI_MODEL at process spawn and fail on first call.
-	agentModels := server.FilterModelsForAgent(h.server.Cfg().AgentLLM.Models, agentTypeStr)
+	gatewayModels := h.agentMgr.GatewayModels(agentTypeStr)
 	model := req.Model
-	if model != "" && len(agentModels) > 0 {
+	if model != "" && len(gatewayModels) > 0 {
 		valid := false
-		for _, m := range agentModels {
+		for _, m := range gatewayModels {
 			if m.Value == model {
 				valid = true
 				break
@@ -76,15 +75,12 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 			model = ""
 		}
 	}
-	if model == "" && len(agentModels) > 0 {
-		model = agentModels[0].Value
+	if model == "" && len(gatewayModels) > 0 {
+		model = gatewayModels[0].Value
 	}
 
-	handle, err := CreateSession(
+	handle, err := h.agentMgr.CreateSession(
 		context.Background(), // ACP process must outlive this HTTP request
-		h.server.AgentClient(),
-		h.server.Notifications(),
-		h.server.ShutdownContext(),
 		SessionParams{
 			AgentType:      agentTypeStr,
 			WorkingDir:     req.WorkingDir,
@@ -92,7 +88,6 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 			Message:        req.Message,
 			PermissionMode: req.PermissionMode,
 			DefaultModel:   model,
-			GatewayModels:  agentModels,
 			Source:         "user",
 		},
 	)
@@ -159,7 +154,7 @@ func (h *Handlers) GetAgentSessions(c *gin.Context) {
 
 	// Load read states and runtime states for sessionState computation
 	readStates, _ := db.GetAllSessionReadStates()
-	runtimeStates := GetAllSessionRuntimeStates()
+	runtimeStates := h.agentMgr.AllRuntimeStates()
 
 	// Convert to response format matching what the frontend expects
 	result := make([]map[string]any, 0, len(sessions))
@@ -212,7 +207,7 @@ func (h *Handlers) GetAgentSession(c *gin.Context) {
 
 	// Compute state using same logic as list endpoint
 	readStates, _ := db.GetAllSessionReadStates()
-	runtimeStates := GetAllSessionRuntimeStates()
+	runtimeStates := h.agentMgr.AllRuntimeStates()
 	state := computeSessionState(session.SessionID, session.ArchivedAt != nil, readStates, runtimeStates)
 
 	c.JSON(http.StatusOK, gin.H{
@@ -303,7 +298,7 @@ func (h *Handlers) UnshareAgentSession(c *gin.Context) {
 // GET /api/agent/sessions/:id/messages
 func (h *Handlers) GetAgentMessages(c *gin.Context) {
 	sessionID := c.Param("id")
-	ss := GetOrCreateSessionState(sessionID)
+	ss := h.agentMgr.GetOrCreateState(sessionID)
 	raw := ss.GetRecentMessages(0) // 0 = all messages
 
 	// Write a JSON array of raw JSON objects directly.
@@ -336,7 +331,7 @@ func computeSessionState(
 	sessionID string,
 	isArchived bool,
 	readStates map[string]int,
-	runtimeStates map[string]struct{ IsProcessing bool; ResultCount int },
+	runtimeStates map[string]SessionRuntimeState,
 ) string {
 	if isArchived {
 		return "archived"

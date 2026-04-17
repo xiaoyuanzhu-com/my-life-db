@@ -79,22 +79,15 @@ func main() {
 	// Wire auto-run agent session creation through the shared api path
 	// (must be after api.NewHandlers to avoid circular imports)
 	srv.AgentRunner().SetCreateSession(func(ctx context.Context, params agentrunner.SessionParams) (agentsdk.Session, <-chan struct{}, error) {
-		handle, err := api.CreateSession(
-			ctx,
-			srv.AgentClient(),
-			srv.Notifications(),
-			srv.ShutdownContext(),
-			api.SessionParams{
-				AgentType:      params.AgentType,
-				WorkingDir:     params.WorkingDir,
-				Title:          params.Title,
-				Message:        params.Message,
-				PermissionMode: params.PermissionMode,
-				GatewayModels:  server.FilterModelsForAgent(srv.Cfg().AgentLLM.Models, params.AgentType),
-				Source:         params.Source,
-				AgentFile:      params.AgentFile,
-			},
-		)
+		handle, err := handlers.AgentMgr().CreateSession(ctx, api.SessionParams{
+			AgentType:      params.AgentType,
+			WorkingDir:     params.WorkingDir,
+			Title:          params.Title,
+			Message:        params.Message,
+			PermissionMode: params.PermissionMode,
+			Source:         params.Source,
+			AgentFile:      params.AgentFile,
+		})
 		if err != nil {
 			return nil, nil, err
 		}

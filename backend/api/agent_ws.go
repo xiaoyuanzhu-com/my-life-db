@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -15,93 +14,7 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
-	"github.com/xiaoyuanzhu-com/my-life-db/server"
 )
-
-// agentSessionStates is a registry of session ID → *SessionState.
-// Protected by agentSessionStatesMu.
-var (
-	agentSessionStatesMu sync.Mutex
-	agentSessionStates   = make(map[string]*agentsdk.SessionState)
-)
-
-// getOrCreateSessionState returns the SessionState for the given session ID,
-// creating one if it doesn't exist.
-func getOrCreateSessionState(sessionID string) *agentsdk.SessionState {
-	agentSessionStatesMu.Lock()
-	defer agentSessionStatesMu.Unlock()
-
-	if state, ok := agentSessionStates[sessionID]; ok {
-		return state
-	}
-	state := agentsdk.NewSessionState(sessionID)
-	agentSessionStates[sessionID] = state
-	return state
-}
-
-// acpSessions tracks active ACP sessions by session ID.
-// Protected by acpSessionsMu.
-var (
-	acpSessionsMu sync.Mutex
-	acpSessions   = make(map[string]agentsdk.Session)
-)
-
-// StoreAcpSession stores an ACP session in the in-memory map.
-// Called from CreateAgentSession in agent_api.go after eagerly spawning the ACP process.
-func StoreAcpSession(sessionID string, sess agentsdk.Session) {
-	acpSessionsMu.Lock()
-	acpSessions[sessionID] = sess
-	acpSessionsMu.Unlock()
-}
-
-// GetOrCreateSessionState returns the SessionState for the given session ID,
-// creating one if it doesn't exist. Exported for use from agent_api.go.
-func GetOrCreateSessionState(sessionID string) *agentsdk.SessionState {
-	return getOrCreateSessionState(sessionID)
-}
-
-// PeekSessionState returns the in-memory SessionState for the given session ID
-// without creating one. Returns nil if the session has no in-memory state
-// (i.e., no active WebSocket connection or ACP process).
-func PeekSessionState(sessionID string) *agentsdk.SessionState {
-	agentSessionStatesMu.Lock()
-	defer agentSessionStatesMu.Unlock()
-	return agentSessionStates[sessionID]
-}
-
-// GetAllSessionRuntimeStates returns a snapshot of IsProcessing and ResultCount
-// for all sessions that have in-memory state. Used by REST endpoints to compute
-// the "working"/"unread" session states without creating empty SessionState objects.
-func GetAllSessionRuntimeStates() map[string]struct{ IsProcessing bool; ResultCount int } {
-	agentSessionStatesMu.Lock()
-	defer agentSessionStatesMu.Unlock()
-
-	result := make(map[string]struct{ IsProcessing bool; ResultCount int }, len(agentSessionStates))
-	for id, ss := range agentSessionStates {
-		ss.Mu.RLock()
-		result[id] = struct{ IsProcessing bool; ResultCount int }{
-			IsProcessing: ss.IsProcessing(),
-			ResultCount:  ss.ResultCount,
-		}
-		ss.Mu.RUnlock()
-	}
-	return result
-}
-
-// CleanupAgentSession closes and removes the in-memory ACP session and session
-// state for the given session ID. Called from DeleteAgentSession in agent_api.go.
-func CleanupAgentSession(sessionID string) {
-	acpSessionsMu.Lock()
-	if sess, ok := acpSessions[sessionID]; ok {
-		sess.Close()
-		delete(acpSessions, sessionID)
-	}
-	acpSessionsMu.Unlock()
-
-	agentSessionStatesMu.Lock()
-	delete(agentSessionStates, sessionID)
-	agentSessionStatesMu.Unlock()
-}
 
 // AgentSessionWebSocket handles WebSocket connections for ACP-based agent sessions.
 // It uses ACP-native envelope framing for all messages.
@@ -111,7 +24,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 	log.Info().Str("sessionId", sessionID).Msg("AgentSessionWebSocket: connection request")
 
 	// Get or create session state
-	sessionState := getOrCreateSessionState(sessionID)
+	sessionState := h.agentMgr.GetOrCreateState(sessionID)
 
 	// Get the underlying http.ResponseWriter from Gin's wrapper
 	var w http.ResponseWriter = c.Writer
@@ -271,15 +184,15 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				return
 			}
 
-			agentModels := server.FilterModelsForAgent(h.server.Cfg().AgentLLM.Models, sessionRecord.AgentType)
+			gatewayModels := h.agentMgr.GatewayModels(sessionRecord.AgentType)
 			var defaultModel string
-			if len(agentModels) > 0 {
-				defaultModel = agentModels[0].Value
+			if len(gatewayModels) > 0 {
+				defaultModel = gatewayModels[0].Value
 			}
 			// Pass empty defaultModel here — LoadSession would overwrite it anyway.
 			// We re-apply the model explicitly AFTER LoadSession so legacy sessions
 			// that stored an old (now-unavailable) model get reset to a valid one.
-			SetupACPSession(sess, sessionID, mode, "", agentModels)
+			h.agentMgr.SetupACP(sess, sessionID, mode, "")
 
 			if err := sess.LoadSession(h.server.ShutdownContext(), sessionID, sessionRecord.WorkingDir); err != nil {
 				log.Warn().Err(err).Str("sessionId", sessionID).Msg("LoadSession failed")
@@ -402,18 +315,14 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			}
 
 			// Create ACP session lazily if needed
-			acpSessionsMu.Lock()
-			acpSession, exists := acpSessions[sessionID]
-			acpSessionsMu.Unlock()
+			acpSession, exists := h.agentMgr.GetSession(sessionID)
 
 			// Diagnostic: check if existing session's process is still alive
 			if exists {
 				select {
 				case <-acpSession.Done():
 					log.Info().Str("sessionId", sessionID).Msg("[diag] existing ACP session process is dead, removing for lazy recreation")
-					acpSessionsMu.Lock()
-					delete(acpSessions, sessionID)
-					acpSessionsMu.Unlock()
+					h.agentMgr.RemoveSession(sessionID)
 					exists = false
 				default:
 					log.Info().Str("sessionId", sessionID).Msg("[diag] existing ACP session process is alive")
@@ -452,12 +361,12 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				if agentType == agentsdk.AgentCodex {
 					agentTypeStr = "codex"
 				}
-				agentModels := server.FilterModelsForAgent(h.server.Cfg().AgentLLM.Models, agentTypeStr)
+				gatewayModels := h.agentMgr.GatewayModels(agentTypeStr)
 				var defaultModel string
-				if len(agentModels) > 0 {
-					defaultModel = agentModels[0].Value
+				if len(gatewayModels) > 0 {
+					defaultModel = gatewayModels[0].Value
 				}
-				SetupACPSession(sess, sessionID, mode, defaultModel, agentModels)
+				h.agentMgr.SetupACP(sess, sessionID, mode, defaultModel)
 				acpSession = sess
 			}
 
@@ -592,9 +501,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				Msg("prompt sent to agent session via WebSocket")
 
 		case "session.cancel":
-			acpSessionsMu.Lock()
-			acpSession, exists := acpSessions[sessionID]
-			acpSessionsMu.Unlock()
+			acpSession, exists := h.agentMgr.GetSession(sessionID)
 
 			if exists {
 				acpSession.CancelAllPermissions()
@@ -624,12 +531,10 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 		case "session.kill":
 			// Force-kill: terminates the ACP process when normal cancellation is stuck.
 			// Used as a safety net when the session is unresponsive.
-			acpSessionsMu.Lock()
-			acpSession, exists := acpSessions[sessionID]
+			acpSession, exists := h.agentMgr.GetSession(sessionID)
 			if exists {
-				delete(acpSessions, sessionID)
+				h.agentMgr.RemoveSession(sessionID)
 			}
-			acpSessionsMu.Unlock()
 
 			if exists {
 				acpSession.CancelAllPermissions()
@@ -656,9 +561,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 
 		case "session.setMode":
 			// Mode uses legacy SetSessionMode RPC (only Claude Code has modes)
-			acpSessionsMu.Lock()
-			acpSession, exists := acpSessions[sessionID]
-			acpSessionsMu.Unlock()
+			acpSession, exists := h.agentMgr.GetSession(sessionID)
 
 			if exists {
 				modeCtx, modeCancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -677,9 +580,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			fallthrough
 
 		case "session.setConfigOption":
-			acpSessionsMu.Lock()
-			acpSession, exists := acpSessions[sessionID]
-			acpSessionsMu.Unlock()
+			acpSession, exists := h.agentMgr.GetSession(sessionID)
 
 			if exists {
 				cfgCtx, cfgCancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -710,9 +611,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			}
 
 		case "permission.respond":
-			acpSessionsMu.Lock()
-			acpSession, exists := acpSessions[sessionID]
-			acpSessionsMu.Unlock()
+			acpSession, exists := h.agentMgr.GetSession(sessionID)
 
 			if !exists {
 				log.Warn().Str("sessionId", sessionID).Msg("no ACP session for permission response")

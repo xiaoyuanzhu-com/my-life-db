@@ -85,7 +85,7 @@ func (h *Handlers) SharedSessionSubscribeWebSocket(c *gin.Context) {
 		return
 	}
 
-	sessionState := GetOrCreateSessionState(sessionID)
+	sessionState := h.agentMgr.GetOrCreateState(sessionID)
 
 	// Get the underlying http.ResponseWriter from Gin's wrapper
 	var w http.ResponseWriter = c.Writer
