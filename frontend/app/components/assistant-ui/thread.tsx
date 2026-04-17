@@ -242,6 +242,12 @@ const StopButton: FC = () => {
  * cause the restore to read a stale localStorage value and overwrite the
  * composer text the user is actively typing.
  */
+// --- Instrumentation: module-level live-instance counter for diagnosing duplicated input ---
+// Tracks how many DraftPersistenceSync components are currently mounted.
+// Two-instance scenarios (desktop+mobile branches both mounted) show up as liveCount=2.
+let dsLiveInstanceCount = 0;
+// --- End instrumentation ---
+
 const DraftPersistenceSync: FC = () => {
   const composerRuntime = useComposerRuntime();
   const text = useComposer((s) => s.text);
@@ -259,32 +265,52 @@ const DraftPersistenceSync: FC = () => {
   // draft from localStorage before the deferred setTimeout restores it.
   const hasRestoredRef = useRef(false);
 
-  // --- Instrumentation: sequence counter for diagnosing duplicated input ---
+  // --- Instrumentation: per-instance identity + seq counter ---
+  // Short random ID so multiple simultaneous instances are distinguishable in logs.
+  const instIdRef = useRef<string | null>(null);
+  if (instIdRef.current === null) {
+    instIdRef.current = Math.random().toString(36).slice(2, 6);
+  }
+  const inst = instIdRef.current;
   const seqRef = useRef(0);
   const prevTextRef = useRef(text);
+  const trunc = (s: string) =>
+    s.length > 100 ? `${s.slice(0, 100)}…(${s.length})` : s;
+
+  // Mount / unmount — use string-only logs so they're easy to copy from console.
+  // liveCount tells us how many instances exist at once. A visibility snapshot
+  // helps figure out which layout branch (desktop hidden vs mobile visible)
+  // spawned each instance.
+  useEffect(() => {
+    dsLiveInstanceCount += 1;
+    const vw = typeof window !== "undefined" ? window.innerWidth : -1;
+    console.info(
+      `[draft-sync] [${inst}] MOUNT liveCount=${dsLiveInstanceCount} vw=${vw} key=${storageKey}`,
+    );
+    return () => {
+      dsLiveInstanceCount -= 1;
+      console.info(
+        `[draft-sync] [${inst}] UNMOUNT liveCount=${dsLiveInstanceCount} key=${storageKey}`,
+      );
+    };
+    // Mount/unmount only — do not re-run on storageKey change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const seq = ++seqRef.current;
     const prev = prevTextRef.current;
     prevTextRef.current = text;
-    // Truncate for readability but show enough to spot duplication
-    const trunc = (s: string) => s.length > 120 ? s.slice(0, 120) + `…(${s.length})` : s;
+    const dup =
+      text.length > 0 && prev.length > 0 && text.includes(prev) && text !== prev
+        ? `DUP@${text.indexOf(prev)}`
+        : "no";
     console.info(
-      `[draft-sync] #${seq} text-changed`,
-      {
-        len: text.length,
-        prevLen: prev.length,
-        storageKey,
-        hasRestored: hasRestoredRef.current,
-        text: trunc(text),
-        prev: trunc(prev),
-        // Check if new text looks like prev duplicated
-        isDupOfPrev: text.length > 0 && prev.length > 0 && text.includes(prev) && text !== prev
-          ? `YES — new text contains previous text (prev appears at index ${text.indexOf(prev)})`
-          : "no",
-      },
+      `[draft-sync] [${inst}] #${seq} text-changed prevLen=${prev.length} newLen=${text.length} hasRestored=${hasRestoredRef.current} dup=${dup} liveCount=${dsLiveInstanceCount}`,
     );
-  }, [text, storageKey]);
+    console.info(`[draft-sync] [${inst}] #${seq}   prev="${trunc(prev)}"`);
+    console.info(`[draft-sync] [${inst}] #${seq}   text="${trunc(text)}"`);
+  }, [text, storageKey, inst]);
   // --- End instrumentation ---
 
   // Restore from localStorage when session changes (mount, navigation).
@@ -293,10 +319,14 @@ const DraftPersistenceSync: FC = () => {
   useEffect(() => {
     hasRestoredRef.current = false;
     const draft = localStorage.getItem(storageKey);
-    console.info(`[draft-sync] restore-effect fired`, { storageKey, hasDraft: !!draft, draftLen: draft?.length ?? 0 });
+    console.info(
+      `[draft-sync] [${inst}] restore-effect fired key=${storageKey} hasDraft=${!!draft} draftLen=${draft?.length ?? 0}`,
+    );
     if (draft) {
       const timer = setTimeout(() => {
-        console.info(`[draft-sync] restoring from localStorage`, { storageKey, draftLen: draft.length, draft: draft.length > 120 ? draft.slice(0, 120) + "…" : draft });
+        console.info(
+          `[draft-sync] [${inst}] SETTEXT(localStorage) key=${storageKey} draftLen=${draft.length} draft="${trunc(draft)}"`,
+        );
         composerRef.current.setText(draft);
         hasRestoredRef.current = true;
       }, 0);
@@ -316,11 +346,15 @@ const DraftPersistenceSync: FC = () => {
   const activeKeyRef = useRef(storageKey);
   useEffect(() => {
     if (!hasRestoredRef.current) {
-      console.info(`[draft-sync] persist SKIPPED (not yet restored)`, { storageKey, textLen: text.length });
+      console.info(
+        `[draft-sync] [${inst}] persist SKIPPED (not yet restored) key=${storageKey} textLen=${text.length}`,
+      );
       return;
     }
     if (activeKeyRef.current !== storageKey) {
-      console.info(`[draft-sync] persist SKIPPED (key changed)`, { activeKey: activeKeyRef.current, storageKey });
+      console.info(
+        `[draft-sync] [${inst}] persist SKIPPED (key changed) activeKey=${activeKeyRef.current} newKey=${storageKey}`,
+      );
       activeKeyRef.current = storageKey;
       return;
     }
@@ -329,16 +363,18 @@ const DraftPersistenceSync: FC = () => {
     } else {
       localStorage.removeItem(storageKey);
     }
-  }, [text, storageKey]);
+  }, [text, storageKey, inst]);
 
   // Restore from failed send (runtime signals via pendingComposerText)
   useEffect(() => {
     if (pendingComposerText && clearPendingComposerText) {
-      console.info(`[draft-sync] restoring from pendingComposerText`, { len: pendingComposerText.length });
+      console.info(
+        `[draft-sync] [${inst}] SETTEXT(pendingComposerText) len=${pendingComposerText.length} text="${trunc(pendingComposerText)}"`,
+      );
       composerRef.current.setText(pendingComposerText);
       clearPendingComposerText();
     }
-  }, [pendingComposerText, clearPendingComposerText]);
+  }, [pendingComposerText, clearPendingComposerText, inst]);
 
   return null;
 };
