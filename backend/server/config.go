@@ -104,11 +104,14 @@ type AgentLLMConfig struct {
 // Field names match the ACP config_option_update frame: value/name/description.
 // Agents lists which agent types can use this model (e.g. ["claude_code", "codex"]).
 // Empty/omitted means the model is available to all agents.
+// ClaudeSmall optionally overrides ANTHROPIC_SMALL_FAST_MODEL when this model
+// is active in a Claude Code session; empty means reuse Value.
 type AgentModelInfo struct {
 	Value       string   `json:"value"`
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	Agents      []string `json:"agents,omitempty"`
+	ClaudeSmall string   `json:"claude_small,omitempty"`
 }
 
 // SupportsAgent returns true if this model can be used by the given agent type.

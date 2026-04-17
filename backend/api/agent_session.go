@@ -194,7 +194,16 @@ func CreateSession(
 		switch agentType {
 		case agentsdk.AgentClaudeCode:
 			sessionEnv["ANTHROPIC_MODEL"] = params.DefaultModel
-			sessionEnv["ANTHROPIC_SMALL_FAST_MODEL"] = params.DefaultModel
+			smallModel := params.DefaultModel
+			for _, m := range params.GatewayModels {
+				if m.Value == params.DefaultModel {
+					if m.ClaudeSmall != "" {
+						smallModel = m.ClaudeSmall
+					}
+					break
+				}
+			}
+			sessionEnv["ANTHROPIC_SMALL_FAST_MODEL"] = smallModel
 		case agentsdk.AgentCodex:
 			sessionEnv["OPENAI_MODEL"] = params.DefaultModel
 		}

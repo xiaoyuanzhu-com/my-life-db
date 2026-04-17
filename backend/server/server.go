@@ -108,7 +108,11 @@ func New(cfg *Config) (*Server, error) {
 			if ccModels := FilterModelsForAgent(cfg.AgentLLM.Models, "claude_code"); len(ccModels) > 0 {
 				defaultModel := ccModels[0].Value
 				ccEnv["ANTHROPIC_MODEL"] = defaultModel
-				ccEnv["ANTHROPIC_SMALL_FAST_MODEL"] = defaultModel
+				smallModel := ccModels[0].ClaudeSmall
+				if smallModel == "" {
+					smallModel = defaultModel
+				}
+				ccEnv["ANTHROPIC_SMALL_FAST_MODEL"] = smallModel
 			}
 
 			codexEnv["OPENAI_BASE_URL"] = cfg.AgentLLM.BaseURL
