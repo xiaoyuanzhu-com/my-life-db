@@ -132,8 +132,28 @@ func New(cfg *Config) (*Server, error) {
 				if err := os.WriteFile(authPath, []byte(authJSON), 0600); err != nil {
 					log.Warn().Err(err).Str("path", authPath).Msg("failed to write codex auth.json")
 				}
-				// Clean up any stale config.toml from earlier attempts.
-				_ = os.Remove(filepath.Join(codexHome, "config.toml"))
+				// Write config.toml declaring a custom "litellm" model provider
+				// that injects the x-litellm-customer-id header. Codex has no
+				// env var equivalent to ANTHROPIC_CUSTOM_HEADERS; headers must
+				// be attached via the model_providers config. Without this,
+				// litellm can't attribute codex usage to the customer.
+				configPath := filepath.Join(codexHome, "config.toml")
+				if cfg.AgentLLM.CustomerID != "" {
+					configTOML := fmt.Sprintf(`model_provider = "litellm"
+
+[model_providers.litellm]
+name = "litellm"
+base_url = %q
+wire_api = "responses"
+env_key = "OPENAI_API_KEY"
+http_headers = { "x-litellm-customer-id" = %q }
+`, cfg.AgentLLM.BaseURL+"/v1", cfg.AgentLLM.CustomerID)
+					if err := os.WriteFile(configPath, []byte(configTOML), 0600); err != nil {
+						log.Warn().Err(err).Str("path", configPath).Msg("failed to write codex config.toml")
+					}
+				} else {
+					_ = os.Remove(configPath)
+				}
 				codexEnv["CODEX_HOME"] = codexHome
 			}
 		}
