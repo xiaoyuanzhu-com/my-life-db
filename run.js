@@ -221,6 +221,18 @@ async function runBackend() {
   log.info("Building and starting backend server...");
   loadEnv();
 
+  // Isolate codex config for local dev so the backend doesn't clobber the
+  // developer's own ~/.codex/auth.json and config.toml when it writes the
+  // apikey-mode auth and litellm model_provider config. In Docker prod,
+  // CODEX_HOME is unset and the backend writes to ~/.codex/ (which is empty
+  // in the container). If the user explicitly set CODEX_HOME in .env, honor it.
+  if (!process.env.CODEX_HOME) {
+    const codexDevHome = resolve(PROJECT_ROOT, ".codex-dev");
+    execSync(`mkdir -p "${codexDevHome}"`);
+    process.env.CODEX_HOME = codexDevHome;
+    log.info(`CODEX_HOME=${codexDevHome} (dev isolation)`);
+  }
+
   // Build backend
   log.info("Building backend...");
   const buildResult = spawnSync("go", ["build", "."], {

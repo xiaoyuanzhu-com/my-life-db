@@ -120,23 +120,28 @@ func New(cfg *Config) (*Server, error) {
 			if codexModels := FilterModelsForAgent(cfg.AgentLLM.Models, "codex"); len(codexModels) > 0 {
 				codexEnv["OPENAI_MODEL"] = codexModels[0].Value
 			}
-			// Isolate Codex config dir so it doesn't pick up the user's
-			// stored ChatGPT OAuth token (~/.codex/auth.json). Pre-seed with
-			// auth_mode=apikey so Codex uses OPENAI_API_KEY against our gateway.
-			codexHome := filepath.Join(cfg.AppDataDir, "codex-home")
-			if err := os.MkdirAll(codexHome, 0700); err != nil {
-				log.Warn().Err(err).Str("path", codexHome).Msg("failed to create isolated CODEX_HOME")
+			// Write codex auth.json (forces auth_mode=apikey so it doesn't
+			// try OAuth) and config.toml (injects x-litellm-customer-id
+			// header when set; codex has no env var for custom HTTP headers).
+			// Respect $CODEX_HOME if the operator set one; otherwise use the
+			// default ~/.codex/. In local dev, run.js sets CODEX_HOME to a
+			// repo-local folder so we don't clobber the developer's own config.
+			codexHome := os.Getenv("CODEX_HOME")
+			if codexHome == "" {
+				if home, err := os.UserHomeDir(); err == nil {
+					codexHome = filepath.Join(home, ".codex")
+				}
+			}
+			if codexHome == "" {
+				log.Warn().Msg("cannot resolve codex home directory; skipping codex config setup")
+			} else if err := os.MkdirAll(codexHome, 0700); err != nil {
+				log.Warn().Err(err).Str("path", codexHome).Msg("failed to create codex home")
 			} else {
 				authJSON := fmt.Sprintf(`{"auth_mode":"apikey","OPENAI_API_KEY":%q,"tokens":null,"last_refresh":null}`, cfg.AgentLLM.APIKey)
 				authPath := filepath.Join(codexHome, "auth.json")
 				if err := os.WriteFile(authPath, []byte(authJSON), 0600); err != nil {
 					log.Warn().Err(err).Str("path", authPath).Msg("failed to write codex auth.json")
 				}
-				// Write config.toml declaring a custom "litellm" model provider
-				// that injects the x-litellm-customer-id header. Codex has no
-				// env var equivalent to ANTHROPIC_CUSTOM_HEADERS; headers must
-				// be attached via the model_providers config. Without this,
-				// litellm can't attribute codex usage to the customer.
 				configPath := filepath.Join(codexHome, "config.toml")
 				if cfg.AgentLLM.CustomerID != "" {
 					configTOML := fmt.Sprintf(`model_provider = "litellm"
@@ -154,7 +159,6 @@ http_headers = { "x-litellm-customer-id" = %q }
 				} else {
 					_ = os.Remove(configPath)
 				}
-				codexEnv["CODEX_HOME"] = codexHome
 			}
 		}
 
@@ -165,11 +169,10 @@ http_headers = { "x-litellm-customer-id" = %q }
 			Env:     ccEnv,
 		}
 		codexAgent := agentsdk.AgentConfig{
-			Type:     agentsdk.AgentCodex,
-			Name:     "Codex",
-			Command:  "codex-acp",
-			CleanEnv: true,
-			Env:      codexEnv,
+			Type:    agentsdk.AgentCodex,
+			Name:    "Codex",
+			Command: "codex-acp",
+			Env:     codexEnv,
 		}
 
 		// Build MCP servers to pass via ACP (no .mcp.json discovery needed)

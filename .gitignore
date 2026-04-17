@@ -10,3 +10,6 @@ data/
 .env
 
 .my-life-db
+
+# Local dev codex config (isolated from ~/.codex/ by run.js)
+.codex-dev/
