@@ -58,8 +58,24 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 	}
 
 	// Use requested model, or fall back to first gateway model compatible with this agent.
+	// Validate req.Model against the current gateway list — a stale value from the
+	// client (e.g. cached in localStorage) would otherwise bake a dead model name
+	// into ANTHROPIC_MODEL/OPENAI_MODEL at process spawn and fail on first call.
 	agentModels := server.FilterModelsForAgent(h.server.Cfg().AgentLLM.Models, agentTypeStr)
 	model := req.Model
+	if model != "" && len(agentModels) > 0 {
+		valid := false
+		for _, m := range agentModels {
+			if m.Value == model {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			log.Warn().Str("requestedModel", model).Str("agentType", agentTypeStr).Msg("requested model not in gateway list, falling back to default")
+			model = ""
+		}
+	}
 	if model == "" && len(agentModels) > 0 {
 		model = agentModels[0].Value
 	}

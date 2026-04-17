@@ -242,6 +242,12 @@ func CreateSession(
 		Str("agentType", agentTypeStr).
 		Str("workingDir", params.WorkingDir).
 		Str("source", params.Source).
+		Str("title", params.Title).
+		Str("permissionMode", params.PermissionMode).
+		Str("defaultModel", params.DefaultModel).
+		Str("agentFile", params.AgentFile).
+		Int("messageLen", len(params.Message)).
+		Bool("envOverride", len(sessionEnv) > 0).
 		Msg("agent session created")
 
 	// Synthesize user message so it appears in the chat UI

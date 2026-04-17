@@ -256,6 +256,28 @@ export default function AgentPage() {
       .then(data => {
         if (data.defaultConfigOptions) {
           setDefaultConfigOptions(data.defaultConfigOptions)
+          // Reconcile persisted newSessionDefaults against the fresh option list —
+          // values stored in localStorage from a previous AGENT_MODELS config may
+          // no longer exist (e.g. model renamed/removed), and sending one to the
+          // backend would otherwise fail with an invalid-model error.
+          setNewSessionDefaults(prev => {
+            let changed = false
+            const next: Record<string, Record<string, string>> = {}
+            for (const [agentType, saved] of Object.entries(prev)) {
+              const opts = data.defaultConfigOptions[agentType] ?? []
+              const cleaned: Record<string, string> = {}
+              for (const [configId, value] of Object.entries(saved)) {
+                const opt = opts.find((o: ConfigOption) => o.id === configId)
+                if (!opt || opt.options.some((c: { value: string }) => c.value === value)) {
+                  cleaned[configId] = value
+                } else {
+                  changed = true
+                }
+              }
+              next[agentType] = cleaned
+            }
+            return changed ? next : prev
+          })
         }
       })
       .catch(() => {}) // silently ignore — self-hosted may not have agent configured
