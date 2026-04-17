@@ -167,7 +167,7 @@ func (m *AgentManager) SetupACP(sess agentsdk.Session, sessionID, mode, defaultM
 		sessionState.AppendAndBroadcast(data)
 	})
 
-	if mode != "" && sess.AgentType() == agentsdk.AgentClaudeCode {
+	if mode != "" {
 		if err := sess.SetMode(context.Background(), mode); err != nil {
 			log.Warn().Err(err).Str("sessionId", sessionID).Str("mode", mode).Msg("failed to set initial mode")
 		}

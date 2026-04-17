@@ -77,6 +77,16 @@ var defaultConfigOptions = map[string][]configOption{
 				{Value: "xhigh", Name: "Xhigh", Description: "Extra high reasoning depth for complex problems"},
 			},
 		},
+		{
+			ID: "mode", Category: "mode", Name: "Approval Preset", Type: "select",
+			Description:  "Choose an approval and sandboxing preset for your session",
+			CurrentValue: "full-access",
+			Options: []configOptionChoice{
+				{Value: "read-only", Name: "Read Only", Description: "Codex can read files in the current workspace. Approval is required to edit files or access the internet."},
+				{Value: "auto", Name: "Default", Description: "Codex can read and edit files in the current workspace, and run commands. Approval is required to access the internet or edit other files."},
+				{Value: "full-access", Name: "Full Access", Description: "Codex can edit files outside this workspace and access the internet without asking for approval. Exercise caution when using."},
+			},
+		},
 	},
 }
 
