@@ -27,7 +27,15 @@ function QwenIcon({ className }: { className?: string }) {
   )
 }
 
-export type AgentType = 'claude_code' | 'codex' | 'qwen'
+function GeminiIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"/>
+    </svg>
+  )
+}
+
+export type AgentType = 'claude_code' | 'codex' | 'qwen' | 'gemini'
 
 /** Default modes per agent type, shown before ACP reports real modes. */
 export const DEFAULT_MODES: Record<AgentType, AvailableMode[]> = {
@@ -40,6 +48,7 @@ export const DEFAULT_MODES: Record<AgentType, AvailableMode[]> = {
   ],
   codex: [],
   qwen: [],
+  gemini: [],
 }
 
 interface AgentTypeOption {
@@ -68,6 +77,12 @@ const AGENT_TYPES: AgentTypeOption[] = [
     label: 'Qwen',
     description: 'Alibaba Qwen Code via ACP',
     icon: <QwenIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5" />,
+  },
+  {
+    value: 'gemini',
+    label: 'Gemini',
+    description: 'Google Gemini CLI via ACP',
+    icon: <GeminiIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5" />,
   },
 ]
 
