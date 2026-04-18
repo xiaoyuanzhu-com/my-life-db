@@ -98,6 +98,7 @@ func New(cfg *Config) (*Server, error) {
 		ccEnv := map[string]string{}
 		codexEnv := map[string]string{}
 		qwenEnv := map[string]string{}
+		geminiEnv := map[string]string{}
 		if cfg.AgentLLM.HasAgentLLM() {
 			ccEnv["ANTHROPIC_BASE_URL"] = cfg.AgentLLM.BaseURL
 			ccEnv["ANTHROPIC_API_KEY"] = cfg.AgentLLM.APIKey
@@ -129,6 +130,15 @@ func New(cfg *Config) (*Server, error) {
 			qwenEnv["OPENAI_API_KEY"] = cfg.AgentLLM.APIKey
 			if qwenModels := FilterModelsForAgent(cfg.AgentLLM.Models, "qwen"); len(qwenModels) > 0 {
 				qwenEnv["OPENAI_MODEL"] = qwenModels[0].Value
+			}
+
+			// TODO(gemini): no customer-ID header path yet; cfg.AgentLLM.CustomerID is
+			// not propagated to Gemini sessions. Investigate gemini-cli env vars or
+			// config file for custom HTTP headers.
+			geminiEnv["GOOGLE_GEMINI_BASE_URL"] = cfg.AgentLLM.BaseURL
+			geminiEnv["GEMINI_API_KEY"] = cfg.AgentLLM.APIKey
+			if geminiModels := FilterModelsForAgent(cfg.AgentLLM.Models, "gemini"); len(geminiModels) > 0 {
+				geminiEnv["GEMINI_MODEL"] = geminiModels[0].Value
 			}
 			// Write codex auth.json (forces auth_mode=apikey so it doesn't
 			// try OAuth) and config.toml (injects x-litellm-customer-id
@@ -193,6 +203,14 @@ http_headers = { "x-litellm-customer-id" = %q }
 			Env:     qwenEnv,
 		}
 
+		geminiAgent := agentsdk.AgentConfig{
+			Type:    agentsdk.AgentGemini,
+			Name:    "Gemini",
+			Command: "gemini",
+			Args:    []string{"--acp"},
+			Env:     geminiEnv,
+		}
+
 		// Build MCP servers to pass via ACP (no .mcp.json discovery needed)
 		var mcpServers []acp.McpServer
 		mcpServers = append(mcpServers, acp.McpServer{
@@ -209,7 +227,7 @@ http_headers = { "x-litellm-customer-id" = %q }
 		s.agentClient = agentsdk.NewClient(agentsdk.SessionConfig{
 			SystemPrompt: buildAgentSystemPrompt(cfg.UserDataDir),
 			McpServers:   mcpServers,
-		}, ccAgent, codexAgent, qwenAgent)
+		}, ccAgent, codexAgent, qwenAgent, geminiAgent)
 		s.agentClient.StartPool(ctx, agentsdk.AgentClaudeCode, 3)
 
 		log.Info().
