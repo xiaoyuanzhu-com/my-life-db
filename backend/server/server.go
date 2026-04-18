@@ -175,6 +175,18 @@ http_headers = { "x-litellm-customer-id" = %q }
 			Env:     codexEnv,
 		}
 
+		qwenEnv := map[string]string{
+			"OPENAI_BASE_URL": cfg.AgentLLM.BaseURL,
+			"OPENAI_API_KEY":  cfg.AgentLLM.APIKey,
+		}
+		qwenAgent := agentsdk.AgentConfig{
+			Type:    agentsdk.AgentQwen,
+			Name:    "Qwen",
+			Command: "qwen",
+			Args:    []string{"--acp"},
+			Env:     qwenEnv,
+		}
+
 		// Build MCP servers to pass via ACP (no .mcp.json discovery needed)
 		var mcpServers []acp.McpServer
 		mcpServers = append(mcpServers, acp.McpServer{
@@ -191,7 +203,7 @@ http_headers = { "x-litellm-customer-id" = %q }
 		s.agentClient = agentsdk.NewClient(agentsdk.SessionConfig{
 			SystemPrompt: buildAgentSystemPrompt(cfg.UserDataDir),
 			McpServers:   mcpServers,
-		}, ccAgent, codexAgent)
+		}, ccAgent, codexAgent, qwenAgent)
 		s.agentClient.StartPool(ctx, agentsdk.AgentClaudeCode, 3)
 
 		log.Info().
