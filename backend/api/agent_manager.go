@@ -48,12 +48,20 @@ func (m *AgentManager) GatewayModels(agentType string) []server.AgentModelInfo {
 }
 
 // agentTypeString converts the SDK enum to the string used in AGENT_MODELS
-// and DB records ("claude_code" | "codex").
+// and DB records.
 func agentTypeString(t agentsdk.AgentType) string {
-	if t == agentsdk.AgentCodex {
+	switch t {
+	case agentsdk.AgentCodex:
 		return "codex"
+	case agentsdk.AgentGemini:
+		return "gemini"
+	case agentsdk.AgentQwen:
+		return "qwen"
+	case agentsdk.AgentOpencode:
+		return "opencode"
+	default:
+		return "claude_code"
 	}
-	return "claude_code"
 }
 
 // -------- Session map --------
@@ -265,9 +273,18 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 	if agentTypeStr == "" {
 		agentTypeStr = "claude_code"
 	}
-	agentType := agentsdk.AgentClaudeCode
-	if agentTypeStr == "codex" {
+	var agentType agentsdk.AgentType
+	switch agentTypeStr {
+	case "codex":
 		agentType = agentsdk.AgentCodex
+	case "gemini":
+		agentType = agentsdk.AgentGemini
+	case "qwen":
+		agentType = agentsdk.AgentQwen
+	case "opencode":
+		agentType = agentsdk.AgentOpencode
+	default:
+		agentType = agentsdk.AgentClaudeCode
 	}
 
 	gatewayModels := m.GatewayModels(agentTypeStr)
