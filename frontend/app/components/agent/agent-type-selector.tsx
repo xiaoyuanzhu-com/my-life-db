@@ -19,7 +19,15 @@ function CodexIcon({ className }: { className?: string }) {
   )
 }
 
-export type AgentType = 'claude_code' | 'codex'
+function QwenIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <path d="M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.18L19.82 8 12 11.82 4.18 8 12 4.18zM4 9.41l7 3.5v7.27l-7-3.5V9.41zm9 10.77v-7.27l7-3.5v7.27l-7 3.5z"/>
+    </svg>
+  )
+}
+
+export type AgentType = 'claude_code' | 'codex' | 'qwen'
 
 /** Default modes per agent type, shown before ACP reports real modes. */
 export const DEFAULT_MODES: Record<AgentType, AvailableMode[]> = {
@@ -31,6 +39,7 @@ export const DEFAULT_MODES: Record<AgentType, AvailableMode[]> = {
     { id: 'bypassPermissions', name: 'Bypass Permissions', description: 'Bypass all permission checks' },
   ],
   codex: [],
+  qwen: [],
 }
 
 interface AgentTypeOption {
@@ -53,6 +62,12 @@ const AGENT_TYPES: AgentTypeOption[] = [
     label: 'Codex',
     description: 'OpenAI Codex via ACP',
     icon: <CodexIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5" />,
+  },
+  {
+    value: 'qwen',
+    label: 'Qwen',
+    description: 'Alibaba Qwen Code via ACP',
+    icon: <QwenIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5" />,
   },
 ]
 
