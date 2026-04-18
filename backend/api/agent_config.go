@@ -136,11 +136,21 @@ func (h *Handlers) GetAgentConfig(c *gin.Context) {
 
 	// When AGENT_MODELS is configured, replace the model config option
 	// per agent type, filtering models by their "agents" compatibility field.
+	// When AGENT_MODELS is set but has no entries for a given agent, drop the
+	// model option entirely — everything routes through LiteLLM, so a
+	// native-default dropdown that LiteLLM can't serve is dead weight.
 	if len(cfg.AgentLLM.Models) > 0 {
 		for agentType, opts := range result {
 			agentModels := server.FilterModelsForAgent(cfg.AgentLLM.Models, agentType)
 			if len(agentModels) == 0 {
-				continue // no gateway models support this agent; keep native defaults
+				filtered := opts[:0]
+				for _, opt := range opts {
+					if opt.Category != "model" {
+						filtered = append(filtered, opt)
+					}
+				}
+				result[agentType] = filtered
+				continue
 			}
 			replacementOptions := make([]configOptionChoice, len(agentModels))
 			for i, m := range agentModels {
