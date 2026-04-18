@@ -211,6 +211,15 @@ http_headers = { "x-litellm-customer-id" = %q }
 			Env:     geminiEnv,
 		}
 
+		// opencode reads its provider config from ~/.config/opencode/opencode.json,
+		// provisioned manually on the host. No env vars needed.
+		opencodeAgent := agentsdk.AgentConfig{
+			Type:    agentsdk.AgentOpencode,
+			Name:    "opencode",
+			Command: "opencode",
+			Args:    []string{"acp"},
+		}
+
 		// Build MCP servers to pass via ACP (no .mcp.json discovery needed)
 		var mcpServers []acp.McpServer
 		mcpServers = append(mcpServers, acp.McpServer{
@@ -227,7 +236,7 @@ http_headers = { "x-litellm-customer-id" = %q }
 		s.agentClient = agentsdk.NewClient(agentsdk.SessionConfig{
 			SystemPrompt: buildAgentSystemPrompt(cfg.UserDataDir),
 			McpServers:   mcpServers,
-		}, ccAgent, codexAgent, qwenAgent, geminiAgent)
+		}, ccAgent, codexAgent, qwenAgent, geminiAgent, opencodeAgent)
 		s.agentClient.StartPool(ctx, agentsdk.AgentClaudeCode, 3)
 
 		log.Info().
