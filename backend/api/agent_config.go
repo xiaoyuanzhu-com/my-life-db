@@ -108,6 +108,16 @@ var defaultConfigOptions = map[string][]configOption{
 			},
 		},
 	},
+	"opencode": {
+		{
+			ID: "model", Category: "model", Name: "Model", Type: "select",
+			Description:  "Model to use (routed through opencode's LiteLLM provider)",
+			CurrentValue: "claude-sonnet-4-6",
+			Options: []configOptionChoice{
+				{Value: "claude-sonnet-4-6", Name: "Claude Sonnet 4.6", Description: "Balanced default"},
+			},
+		},
+	},
 }
 
 // GetAgentConfig returns agent configuration for the frontend.

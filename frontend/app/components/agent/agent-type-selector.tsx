@@ -35,7 +35,15 @@ function GeminiIcon({ className }: { className?: string }) {
   )
 }
 
-export type AgentType = 'claude_code' | 'codex' | 'qwen' | 'gemini'
+function OpencodeIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <path d="M3 4h18v2H3V4zm0 4h18v12H3V8zm2 2v8h14v-8H5z"/>
+    </svg>
+  )
+}
+
+export type AgentType = 'claude_code' | 'codex' | 'qwen' | 'gemini' | 'opencode'
 
 /** Default modes per agent type, shown before ACP reports real modes. */
 export const DEFAULT_MODES: Record<AgentType, AvailableMode[]> = {
@@ -49,6 +57,7 @@ export const DEFAULT_MODES: Record<AgentType, AvailableMode[]> = {
   codex: [],
   qwen: [],
   gemini: [],
+  opencode: [],
 }
 
 interface AgentTypeOption {
@@ -83,6 +92,12 @@ const AGENT_TYPES: AgentTypeOption[] = [
     label: 'Gemini',
     description: 'Google Gemini CLI via ACP',
     icon: <GeminiIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5" />,
+  },
+  {
+    value: 'opencode',
+    label: 'opencode',
+    description: 'sst/opencode TUI agent via ACP',
+    icon: <OpencodeIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5" />,
   },
 ]
 
