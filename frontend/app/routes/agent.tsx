@@ -968,159 +968,165 @@ export default function AgentPage() {
     </div>
   )
 
-  return (
-    <AgentContextProvider value={agentContextValue}>
-    <AssistantRuntimeProvider runtime={runtime}>
-    <div className="flex h-full min-w-0">
-      {/* ── Desktop: Resizable sidebar + chat ── */}
-      <div className="hidden md:flex md:flex-1 h-full min-w-0">
-        {sessionSidebar ? (
-          <ResizablePanelGroup
-            direction="horizontal"
-            autoSaveId="agent-sidebar"
+  // ─── Desktop layout ───────────────────────────────────────────────────────
+  const desktopLayout = (
+    <div className="flex flex-1 h-full min-w-0">
+      {sessionSidebar ? (
+        <ResizablePanelGroup
+          direction="horizontal"
+          autoSaveId="agent-sidebar"
+        >
+          {/* Sidebar panel */}
+          <ResizablePanel
+            ref={sidebarPanelRef}
+            defaultSize={30}
+            minSize={20}
+            maxSize={50}
+            collapsible
+            collapsedSize={0}
+            onCollapse={() => setIsSidebarCollapsed(true)}
+            onExpand={() => setIsSidebarCollapsed(false)}
+            className={cn(
+              'flex flex-col bg-muted/30 overflow-hidden',
+              isSidebarCollapsed && 'hidden'
+            )}
           >
-            {/* Sidebar panel */}
-            <ResizablePanel
-              ref={sidebarPanelRef}
-              defaultSize={30}
-              minSize={20}
-              maxSize={50}
-              collapsible
-              collapsedSize={0}
-              onCollapse={() => setIsSidebarCollapsed(true)}
-              onExpand={() => setIsSidebarCollapsed(false)}
-              className={cn(
-                'flex flex-col bg-muted/30 overflow-hidden',
-                isSidebarCollapsed && 'hidden'
+            <SessionsHeader showCollapseButton />
+            <div className="flex-1 min-h-0 overflow-hidden p-2">
+              <ThreadList activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} hasMore={pagination.hasMore} isLoadingMore={isLoadingMore} onLoadMore={loadMoreSessions} />
+            </div>
+          </ResizablePanel>
+
+          {/* Resize handle (hidden when collapsed) */}
+          {!isSidebarCollapsed && <ResizableHandle />}
+
+          {/* Main content panel */}
+          <ResizablePanel defaultSize={70} minSize={40}>
+            <div className="relative flex flex-1 flex-col bg-background overflow-hidden min-w-0 h-full">
+              {/* Expand button when sidebar is collapsed */}
+              {isSidebarCollapsed && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-2 left-2 z-20 h-8 w-8"
+                  onClick={() => setIsSidebarCollapsed(false)}
+                  title="Expand sidebar"
+                >
+                  <PanelLeftOpen className="h-4 w-4" />
+                </Button>
               )}
-            >
-              <SessionsHeader showCollapseButton />
-              <div className="flex-1 min-h-0 overflow-hidden p-2">
-                <ThreadList activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} hasMore={pagination.hasMore} isLoadingMore={isLoadingMore} onLoadMore={loadMoreSessions} />
-              </div>
-            </ResizablePanel>
-
-            {/* Resize handle (hidden when collapsed) */}
-            {!isSidebarCollapsed && <ResizableHandle />}
-
-            {/* Main content panel */}
-            <ResizablePanel defaultSize={70} minSize={40}>
-              <div className="relative flex flex-1 flex-col bg-background overflow-hidden min-w-0 h-full">
-                {/* Expand button when sidebar is collapsed */}
-                {isSidebarCollapsed && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="absolute top-2 left-2 z-20 h-8 w-8"
-                    onClick={() => setIsSidebarCollapsed(false)}
-                    title="Expand sidebar"
-                  >
-                    <PanelLeftOpen className="h-4 w-4" />
-                  </Button>
-                )}
-                {/* Top-right buttons: share */}
-                {activeSessionId && effectiveActiveSession && (
-                  <div className="absolute top-2 right-2 z-20 flex items-center gap-1">
-                    <ShareButton
-                      session={effectiveActiveSession}
-                      onUpdate={(fields) => updateSessionShare(activeSessionId, fields)}
-                    />
-                  </div>
-                )}
-                {activeSessionId && !isMobile ? (
-                  <AgentChat
-                    sessionId={activeSessionId}
-                    className="flex-1"
+              {/* Top-right buttons: share */}
+              {activeSessionId && effectiveActiveSession && (
+                <div className="absolute top-2 right-2 z-20 flex items-center gap-1">
+                  <ShareButton
+                    session={effectiveActiveSession}
+                    onUpdate={(fields) => updateSessionShare(activeSessionId, fields)}
                   />
-                ) : !activeSessionId ? (
-                  <AgentChat
-                    sessionId=""
-                    className="flex-1 agent-bg"
-                  />
-                ) : null}
-              </div>
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        ) : (
-          /* No sidebar — just the chat area */
-          <div className="flex-1 flex flex-col bg-background overflow-hidden min-w-0">
-            {activeSessionId && !isMobile ? (
-              <AgentChat
-                sessionId={activeSessionId}
-                className="flex-1"
-              />
-            ) : !activeSessionId ? (
-              <AgentChat
-                sessionId=""
-                className="flex-1 agent-bg"
-              />
-            ) : null}
-          </div>
-        )}
-      </div>
-
-      {/* ── Mobile: Stack navigation ── */}
-      <div className="flex md:hidden flex-1 h-full min-w-0 overflow-hidden">
-        {activeSessionId && isMobile ? (
-          /* Detail view: full-screen chat with floating back button */
-          <div className="relative flex flex-1 flex-col bg-background overflow-hidden min-w-0">
-            {sessionSidebar && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute top-2 left-2 z-20 h-10 w-10 rounded-full bg-background/80 backdrop-blur"
-                onClick={() => setActiveSessionId(null)}
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            )}
-            {effectiveActiveSession && (
-              <div className="absolute top-2 right-2 z-20">
-                <ShareButton
-                  session={effectiveActiveSession}
-                  onUpdate={(fields) => updateSessionShare(activeSessionId, fields)}
+                </div>
+              )}
+              {activeSessionId ? (
+                <AgentChat
+                  sessionId={activeSessionId}
+                  className="flex-1"
                 />
-              </div>
-            )}
+              ) : (
+                <AgentChat
+                  sessionId=""
+                  className="flex-1 agent-bg"
+                />
+              )}
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      ) : (
+        /* No sidebar — just the chat area */
+        <div className="flex-1 flex flex-col bg-background overflow-hidden min-w-0">
+          {activeSessionId ? (
             <AgentChat
               sessionId={activeSessionId}
               className="flex-1"
             />
-          </div>
-        ) : !activeSessionId && sessionSidebar && showNewSessionMobile ? (
-          /* New session view: full-screen chat input with back button */
-          <div className="relative flex flex-1 flex-col agent-bg min-w-0">
+          ) : (
+            <AgentChat
+              sessionId=""
+              className="flex-1 agent-bg"
+            />
+          )}
+        </div>
+      )}
+    </div>
+  )
+
+  // ─── Mobile layout ────────────────────────────────────────────────────────
+  const mobileLayout = (
+    <div className="flex flex-1 h-full min-w-0 overflow-hidden">
+      {activeSessionId ? (
+        /* Detail view: full-screen chat with floating back button */
+        <div className="relative flex flex-1 flex-col bg-background overflow-hidden min-w-0">
+          {sessionSidebar && (
             <Button
               variant="ghost"
               size="icon"
               className="absolute top-2 left-2 z-20 h-10 w-10 rounded-full bg-background/80 backdrop-blur"
-              onClick={() => window.history.back()}
+              onClick={() => setActiveSessionId(null)}
             >
               <ArrowLeft className="h-4 w-4" />
             </Button>
-            <AgentChat
-              sessionId=""
-              className="flex-1"
-            />
-          </div>
-        ) : sessionSidebar ? (
-          /* List view: full-screen session list */
-          <div className="flex flex-1 flex-col bg-muted/30 min-w-0 overflow-hidden">
-            <SessionsHeader />
-            <div className="flex-1 min-h-0 overflow-hidden p-2">
-              <ThreadList activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} hasMore={pagination.hasMore} isLoadingMore={isLoadingMore} onLoadMore={loadMoreSessions} />
+          )}
+          {effectiveActiveSession && (
+            <div className="absolute top-2 right-2 z-20">
+              <ShareButton
+                session={effectiveActiveSession}
+                onUpdate={(fields) => updateSessionShare(activeSessionId, fields)}
+              />
             </div>
-          </div>
-        ) : (
-          /* No sidebar (hybrid app) — just the chat input */
+          )}
+          <AgentChat
+            sessionId={activeSessionId}
+            className="flex-1"
+          />
+        </div>
+      ) : sessionSidebar && showNewSessionMobile ? (
+        /* New session view: full-screen chat input with back button */
+        <div className="relative flex flex-1 flex-col agent-bg min-w-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute top-2 left-2 z-20 h-10 w-10 rounded-full bg-background/80 backdrop-blur"
+            onClick={() => window.history.back()}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
           <AgentChat
             sessionId=""
-            className="flex-1 agent-bg"
+            className="flex-1"
           />
-        )}
-      </div>
+        </div>
+      ) : sessionSidebar ? (
+        /* List view: full-screen session list */
+        <div className="flex flex-1 flex-col bg-muted/30 min-w-0 overflow-hidden">
+          <SessionsHeader />
+          <div className="flex-1 min-h-0 overflow-hidden p-2">
+            <ThreadList activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} hasMore={pagination.hasMore} isLoadingMore={isLoadingMore} onLoadMore={loadMoreSessions} />
+          </div>
+        </div>
+      ) : (
+        /* No sidebar (hybrid app) — just the chat input */
+        <AgentChat
+          sessionId=""
+          className="flex-1 agent-bg"
+        />
+      )}
     </div>
-    </AssistantRuntimeProvider>
+  )
+
+  return (
+    <AgentContextProvider value={agentContextValue}>
+      <AssistantRuntimeProvider runtime={runtime}>
+        <div className="flex h-full min-w-0">
+          {isMobile ? mobileLayout : desktopLayout}
+        </div>
+      </AssistantRuntimeProvider>
     </AgentContextProvider>
   )
 }
