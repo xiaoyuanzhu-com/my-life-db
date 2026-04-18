@@ -18,6 +18,9 @@ type AgentType string
 const (
 	AgentClaudeCode AgentType = "claude_code"
 	AgentCodex      AgentType = "codex"
+	AgentGemini     AgentType = "gemini"
+	AgentQwen       AgentType = "qwen"
+	AgentOpencode   AgentType = "opencode"
 )
 
 // AgentConfig registers an agent binary with the client.
