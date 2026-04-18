@@ -97,6 +97,7 @@ func New(cfg *Config) (*Server, error) {
 	{
 		ccEnv := map[string]string{}
 		codexEnv := map[string]string{}
+		qwenEnv := map[string]string{}
 		if cfg.AgentLLM.HasAgentLLM() {
 			ccEnv["ANTHROPIC_BASE_URL"] = cfg.AgentLLM.BaseURL
 			ccEnv["ANTHROPIC_API_KEY"] = cfg.AgentLLM.APIKey
@@ -119,6 +120,15 @@ func New(cfg *Config) (*Server, error) {
 			codexEnv["OPENAI_API_KEY"] = cfg.AgentLLM.APIKey
 			if codexModels := FilterModelsForAgent(cfg.AgentLLM.Models, "codex"); len(codexModels) > 0 {
 				codexEnv["OPENAI_MODEL"] = codexModels[0].Value
+			}
+
+			// TODO(qwen): no customer-ID header path yet; cfg.AgentLLM.CustomerID is
+			// not propagated to Qwen sessions. Investigate qwen-cli env vars or config
+			// file for custom HTTP headers.
+			qwenEnv["OPENAI_BASE_URL"] = cfg.AgentLLM.BaseURL
+			qwenEnv["OPENAI_API_KEY"] = cfg.AgentLLM.APIKey
+			if qwenModels := FilterModelsForAgent(cfg.AgentLLM.Models, "qwen"); len(qwenModels) > 0 {
+				qwenEnv["OPENAI_MODEL"] = qwenModels[0].Value
 			}
 			// Write codex auth.json (forces auth_mode=apikey so it doesn't
 			// try OAuth) and config.toml (injects x-litellm-customer-id
@@ -175,10 +185,6 @@ http_headers = { "x-litellm-customer-id" = %q }
 			Env:     codexEnv,
 		}
 
-		qwenEnv := map[string]string{
-			"OPENAI_BASE_URL": cfg.AgentLLM.BaseURL,
-			"OPENAI_API_KEY":  cfg.AgentLLM.APIKey,
-		}
 		qwenAgent := agentsdk.AgentConfig{
 			Type:    agentsdk.AgentQwen,
 			Name:    "Qwen",
