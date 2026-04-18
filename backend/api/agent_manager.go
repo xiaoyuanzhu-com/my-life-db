@@ -313,6 +313,8 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 			sessionEnv["ANTHROPIC_SMALL_FAST_MODEL"] = smallModel
 		case agentsdk.AgentCodex:
 			sessionEnv["OPENAI_MODEL"] = params.DefaultModel
+		case agentsdk.AgentQwen:
+			sessionEnv["OPENAI_MODEL"] = params.DefaultModel
 		}
 	}
 
