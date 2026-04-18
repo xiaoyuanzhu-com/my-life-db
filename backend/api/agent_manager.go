@@ -315,6 +315,8 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 			sessionEnv["OPENAI_MODEL"] = params.DefaultModel
 		case agentsdk.AgentQwen:
 			sessionEnv["OPENAI_MODEL"] = params.DefaultModel
+		case agentsdk.AgentGemini:
+			sessionEnv["GEMINI_MODEL"] = params.DefaultModel
 		}
 	}
 

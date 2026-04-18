@@ -98,6 +98,16 @@ var defaultConfigOptions = map[string][]configOption{
 			},
 		},
 	},
+	"gemini": {
+		{
+			ID: "model", Category: "model", Name: "Model", Type: "select",
+			Description:  "Gemini model to use",
+			CurrentValue: "gemini-3-pro",
+			Options: []configOptionChoice{
+				{Value: "gemini-3-pro", Name: "Gemini 3 Pro", Description: "Frontier Gemini model with 1M context"},
+			},
+		},
+	},
 }
 
 // GetAgentConfig returns agent configuration for the frontend.
