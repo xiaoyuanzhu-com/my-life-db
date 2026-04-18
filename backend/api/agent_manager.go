@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"sync"
 
 	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
@@ -11,6 +12,18 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 	"github.com/xiaoyuanzhu-com/my-life-db/server"
 )
+
+// resolveACPModel maps a MyLifeDB model value (e.g. "gpt-5.4") to the form
+// expected by the target ACP agent's SetModel RPC. Opencode resolves IDs as
+// <provider>/<modelID>; bare IDs silently no-op, so gateway-backed models
+// need the "litellm/" prefix (matching the provider block in
+// ~/.config/opencode/opencode.json). Other agents accept bare IDs.
+func resolveACPModel(agentType agentsdk.AgentType, modelID string) string {
+	if agentType == agentsdk.AgentOpencode && !strings.HasPrefix(modelID, "litellm/") {
+		return "litellm/" + modelID
+	}
+	return modelID
+}
 
 // AgentManager owns the in-memory state for active ACP agent sessions and
 // coordinates their lifecycle. Replaces the package-level globals
@@ -182,8 +195,9 @@ func (m *AgentManager) SetupACP(sess agentsdk.Session, sessionID, mode, defaultM
 	}
 
 	if defaultModel != "" {
-		if err := sess.SetModel(context.Background(), defaultModel); err != nil {
-			log.Warn().Err(err).Str("sessionId", sessionID).Str("model", defaultModel).Msg("failed to set initial model")
+		modelForACP := resolveACPModel(sess.AgentType(), defaultModel)
+		if err := sess.SetModel(context.Background(), modelForACP); err != nil {
+			log.Warn().Err(err).Str("sessionId", sessionID).Str("model", modelForACP).Msg("failed to set initial model")
 		}
 	}
 

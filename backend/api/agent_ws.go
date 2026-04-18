@@ -206,8 +206,9 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				// allowlist check, which would reject custom gateway model names.
 				if defaultModel != "" {
 					modelCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-					if err := sess.SetModel(modelCtx, defaultModel); err != nil {
-						log.Warn().Err(err).Str("sessionId", sessionID).Str("model", defaultModel).Msg("failed to override model after LoadSession")
+					modelForACP := resolveACPModel(sess.AgentType(), defaultModel)
+					if err := sess.SetModel(modelCtx, modelForACP); err != nil {
+						log.Warn().Err(err).Str("sessionId", sessionID).Str("model", modelForACP).Msg("failed to override model after LoadSession")
 					}
 					cancel()
 				}
@@ -595,10 +596,11 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 						log.Info().Str("sessionId", sessionID).Str("mode", inMsg.ConfigValue).Msg("mode set via WebSocket")
 					}
 				} else if inMsg.ConfigID == "model" {
-					if err := acpSession.SetModel(cfgCtx, inMsg.ConfigValue); err != nil {
-						log.Error().Err(err).Str("sessionId", sessionID).Str("model", inMsg.ConfigValue).Msg("failed to set model")
+					modelForACP := resolveACPModel(acpSession.AgentType(), inMsg.ConfigValue)
+					if err := acpSession.SetModel(cfgCtx, modelForACP); err != nil {
+						log.Error().Err(err).Str("sessionId", sessionID).Str("model", modelForACP).Msg("failed to set model")
 					} else {
-						log.Info().Str("sessionId", sessionID).Str("model", inMsg.ConfigValue).Msg("model set via WebSocket")
+						log.Info().Str("sessionId", sessionID).Str("model", modelForACP).Msg("model set via WebSocket")
 					}
 				} else {
 					if err := acpSession.SetConfigOption(cfgCtx, inMsg.ConfigID, inMsg.ConfigValue); err != nil {
