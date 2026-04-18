@@ -88,6 +88,16 @@ var defaultConfigOptions = map[string][]configOption{
 			},
 		},
 	},
+	"qwen": {
+		{
+			ID: "model", Category: "model", Name: "Model", Type: "select",
+			Description:  "Qwen model to use",
+			CurrentValue: "qwen3-coder-plus",
+			Options: []configOptionChoice{
+				{Value: "qwen3-coder-plus", Name: "Qwen3 Coder Plus", Description: "Frontier Qwen3 coding model"},
+			},
+		},
+	},
 }
 
 // GetAgentConfig returns agent configuration for the frontend.
