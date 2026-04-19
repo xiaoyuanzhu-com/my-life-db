@@ -211,7 +211,32 @@ func (m *AgentManager) SetupACP(sess agentsdk.Session, sessionID, mode, defaultM
 		}
 	}
 
-	if defaultModel != "" {
+	// Model selection, per agent:
+	//
+	//   claude_code / codex / gemini:
+	//     ACP session/set_model accepts arbitrary gateway-proxied names
+	//     (claude-agent-acp uses UnstableSetSessionModel which bypasses the
+	//     CLI allowlist). Call SetModel so both new sessions and mid-session
+	//     dropdown changes propagate to the agent.
+	//
+	//   opencode:
+	//     Accepts any model declared in opencode.json's provider.litellm.models
+	//     block (see resolveACPModel for the "litellm/" prefix).
+	//
+	//   qwen — SKIPPED:
+	//     qwen's session/set_model validates the modelId against an authType-
+	//     specific registry (see Config.switchModel at cli.js:148334). Gateway
+	//     names like "gpt-5.4" aren't in the "openai" authType registry, so
+	//     the RPC returns -32603 "Model 'X' not found for authType 'openai'".
+	//     The session still runs on the correct model because OPENAI_MODEL env
+	//     (set at process spawn in server.go and CreateSession below) drives
+	//     qwen's model resolution, and qwen auto-captures a RuntimeModelSnapshot
+	//     on boot for unknown models that have complete credentials
+	//     (syncRuntimeModelSnapshotWithCredentials at cli.js:148495). So
+	//     SetModel is redundant at session creation, and mid-session dropdown
+	//     changes won't take effect without respawning the process anyway.
+	//     We skip the call to avoid a misleading warning.
+	if defaultModel != "" && sess.AgentType() != agentsdk.AgentQwen {
 		modelForACP := resolveACPModel(sess.AgentType(), defaultModel)
 		if err := sess.SetModel(context.Background(), modelForACP); err != nil {
 			log.Warn().Err(err).Str("sessionId", sessionID).Str("model", modelForACP).Msg("failed to set initial model")
@@ -311,9 +336,15 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 	// When the caller picked a non-default gateway model, override the env
 	// vars the agent process would normally inherit from the pre-warmed pool.
 	// Keeps the spawned process's ANTHROPIC_MODEL / ANTHROPIC_SMALL_FAST_MODEL
-	// (or OPENAI_MODEL) consistent with the session's selected model.
-	// A non-empty Env also causes the pool to be skipped — pool env is baked
-	// at process spawn and can't be changed post-hoc.
+	// (or OPENAI_MODEL / GEMINI_MODEL) consistent with the session's selected
+	// model. A non-empty Env also causes the pool to be skipped — pool env is
+	// baked at process spawn and can't be changed post-hoc.
+	//
+	// Note for qwen: OPENAI_MODEL is the *only* reliable way to pick a gateway
+	// model. qwen's ACP session/set_model rejects unknown names (see SetupACP);
+	// it auto-captures a RuntimeModelSnapshot from env+creds on boot instead.
+	// opencode is missing from the switch because opencode reads its model
+	// from opencode.json, not env vars.
 	var sessionEnv map[string]string
 	if params.DefaultModel != "" && len(gatewayModels) > 0 && params.DefaultModel != gatewayModels[0].Value {
 		sessionEnv = make(map[string]string, 2)

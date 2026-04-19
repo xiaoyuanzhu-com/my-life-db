@@ -212,7 +212,13 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				// Override the loaded session's stored model with a gateway-compatible one.
 				// Use UnstableSetSessionModel (SetModel) to bypass claude-agent-acp's
 				// allowlist check, which would reject custom gateway model names.
-				if defaultModel != "" {
+				// qwen skipped here for the same reason as AgentManager.SetupACP:
+				// its ACP session/set_model validates against a static authType
+				// registry that doesn't know our gateway-proxied model names.
+				// Model is env-driven (OPENAI_MODEL) and auto-captured as a
+				// RuntimeModelSnapshot on process boot — so calling SetModel only
+				// produces a misleading "not found for authType" warning.
+				if defaultModel != "" && sess.AgentType() != agentsdk.AgentQwen {
 					modelCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 					modelForACP := resolveACPModel(sess.AgentType(), defaultModel)
 					if err := sess.SetModel(modelCtx, modelForACP); err != nil {
@@ -597,6 +603,14 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				// in Claude Code only supports configId="model", not "mode".
 				// Model uses UnstableSetSessionModel to bypass claude-agent-acp's
 				// allowlist (which rejects custom gateway model names).
+				//
+				// Known limitation for qwen: this RPC call errors for qwen because
+				// qwen validates modelId against a static authType registry (see
+				// the long comment in AgentManager.SetupACP). The error surfaces
+				// to the frontend as a failed model change — mid-session model
+				// switching for qwen requires a process restart, which isn't wired
+				// up yet. For now, qwen users should pick the model at session
+				// creation; the dropdown in an existing session won't propagate.
 				if inMsg.ConfigID == "mode" {
 					if err := acpSession.SetMode(cfgCtx, inMsg.ConfigValue); err != nil {
 						log.Error().Err(err).Str("sessionId", sessionID).Str("mode", inMsg.ConfigValue).Msg("failed to set mode")
