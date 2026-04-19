@@ -287,6 +287,81 @@ Process the new file.
 	}
 }
 
+func TestWatcherReloadsOnNewAgentFolder(t *testing.T) {
+	dir := t.TempDir()
+	r := &Runner{cfg: Config{AgentsDir: dir}}
+	if err := r.LoadDefs(); err != nil {
+		t.Fatalf("initial load: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go r.watchAgentsDir(ctx)
+
+	// Give watcher time to attach
+	time.Sleep(100 * time.Millisecond)
+
+	// Create new agent folder + file
+	agentDir := filepath.Join(dir, "new-agent")
+	if err := os.MkdirAll(agentDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	content := []byte("---\nagent: claude_code\ntrigger: cron\nschedule: \"0 3 * * *\"\n---\nHello.\n")
+	if err := os.WriteFile(filepath.Join(agentDir, "new-agent.md"), content, 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	// Wait up to 3s for reload (500ms debounce + slack)
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		defs := r.Defs()
+		if len(defs) == 1 && defs[0].Name == "new-agent" {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("watcher did not pick up new agent within deadline; defs=%+v", r.Defs())
+}
+
+func TestWatcherReloadsOnAgentFileEdit(t *testing.T) {
+	dir := t.TempDir()
+	agentDir := filepath.Join(dir, "edit-me")
+	if err := os.MkdirAll(agentDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	original := []byte("---\nagent: claude_code\ntrigger: cron\nschedule: \"0 3 * * *\"\n---\noriginal\n")
+	mdPath := filepath.Join(agentDir, "edit-me.md")
+	if err := os.WriteFile(mdPath, original, 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	r := &Runner{cfg: Config{AgentsDir: dir}}
+	if err := r.LoadDefs(); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go r.watchAgentsDir(ctx)
+
+	time.Sleep(100 * time.Millisecond)
+
+	updated := []byte("---\nagent: claude_code\ntrigger: cron\nschedule: \"0 4 * * *\"\n---\nupdated\n")
+	if err := os.WriteFile(mdPath, updated, 0o644); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		defs := r.Defs()
+		if len(defs) == 1 && defs[0].Schedule == "0 4 * * *" {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("watcher did not pick up file edit within deadline")
+}
+
 func TestLoadDefsFolderPerAgent(t *testing.T) {
 	dir := t.TempDir()
 

@@ -274,7 +274,9 @@ func (r *Runner) executeMatchingAgents(ctx context.Context, trigger string, p ho
 }
 
 // watchAgentsDir uses fsnotify to watch the agents directory for changes.
-// On any .md file change, it debounces and reloads definitions.
+// It watches the root AgentsDir and each existing subdirectory; when a new
+// subdirectory appears it is added to the watch set automatically. Any change
+// inside a watched path triggers a debounced reload.
 func (r *Runner) watchAgentsDir(ctx context.Context) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -289,9 +291,29 @@ func (r *Runner) watchAgentsDir(ctx context.Context) {
 		return
 	}
 
-	if err := watcher.Add(r.cfg.AgentsDir); err != nil {
-		log.Error().Err(err).Str("dir", r.cfg.AgentsDir).Msg("failed to watch agents dir")
-		return
+	// Track watched paths so we can add/remove as subdirectories appear/disappear.
+	watched := map[string]struct{}{}
+	addWatch := func(p string) {
+		if _, ok := watched[p]; ok {
+			return
+		}
+		if err := watcher.Add(p); err != nil {
+			log.Warn().Err(err).Str("path", p).Msg("agentrunner: failed to add watch")
+			return
+		}
+		watched[p] = struct{}{}
+	}
+
+	// Watch root
+	addWatch(r.cfg.AgentsDir)
+
+	// Watch existing subdirectories
+	if entries, err := os.ReadDir(r.cfg.AgentsDir); err == nil {
+		for _, e := range entries {
+			if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
+				addWatch(filepath.Join(r.cfg.AgentsDir, e.Name()))
+			}
+		}
 	}
 
 	log.Info().Str("dir", r.cfg.AgentsDir).Msg("watching agents directory for changes")
@@ -309,15 +331,27 @@ func (r *Runner) watchAgentsDir(ctx context.Context) {
 			if !ok {
 				return
 			}
-			// Only react to .md file changes
-			if filepath.Ext(event.Name) != ".md" {
-				continue
+
+			// If a new subdirectory was created under the root, start watching it.
+			if event.Op&fsnotify.Create != 0 {
+				if fi, err := os.Stat(event.Name); err == nil && fi.IsDir() {
+					if filepath.Dir(event.Name) == r.cfg.AgentsDir && !strings.HasPrefix(filepath.Base(event.Name), ".") {
+						addWatch(event.Name)
+					}
+				}
+			}
+			// If a watched path was removed or renamed, drop the watch.
+			if event.Op&(fsnotify.Remove|fsnotify.Rename) != 0 {
+				if _, ok := watched[event.Name]; ok {
+					_ = watcher.Remove(event.Name)
+					delete(watched, event.Name)
+				}
 			}
 
 			log.Info().
 				Str("file", filepath.Base(event.Name)).
 				Str("op", event.Op.String()).
-				Msg("agent file change detected, scheduling reload")
+				Msg("agent directory change detected, scheduling reload")
 
 			if timer != nil {
 				timer.Stop()
