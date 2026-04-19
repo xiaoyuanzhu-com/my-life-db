@@ -970,7 +970,7 @@ export default function AgentPage() {
 
   // ─── Desktop layout ───────────────────────────────────────────────────────
   const desktopLayout = (
-    <div className="flex flex-1 h-full min-w-0">
+    <div className="flex flex-1 h-full min-w-0 overflow-hidden">
       {sessionSidebar ? (
         <ResizablePanelGroup
           direction="horizontal"
@@ -992,7 +992,7 @@ export default function AgentPage() {
             )}
           >
             <SessionsHeader showCollapseButton />
-            <div className="flex-1 min-h-0 overflow-hidden p-2">
+            <div className="flex flex-1 min-h-0 flex-col overflow-hidden p-2">
               <ThreadList activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} hasMore={pagination.hasMore} isLoadingMore={isLoadingMore} onLoadMore={loadMoreSessions} />
             </div>
           </ResizablePanel>
@@ -1123,7 +1123,7 @@ export default function AgentPage() {
   return (
     <AgentContextProvider value={agentContextValue}>
       <AssistantRuntimeProvider runtime={runtime}>
-        <div className="flex h-full min-w-0">
+        <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
           {isMobile ? mobileLayout : desktopLayout}
         </div>
       </AssistantRuntimeProvider>
