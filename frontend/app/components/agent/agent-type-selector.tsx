@@ -46,17 +46,17 @@ const AGENT_TYPES: AgentTypeOption[] = [
   },
   {
     value: 'codex',
-    label: 'Codex',
+    label: 'Codex CLI',
     icon: <CodexIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5" />,
   },
   {
     value: 'qwen',
-    label: 'Qwen',
+    label: 'Qwen Code',
     icon: <QwenIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5" />,
   },
   {
     value: 'gemini',
-    label: 'Gemini',
+    label: 'Gemini CLI',
     icon: <GeminiIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5" />,
   },
   {
