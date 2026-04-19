@@ -14,7 +14,6 @@ import (
 )
 
 const testAgentMD = `---
-name: test-agent
 agent: claude_code
 trigger: cron
 schedule: "0 * * * *"
@@ -24,7 +23,6 @@ You are a test agent. Do something useful.
 `
 
 const disabledAgentMD = `---
-name: disabled-agent
 agent: claude_code
 trigger: file.created
 path: "**"
@@ -35,7 +33,6 @@ This agent is disabled.
 `
 
 const fileAgentMD = `---
-name: file-watcher
 agent: claude_code
 trigger: file.created
 path: "inbox/**"
@@ -44,19 +41,29 @@ path: "inbox/**"
 Process the new file.
 `
 
+// writeAgentDir writes content to <dir>/<name>/<name>.md, creating the
+// subdirectory as needed.
+func writeAgentDir(t *testing.T, dir, name string, content []byte) {
+	t.Helper()
+	agentDir := filepath.Join(dir, name)
+	if err := os.MkdirAll(agentDir, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", agentDir, err)
+	}
+	if err := os.WriteFile(filepath.Join(agentDir, name+".md"), content, 0o644); err != nil {
+		t.Fatalf("write %s/%s.md: %v", name, name, err)
+	}
+}
+
 func TestRunnerLoadsAgentDefs(t *testing.T) {
 	dir := t.TempDir()
-
-	if err := os.WriteFile(filepath.Join(dir, "test-agent.md"), []byte(testAgentMD), 0644); err != nil {
-		t.Fatal(err)
-	}
+	writeAgentDir(t, dir, "test-agent", []byte(testAgentMD))
 
 	r := New(Config{AgentsDir: dir})
-	defs, err := r.LoadDefs()
-	if err != nil {
+	if err := r.LoadDefs(); err != nil {
 		t.Fatalf("LoadDefs() error: %v", err)
 	}
 
+	defs := r.Defs()
 	if len(defs) != 1 {
 		t.Fatalf("expected 1 def, got %d", len(defs))
 	}
@@ -87,17 +94,14 @@ func TestRunnerLoadsAgentDefs(t *testing.T) {
 
 func TestRunnerSkipsDisabledAgents(t *testing.T) {
 	dir := t.TempDir()
-
-	if err := os.WriteFile(filepath.Join(dir, "disabled.md"), []byte(disabledAgentMD), 0644); err != nil {
-		t.Fatal(err)
-	}
+	writeAgentDir(t, dir, "disabled-agent", []byte(disabledAgentMD))
 
 	r := New(Config{AgentsDir: dir})
-	defs, err := r.LoadDefs()
-	if err != nil {
+	if err := r.LoadDefs(); err != nil {
 		t.Fatalf("LoadDefs() error: %v", err)
 	}
 
+	defs := r.Defs()
 	// LoadDefs returns all defs including disabled ones — filtering happens at registration time.
 	if len(defs) != 1 {
 		t.Fatalf("expected 1 def (disabled included), got %d", len(defs))
@@ -110,30 +114,37 @@ func TestRunnerSkipsDisabledAgents(t *testing.T) {
 func TestRunnerSkipsNonMarkdownFiles(t *testing.T) {
 	dir := t.TempDir()
 
-	// Valid .md file
-	if err := os.WriteFile(filepath.Join(dir, "valid.md"), []byte(testAgentMD), 0644); err != nil {
+	// Valid agent subdirectory
+	writeAgentDir(t, dir, "valid-agent", []byte(testAgentMD))
+
+	// Flat .md file at root — must be ignored
+	if err := os.WriteFile(filepath.Join(dir, "flat.md"), []byte(testAgentMD), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// .txt file — should be skipped
-	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte(testAgentMD), 0644); err != nil {
+	// Non-.md file at root — must be ignored
+	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte(testAgentMD), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// Hidden .md file — should be skipped
-	if err := os.WriteFile(filepath.Join(dir, ".hidden.md"), []byte(testAgentMD), 0644); err != nil {
+	// Hidden directory — must be ignored
+	hiddenDir := filepath.Join(dir, ".hidden")
+	if err := os.MkdirAll(hiddenDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(hiddenDir, ".hidden.md"), []byte(testAgentMD), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	r := New(Config{AgentsDir: dir})
-	defs, err := r.LoadDefs()
-	if err != nil {
+	if err := r.LoadDefs(); err != nil {
 		t.Fatalf("LoadDefs() error: %v", err)
 	}
 
+	defs := r.Defs()
 	if len(defs) != 1 {
 		t.Fatalf("expected 1 def, got %d", len(defs))
 	}
-	if defs[0].Name != "test-agent" {
-		t.Errorf("expected test-agent, got %q", defs[0].Name)
+	if defs[0].Name != "valid-agent" {
+		t.Errorf("expected valid-agent, got %q", defs[0].Name)
 	}
 }
 
@@ -214,7 +225,6 @@ func TestExecuteMatchingAgentsPathFilter(t *testing.T) {
 	dir := t.TempDir()
 
 	agentDef := `---
-name: inbox-watcher
 agent: claude_code
 trigger: file.created
 path: "inbox/**"
@@ -222,9 +232,7 @@ path: "inbox/**"
 
 Process the new file.
 `
-	if err := os.WriteFile(filepath.Join(dir, "inbox-watcher.md"), []byte(agentDef), 0644); err != nil {
-		t.Fatal(err)
-	}
+	writeAgentDir(t, dir, "inbox-watcher", []byte(agentDef))
 
 	var mu sync.Mutex
 	var executed []string
@@ -240,7 +248,7 @@ Process the new file.
 		},
 	})
 
-	if _, err := r.LoadDefs(); err != nil {
+	if err := r.LoadDefs(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -276,5 +284,46 @@ Process the new file.
 	}
 	if executed[0] != "inbox-watcher" {
 		t.Errorf("expected inbox-watcher, got %q", executed[0])
+	}
+}
+
+func TestLoadDefsFolderPerAgent(t *testing.T) {
+	dir := t.TempDir()
+
+	// Valid agent in its own folder
+	content := []byte(`---
+agent: claude_code
+trigger: cron
+schedule: "0 3 * * *"
+---
+Hello from my-agent.
+`)
+	writeAgentDir(t, dir, "my-agent", content)
+
+	// Flat file at root — must be ignored
+	if err := os.WriteFile(filepath.Join(dir, "flat.md"), content, 0o644); err != nil {
+		t.Fatalf("write flat: %v", err)
+	}
+
+	// Folder missing its inner .md — must be skipped without error
+	emptyDir := filepath.Join(dir, "empty-agent")
+	if err := os.MkdirAll(emptyDir, 0o755); err != nil {
+		t.Fatalf("mkdir empty: %v", err)
+	}
+
+	r := &Runner{cfg: Config{AgentsDir: dir}}
+	if err := r.LoadDefs(); err != nil {
+		t.Fatalf("LoadDefs: %v", err)
+	}
+
+	defs := r.Defs()
+	if len(defs) != 1 {
+		t.Fatalf("expected 1 def, got %d: %+v", len(defs), defs)
+	}
+	if defs[0].Name != "my-agent" {
+		t.Errorf("expected def.Name='my-agent', got %q", defs[0].Name)
+	}
+	if defs[0].File != "my-agent.md" {
+		t.Errorf("expected def.File='my-agent.md', got %q", defs[0].File)
 	}
 }

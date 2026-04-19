@@ -65,47 +65,49 @@ func New(cfg Config) *Runner {
 	}
 }
 
-// LoadDefs scans AgentsDir for *.md files, parses each, and returns all
-// agent definitions (including disabled ones). Hidden files and non-.md
-// files are skipped.
-func (r *Runner) LoadDefs() ([]*AgentDef, error) {
+// LoadDefs walks AgentsDir, treating each subdirectory as an agent. It reads
+// <name>/<name>.md for each agent folder. Flat .md files at the root are
+// ignored with a debug log. Subdirs missing their inner .md are skipped with
+// a warning. Hidden dirs (starting with ".") are skipped silently.
+func (r *Runner) LoadDefs() error {
 	entries, err := os.ReadDir(r.cfg.AgentsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil
+			r.mu.Lock()
+			r.defs = nil
+			r.mu.Unlock()
+			return nil
 		}
-		return nil, fmt.Errorf("reading agents dir %s: %w", r.cfg.AgentsDir, err)
+		return fmt.Errorf("reading agents dir %s: %w", r.cfg.AgentsDir, err)
 	}
 
 	var defs []*AgentDef
 	for _, entry := range entries {
-		name := entry.Name()
-
-		// Skip directories
-		if entry.IsDir() {
+		if !entry.IsDir() {
+			if strings.HasSuffix(entry.Name(), ".md") {
+				log.Debug().Str("file", entry.Name()).Msg("agentrunner: ignoring flat .md file at agents root")
+			}
 			continue
 		}
-		// Skip hidden files
+		name := entry.Name()
 		if strings.HasPrefix(name, ".") {
 			continue
 		}
-		// Skip non-markdown files
-		if filepath.Ext(name) != ".md" {
-			continue
-		}
-
-		data, err := os.ReadFile(filepath.Join(r.cfg.AgentsDir, name))
+		filename := name + ".md"
+		path := filepath.Join(r.cfg.AgentsDir, name, filename)
+		data, err := os.ReadFile(path)
 		if err != nil {
-			log.Error().Err(err).Str("file", name).Msg("failed to read agent file")
-			continue
+			if os.IsNotExist(err) {
+				log.Warn().Str("agent", name).Str("expected", path).Msg("agentrunner: agent folder missing its .md file, skipping")
+				continue
+			}
+			return err
 		}
-
-		def, err := ParseAgentDef(data, name)
+		def, err := ParseAgentDef(data, name, filename)
 		if err != nil {
-			log.Error().Err(err).Str("file", name).Msg("failed to parse agent definition")
+			log.Warn().Err(err).Str("agent", name).Msg("agentrunner: failed to parse agent definition")
 			continue
 		}
-
 		defs = append(defs, def)
 	}
 
@@ -113,7 +115,7 @@ func (r *Runner) LoadDefs() ([]*AgentDef, error) {
 	r.defs = defs
 	r.mu.Unlock()
 
-	return defs, nil
+	return nil
 }
 
 // Start loads agent definitions, registers triggers, and starts watching
@@ -152,11 +154,11 @@ func (r *Runner) SetCreateSession(fn func(ctx context.Context, params SessionPar
 // loadAndRegister loads defs from disk, subscribes to event types (once),
 // and registers cron schedules.
 func (r *Runner) loadAndRegister() error {
-	defs, err := r.LoadDefs()
-	if err != nil {
+	if err := r.LoadDefs(); err != nil {
 		return fmt.Errorf("loading agent definitions: %w", err)
 	}
 
+	defs := r.Defs()
 	enabledCount := 0
 	for _, def := range defs {
 		if def.Enabled != nil && !*def.Enabled {
@@ -337,12 +339,12 @@ func (r *Runner) watchAgentsDir(ctx context.Context) {
 // Event-based subscriptions use dynamic lookup, so updating r.defs is
 // sufficient for them — only cron schedules need explicit syncing.
 func (r *Runner) reload() {
-	defs, err := r.LoadDefs()
-	if err != nil {
+	if err := r.LoadDefs(); err != nil {
 		log.Error().Err(err).Msg("failed to reload agent definitions")
 		return
 	}
 
+	defs := r.Defs()
 	r.syncCronSchedules(defs)
 
 	enabledCount := 0
