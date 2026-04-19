@@ -4,6 +4,7 @@ import (
 	"context"
 	cryptoRand "crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -181,6 +182,85 @@ http_headers = { "x-litellm-customer-id" = %q }
 					}
 				} else {
 					_ = os.Remove(configPath)
+				}
+			}
+
+			// Write ~/.qwen/settings.json. qwen-code (a gemini-cli fork) does not
+			// honor GEMINI_CLI_CUSTOM_HEADERS; it only reads customHeaders from
+			// its settings.json. MyLifeDB fully owns this file.
+			// Respect $QWEN_HOME if set, same escape hatch as codex.
+			qwenHome := os.Getenv("QWEN_HOME")
+			if qwenHome == "" {
+				if home, err := os.UserHomeDir(); err == nil {
+					qwenHome = filepath.Join(home, ".qwen")
+				}
+			}
+			if qwenHome != "" {
+				if err := os.MkdirAll(qwenHome, 0700); err != nil {
+					log.Warn().Err(err).Str("path", qwenHome).Msg("failed to create qwen home")
+				} else {
+					settings := map[string]any{}
+					if cfg.AgentLLM.CustomerID != "" {
+						settings["model"] = map[string]any{
+							"generationConfig": map[string]any{
+								"customHeaders": map[string]string{
+									"x-litellm-customer-id": cfg.AgentLLM.CustomerID,
+								},
+							},
+						}
+					}
+					qwenSettingsPath := filepath.Join(qwenHome, "settings.json")
+					if body, err := json.MarshalIndent(settings, "", "  "); err != nil {
+						log.Warn().Err(err).Msg("failed to marshal qwen settings.json")
+					} else if err := os.WriteFile(qwenSettingsPath, body, 0600); err != nil {
+						log.Warn().Err(err).Str("path", qwenSettingsPath).Msg("failed to write qwen settings.json")
+					}
+				}
+			}
+
+			// Write ~/.config/opencode/opencode.json. opencode has no env-var
+			// path for provider options; the provider block (baseURL, apiKey,
+			// headers, models) lives in JSON. MyLifeDB fully owns this file.
+			// Respect $OPENCODE_CONFIG if set (opencode reads it when present).
+			opencodeConfigPath := os.Getenv("OPENCODE_CONFIG")
+			if opencodeConfigPath == "" {
+				if home, err := os.UserHomeDir(); err == nil {
+					opencodeConfigPath = filepath.Join(home, ".config", "opencode", "opencode.json")
+				}
+			}
+			if opencodeConfigPath != "" {
+				if err := os.MkdirAll(filepath.Dir(opencodeConfigPath), 0755); err != nil {
+					log.Warn().Err(err).Str("path", opencodeConfigPath).Msg("failed to create opencode config dir")
+				} else {
+					providerOptions := map[string]any{
+						"baseURL": cfg.AgentLLM.BaseURL,
+						"apiKey":  cfg.AgentLLM.APIKey,
+					}
+					if cfg.AgentLLM.CustomerID != "" {
+						providerOptions["headers"] = map[string]string{
+							"x-litellm-customer-id": cfg.AgentLLM.CustomerID,
+						}
+					}
+					models := map[string]any{}
+					for _, m := range FilterModelsForAgent(cfg.AgentLLM.Models, "opencode") {
+						models[m.Value] = map[string]string{"name": m.Name}
+					}
+					opencodeCfg := map[string]any{
+						"$schema": "https://opencode.ai/config.json",
+						"provider": map[string]any{
+							"litellm": map[string]any{
+								"npm":     "@ai-sdk/openai-compatible",
+								"name":    "LiteLLM",
+								"options": providerOptions,
+								"models":  models,
+							},
+						},
+					}
+					if body, err := json.MarshalIndent(opencodeCfg, "", "  "); err != nil {
+						log.Warn().Err(err).Msg("failed to marshal opencode.json")
+					} else if err := os.WriteFile(opencodeConfigPath, body, 0600); err != nil {
+						log.Warn().Err(err).Str("path", opencodeConfigPath).Msg("failed to write opencode.json")
+					}
 				}
 			}
 		}
