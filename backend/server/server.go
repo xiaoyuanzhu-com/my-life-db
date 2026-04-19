@@ -132,13 +132,16 @@ func New(cfg *Config) (*Server, error) {
 				qwenEnv["OPENAI_MODEL"] = qwenModels[0].Value
 			}
 
-			// TODO(gemini): no customer-ID header path yet; cfg.AgentLLM.CustomerID is
-			// not propagated to Gemini sessions. Investigate gemini-cli env vars or
-			// config file for custom HTTP headers.
+			// gemini-cli v0.x+ supports GEMINI_CLI_CUSTOM_HEADERS
+			// (google-gemini/gemini-cli#11893, merged 2025-11). Pass as a single
+			// header line; only inject when a customer ID is configured.
 			geminiEnv["GOOGLE_GEMINI_BASE_URL"] = cfg.AgentLLM.BaseURL
 			geminiEnv["GEMINI_API_KEY"] = cfg.AgentLLM.APIKey
 			if geminiModels := FilterModelsForAgent(cfg.AgentLLM.Models, "gemini"); len(geminiModels) > 0 {
 				geminiEnv["GEMINI_MODEL"] = geminiModels[0].Value
+			}
+			if cfg.AgentLLM.CustomerID != "" {
+				geminiEnv["GEMINI_CLI_CUSTOM_HEADERS"] = "x-litellm-customer-id: " + cfg.AgentLLM.CustomerID
 			}
 			// Write codex auth.json (forces auth_mode=apikey so it doesn't
 			// try OAuth) and config.toml (injects x-litellm-customer-id

@@ -207,7 +207,7 @@ export function FolderPicker({ value, onChange, disabled = false, onChangedFiles
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-64 p-1" align="start" side="top">
-        <div className="max-h-64 overflow-y-auto">
+        <div className="max-h-96 overflow-y-auto">
           {recentFolders.length > 0 && (
             <>
               <div className="px-2 py-1 text-xs text-muted-foreground flex items-center gap-1">
