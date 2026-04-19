@@ -169,6 +169,10 @@ func (h *Handlers) GetAgentSessions(c *gin.Context) {
 			"sessionState": state,
 			"createdAt":    s.CreatedAt,
 			"lastActivity": s.UpdatedAt,
+			"source":       s.Source,
+		}
+		if s.AgentName != "" {
+			entry["agentName"] = s.AgentName
 		}
 		result = append(result, entry)
 	}
@@ -210,7 +214,7 @@ func (h *Handlers) GetAgentSession(c *gin.Context) {
 	runtimeStates := h.agentMgr.AllRuntimeStates()
 	state := computeSessionState(session.SessionID, session.ArchivedAt != nil, readStates, runtimeStates)
 
-	c.JSON(http.StatusOK, gin.H{
+	resp := gin.H{
 		"id":           session.SessionID,
 		"title":        session.Title,
 		"workingDir":   session.WorkingDir,
@@ -218,7 +222,12 @@ func (h *Handlers) GetAgentSession(c *gin.Context) {
 		"sessionState": state,
 		"createdAt":    session.CreatedAt,
 		"lastActivity": session.UpdatedAt,
-	})
+		"source":       session.Source,
+	}
+	if session.AgentName != "" {
+		resp["agentName"] = session.AgentName
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // UpdateAgentSession updates session metadata (title).
