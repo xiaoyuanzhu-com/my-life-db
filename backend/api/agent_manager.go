@@ -382,7 +382,7 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 
 	sessionID := sess.ID()
 
-	if err := db.CreateAgentSession(sessionID, agentTypeStr, params.WorkingDir, params.Title, params.Source, params.AgentFile); err != nil {
+	if err := db.CreateAgentSession(sessionID, agentTypeStr, params.WorkingDir, params.Title, params.Source, params.AgentName); err != nil {
 		log.Error().Err(err).Msg("failed to create agent session in DB")
 		sess.Close()
 		return nil, err
@@ -402,7 +402,7 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 		Str("title", params.Title).
 		Str("permissionMode", params.PermissionMode).
 		Str("defaultModel", params.DefaultModel).
-		Str("agentFile", params.AgentFile).
+		Str("agentName", params.AgentName).
 		Int("messageLen", len(params.Message)).
 		Bool("envOverride", len(sessionEnv) > 0).
 		Msg("agent session created")

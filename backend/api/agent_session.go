@@ -13,7 +13,7 @@ type SessionParams struct {
 	PermissionMode string // e.g. "bypassPermissions"; empty = default
 	DefaultModel   string // default model to set via ACP (from AGENT_MODELS)
 	Source         string // "user" or "auto"
-	AgentFile      string // agent definition file (auto-run only)
+	AgentName      string // agent folder name (auto-run only)
 }
 
 // SessionHandle is returned by AgentManager.CreateSession so the caller can
