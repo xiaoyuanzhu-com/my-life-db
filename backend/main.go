@@ -86,7 +86,7 @@ func main() {
 			Message:        params.Message,
 			PermissionMode: params.PermissionMode,
 			Source:         params.Source,
-			AgentFile:      params.AgentFile,
+			AgentName:      params.AgentName,
 		})
 		if err != nil {
 			return nil, nil, err
