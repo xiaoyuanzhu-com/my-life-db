@@ -468,6 +468,12 @@ The user typically has a development server running. Check before starting a new
 → adds logging → observes actual order → identifies exact mechanism → fixes
 ```
 
+**Hypothesizing is fine — but after the first wrong guess, stop guessing and instrument.**
+
+**BAD:** hypothesis → fix → broken → new hypothesis → fix → broken → new hypothesis → ... Each round is still pure reasoning from code; none of them generate new evidence. You converge on nothing.
+
+**GOOD:** hypothesis → fix → broken → *add instrumentation to observe the real system* → read the numbers → targeted fix. The instrumentation step is mandatory once the first guess fails; it's what separates debugging from thrashing.
+
 ### Examples of Good vs Bad Behavior
 
 **BAD:**
