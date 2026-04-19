@@ -25,6 +25,8 @@ interface ThreadListProps {
   sessionStates?: Record<string, SessionState>;
   /** Map of session ID → source, used to render "auto" badge */
   sessionSources?: Record<string, string>;
+  /** Map of session ID → agentName, used to label auto sessions with their agent */
+  sessionAgentNames?: Record<string, string>;
   /** Whether more sessions can be loaded */
   hasMore?: boolean;
   /** Whether more sessions are currently loading */
@@ -33,7 +35,7 @@ interface ThreadListProps {
   onLoadMore?: () => void;
 }
 
-export const ThreadList: FC<ThreadListProps> = ({ activeSessionId, sessionStates, sessionSources, hasMore, isLoadingMore, onLoadMore }) => {
+export const ThreadList: FC<ThreadListProps> = ({ activeSessionId, sessionStates, sessionSources, sessionAgentNames, hasMore, isLoadingMore, onLoadMore }) => {
   const sentinelRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -59,10 +61,10 @@ export const ThreadList: FC<ThreadListProps> = ({ activeSessionId, sessionStates
       </AuiIf>
       <AuiIf condition={(s) => !s.threads.isLoading}>
         <ThreadListPrimitive.Items>
-          {() => <ThreadListItem activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} />}
+          {() => <ThreadListItem activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} sessionAgentNames={sessionAgentNames} />}
         </ThreadListPrimitive.Items>
         <ThreadListPrimitive.Items archived>
-          {() => <ThreadListItem activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} />}
+          {() => <ThreadListItem activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} sessionAgentNames={sessionAgentNames} />}
         </ThreadListPrimitive.Items>
         {/* Scroll sentinel for infinite loading */}
         <div ref={sentinelRef} className="shrink-0 h-1" />
@@ -94,7 +96,7 @@ const ThreadListSkeleton: FC = () => {
   );
 };
 
-const ThreadListItem: FC<{ activeSessionId?: string | null; sessionStates?: Record<string, SessionState>; sessionSources?: Record<string, string> }> = ({ activeSessionId, sessionStates, sessionSources }) => {
+const ThreadListItem: FC<{ activeSessionId?: string | null; sessionStates?: Record<string, SessionState>; sessionSources?: Record<string, string>; sessionAgentNames?: Record<string, string> }> = ({ activeSessionId, sessionStates, sessionSources, sessionAgentNames }) => {
   // Workaround: assistant-ui's ExternalStoreThreadListRuntimeCore has a bug where
   // _mainThreadId is not set from the adapter's threadId on initial construction
   // (constructor sets this.adapter before calling __internal_setAdapter, so
@@ -110,6 +112,7 @@ const ThreadListItem: FC<{ activeSessionId?: string | null; sessionStates?: Reco
   const isArchived = sessionState === 'archived';
   const showDot = !isActive && (sessionState === 'working' || sessionState === 'unread');
   const isAuto = itemId ? sessionSources?.[itemId] === 'auto' : false;
+  const agentName = itemId ? sessionAgentNames?.[itemId] : undefined;
 
   return (
     <ThreadListItemPrimitive.Root
@@ -123,7 +126,15 @@ const ThreadListItem: FC<{ activeSessionId?: string | null; sessionStates?: Reco
         )}>
           <ThreadListItemPrimitive.Title fallback="New Chat" />
         </span>
-        {isAuto && (
+        {isAuto && agentName && (
+          <span
+            className="shrink-0 text-[10px] leading-none px-1.5 py-0.5 rounded bg-muted text-muted-foreground truncate max-w-[40%]"
+            title={agentName}
+          >
+            {agentName}
+          </span>
+        )}
+        {isAuto && !agentName && (
           <span className="shrink-0 text-[10px] leading-none px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
             auto
           </span>

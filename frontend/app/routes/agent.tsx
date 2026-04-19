@@ -47,7 +47,7 @@ interface Session {
   shareToken?: string
   shareUrl?: string
   source?: 'user' | 'auto'
-  agentFile?: string
+  agentName?: string
 }
 
 interface Pagination {
@@ -792,6 +792,15 @@ export default function AgentPage() {
     return map
   }, [sessions])
 
+  // Build a map of session ID → agentName for the thread list label on auto sessions
+  const sessionAgentNames = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const s of sessions) {
+      if (s.agentName) map[s.id] = s.agentName
+    }
+    return map
+  }, [sessions])
+
   // ── Agent Runtime (lifted from AgentChat) ─────────────────────────────────
   // The runtime is owned at the route level so that AssistantRuntimeProvider
   // wraps all AgentChat instances. The key on the provider forces a remount
@@ -993,7 +1002,7 @@ export default function AgentPage() {
           >
             <SessionsHeader showCollapseButton />
             <div className="flex flex-1 min-h-0 flex-col overflow-hidden p-2">
-              <ThreadList activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} hasMore={pagination.hasMore} isLoadingMore={isLoadingMore} onLoadMore={loadMoreSessions} />
+              <ThreadList activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} sessionAgentNames={sessionAgentNames} hasMore={pagination.hasMore} isLoadingMore={isLoadingMore} onLoadMore={loadMoreSessions} />
             </div>
           </ResizablePanel>
 
@@ -1107,7 +1116,7 @@ export default function AgentPage() {
         <div className="flex flex-1 flex-col bg-muted/30 min-w-0 overflow-hidden">
           <SessionsHeader />
           <div className="flex-1 min-h-0 overflow-hidden p-2">
-            <ThreadList activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} hasMore={pagination.hasMore} isLoadingMore={isLoadingMore} onLoadMore={loadMoreSessions} />
+            <ThreadList activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} sessionAgentNames={sessionAgentNames} hasMore={pagination.hasMore} isLoadingMore={isLoadingMore} onLoadMore={loadMoreSessions} />
           </div>
         </div>
       ) : (
