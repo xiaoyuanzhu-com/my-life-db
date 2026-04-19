@@ -97,6 +97,17 @@ var defaultConfigOptions = map[string][]configOption{
 				{Value: "qwen3-coder-plus", Name: "Qwen3 Coder Plus", Description: "Frontier Qwen3 coding model"},
 			},
 		},
+		{
+			ID: "mode", Category: "mode", Name: "Approval Mode", Type: "select",
+			Description:  "Tool approval behavior (qwen ACP session/set_mode)",
+			CurrentValue: "default",
+			Options: []configOptionChoice{
+				{Value: "plan", Name: "Plan", Description: "Analyze only, do not modify files or execute commands"},
+				{Value: "default", Name: "Default", Description: "Require approval for file edits or shell commands"},
+				{Value: "auto-edit", Name: "Auto Edit", Description: "Automatically approve file edits"},
+				{Value: "yolo", Name: "YOLO", Description: "Automatically approve all tools"},
+			},
+		},
 	},
 	"gemini": {
 		{
@@ -105,6 +116,17 @@ var defaultConfigOptions = map[string][]configOption{
 			CurrentValue: "gemini-3-pro",
 			Options: []configOptionChoice{
 				{Value: "gemini-3-pro", Name: "Gemini 3 Pro", Description: "Frontier Gemini model with 1M context"},
+			},
+		},
+		{
+			ID: "mode", Category: "mode", Name: "Approval Mode", Type: "select",
+			Description:  "Tool approval behavior (gemini ACP session/set_mode)",
+			CurrentValue: "default",
+			Options: []configOptionChoice{
+				{Value: "default", Name: "Default", Description: "Prompts for approval"},
+				{Value: "autoEdit", Name: "Auto Edit", Description: "Auto-approves edit tools"},
+				{Value: "yolo", Name: "YOLO", Description: "Auto-approves all tools"},
+				{Value: "plan", Name: "Plan", Description: "Read-only mode"},
 			},
 		},
 	},
@@ -120,51 +142,56 @@ var defaultConfigOptions = map[string][]configOption{
 	},
 }
 
+// buildAgentConfigOptions returns the session-level configOptions for a single
+// agent type, applying AGENT_MODELS rewrite rules: when the gateway has models
+// tagged for this agent the model dropdown is replaced; when no gateway models
+// match but AGENT_MODELS is otherwise set, the model option is dropped.
+// Returns nil for unknown agent types.
+func buildAgentConfigOptions(agentType string, allModels []server.AgentModelInfo) []configOption {
+	defaults, ok := defaultConfigOptions[agentType]
+	if !ok {
+		return nil
+	}
+	opts := make([]configOption, len(defaults))
+	copy(opts, defaults)
+
+	if len(allModels) == 0 {
+		return opts
+	}
+	agentModels := server.FilterModelsForAgent(allModels, agentType)
+	if len(agentModels) == 0 {
+		filtered := opts[:0]
+		for _, opt := range opts {
+			if opt.Category != "model" {
+				filtered = append(filtered, opt)
+			}
+		}
+		return filtered
+	}
+	replacementOptions := make([]configOptionChoice, len(agentModels))
+	for i, m := range agentModels {
+		replacementOptions[i] = configOptionChoice{
+			Value: m.Value, Name: m.Name, Description: m.Description,
+		}
+	}
+	for i, opt := range opts {
+		if opt.Category == "model" {
+			opts[i].Options = replacementOptions
+			opts[i].CurrentValue = agentModels[0].Value
+		}
+	}
+	return opts
+}
+
 // GetAgentConfig returns agent configuration for the frontend.
 // Includes per-agent-type default configOptions. When AGENT_MODELS is
 // configured, replaces the model options for each agent type.
 func (h *Handlers) GetAgentConfig(c *gin.Context) {
 	cfg := h.server.Cfg()
 
-	// Build response: deep-copy defaults so we don't mutate the package-level var
 	result := make(map[string][]configOption, len(defaultConfigOptions))
-	for agentType, opts := range defaultConfigOptions {
-		copied := make([]configOption, len(opts))
-		copy(copied, opts)
-		result[agentType] = copied
-	}
-
-	// When AGENT_MODELS is configured, replace the model config option
-	// per agent type, filtering models by their "agents" compatibility field.
-	// When AGENT_MODELS is set but has no entries for a given agent, drop the
-	// model option entirely — everything routes through LiteLLM, so a
-	// native-default dropdown that LiteLLM can't serve is dead weight.
-	if len(cfg.AgentLLM.Models) > 0 {
-		for agentType, opts := range result {
-			agentModels := server.FilterModelsForAgent(cfg.AgentLLM.Models, agentType)
-			if len(agentModels) == 0 {
-				filtered := opts[:0]
-				for _, opt := range opts {
-					if opt.Category != "model" {
-						filtered = append(filtered, opt)
-					}
-				}
-				result[agentType] = filtered
-				continue
-			}
-			replacementOptions := make([]configOptionChoice, len(agentModels))
-			for i, m := range agentModels {
-				replacementOptions[i] = configOptionChoice{
-					Value: m.Value, Name: m.Name, Description: m.Description,
-				}
-			}
-			for i, opt := range opts {
-				if opt.Category == "model" {
-					result[agentType][i].Options = replacementOptions
-					result[agentType][i].CurrentValue = agentModels[0].Value
-				}
-			}
-		}
+	for agentType := range defaultConfigOptions {
+		result[agentType] = buildAgentConfigOptions(agentType, cfg.AgentLLM.Models)
 	}
 
 	c.JSON(http.StatusOK, gin.H{

@@ -100,6 +100,16 @@ export interface SessionInfoFrame extends AcpFrame {
   totalMessages?: number
   isActive: boolean
   isProcessing: boolean
+  agentType?: string
+  /** Baseline configOptions for agents that don't emit ACP config_option_update. */
+  defaultConfigOptions?: Array<{
+    id: string
+    category: string
+    name?: string
+    description?: string
+    currentValue: string
+    options: Array<{ value: string; name: string; description: string }>
+  }>
 }
 
 export type AgentFrame =

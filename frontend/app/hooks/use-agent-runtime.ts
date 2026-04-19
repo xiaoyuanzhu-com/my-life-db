@@ -244,6 +244,35 @@ export function useAgentRuntime(options: {
           setPendingPermissions(new Map())
           setHistoryLoadError(null)
           setSessionError(null)
+          // Seed session-level config from the backend baseline (sourced from
+          // /api/agent/config + AGENT_MODELS). Real ACP config_option_update
+          // frames arrive afterwards (claude_code/codex) and override. Agents
+          // that never emit one (gemini/qwen/opencode) keep this baseline.
+          if (f.defaultConfigOptions && f.defaultConfigOptions.length > 0) {
+            const baseline = f.defaultConfigOptions.map(opt => ({
+              id: opt.id,
+              category: opt.category,
+              name: opt.name ?? opt.id,
+              description: opt.description,
+              currentValue: opt.currentValue,
+              options: opt.options,
+            }))
+            const update: Partial<SessionMeta> = { configOptions: baseline }
+            for (const opt of baseline) {
+              if (opt.category === "mode") {
+                update.mode = opt.currentValue
+                update.availableModes = opt.options.map(o => ({
+                  id: o.value, name: o.name, description: o.description,
+                }))
+              } else if (opt.category === "model") {
+                update.currentModel = opt.currentValue
+                update.availableModels = opt.options.map(o => ({
+                  id: o.value, name: o.name, description: o.description,
+                }))
+              }
+            }
+            setSessionMeta((prev) => ({ ...prev, ...update }))
+          }
           break
         }
 

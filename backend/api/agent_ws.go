@@ -89,17 +89,28 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 	}
 
 	// Send session.info before registering so the frontend knows active/processing
-	// state before any content frames arrive.
+	// state before any content frames arrive. Also carry the session's agent
+	// type and a baseline configOptions list (same source as /api/agent/config),
+	// so the UI can render the per-session dropdown for agents that don't emit
+	// an ACP config_option_update frame (gemini/qwen/opencode). Real ACP frames
+	// from claude_code/codex arrive after and overwrite this baseline.
 	sessionState.Mu.RLock()
 	isActive := sessionState.IsActive
 	isProcessing := sessionState.IsProcessing()
 	sessionState.Mu.RUnlock()
 
-	if infoFrame, err := json.Marshal(map[string]any{
+	infoFields := map[string]any{
 		"type":         "session.info",
 		"isActive":     isActive,
 		"isProcessing": isProcessing,
-	}); err == nil {
+	}
+	if rec, err := db.GetAgentSession(sessionID); err == nil && rec != nil {
+		infoFields["agentType"] = rec.AgentType
+		if opts := buildAgentConfigOptions(rec.AgentType, h.server.Cfg().AgentLLM.Models); len(opts) > 0 {
+			infoFields["defaultConfigOptions"] = opts
+		}
+	}
+	if infoFrame, err := json.Marshal(infoFields); err == nil {
 		if err := conn.Write(ctx, websocket.MessageText, infoFrame); err != nil {
 			log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send session.info")
 			return
