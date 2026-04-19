@@ -185,6 +185,34 @@ http_headers = { "x-litellm-customer-id" = %q }
 				}
 			}
 
+			// Write ~/.gemini/settings.json to force API-key auth. Without this,
+			// gemini-cli defaults to oauth-personal and hits the ineligible-tier
+			// geo check even when GEMINI_API_KEY is set. MyLifeDB fully owns
+			// this file. Respect $GEMINI_HOME if set.
+			geminiHome := os.Getenv("GEMINI_HOME")
+			if geminiHome == "" {
+				if home, err := os.UserHomeDir(); err == nil {
+					geminiHome = filepath.Join(home, ".gemini")
+				}
+			}
+			if geminiHome != "" {
+				if err := os.MkdirAll(geminiHome, 0700); err != nil {
+					log.Warn().Err(err).Str("path", geminiHome).Msg("failed to create gemini home")
+				} else {
+					geminiSettings := map[string]any{
+						"security": map[string]any{
+							"auth": map[string]string{"selectedType": "gemini-api-key"},
+						},
+					}
+					geminiSettingsPath := filepath.Join(geminiHome, "settings.json")
+					if body, err := json.MarshalIndent(geminiSettings, "", "  "); err != nil {
+						log.Warn().Err(err).Msg("failed to marshal gemini settings.json")
+					} else if err := os.WriteFile(geminiSettingsPath, body, 0600); err != nil {
+						log.Warn().Err(err).Str("path", geminiSettingsPath).Msg("failed to write gemini settings.json")
+					}
+				}
+			}
+
 			// Write ~/.qwen/settings.json. qwen-code (a gemini-cli fork) does not
 			// honor GEMINI_CLI_CUSTOM_HEADERS; it only reads customHeaders from
 			// its settings.json. MyLifeDB fully owns this file.

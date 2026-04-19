@@ -81,7 +81,17 @@ USER root
 RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm && rm -rf /var/lib/apt/lists/*
 
 # ACP agent binaries (must install as root for global npm path)
-RUN npm install -g @zed-industries/claude-agent-acp @zed-industries/codex-acp
+#   - @zed-industries/claude-agent-acp → `claude-agent-acp` (Claude Code ACP wrapper)
+#   - @zed-industries/codex-acp        → `codex-acp`        (OpenAI Codex ACP wrapper)
+#   - @google/gemini-cli               → `gemini`           (runs ACP via `gemini --acp`)
+#   - @qwen-code/qwen-code             → `qwen`             (runs ACP via `qwen --acp`)
+#   - opencode-ai                      → `opencode`         (runs ACP via `opencode acp`)
+RUN npm install -g \
+    @zed-industries/claude-agent-acp \
+    @zed-industries/codex-acp \
+    @google/gemini-cli \
+    @qwen-code/qwen-code \
+    opencode-ai
 
 USER 1000
 
