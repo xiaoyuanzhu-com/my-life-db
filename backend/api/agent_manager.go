@@ -77,6 +77,23 @@ func agentTypeString(t agentsdk.AgentType) string {
 	}
 }
 
+// parseAgentType converts the DB/AGENT_MODELS string back to the SDK enum.
+// Unknown strings fall back to Claude Code.
+func parseAgentType(s string) agentsdk.AgentType {
+	switch s {
+	case "codex":
+		return agentsdk.AgentCodex
+	case "gemini":
+		return agentsdk.AgentGemini
+	case "qwen":
+		return agentsdk.AgentQwen
+	case "opencode":
+		return agentsdk.AgentOpencode
+	default:
+		return agentsdk.AgentClaudeCode
+	}
+}
+
 // -------- Session map --------
 
 // GetSession returns the live ACP session for the given ID, if any.
@@ -287,19 +304,7 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 	if agentTypeStr == "" {
 		agentTypeStr = "claude_code"
 	}
-	var agentType agentsdk.AgentType
-	switch agentTypeStr {
-	case "codex":
-		agentType = agentsdk.AgentCodex
-	case "gemini":
-		agentType = agentsdk.AgentGemini
-	case "qwen":
-		agentType = agentsdk.AgentQwen
-	case "opencode":
-		agentType = agentsdk.AgentOpencode
-	default:
-		agentType = agentsdk.AgentClaudeCode
-	}
+	agentType := parseAgentType(agentTypeStr)
 
 	gatewayModels := m.GatewayModels(agentTypeStr)
 

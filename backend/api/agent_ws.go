@@ -161,10 +161,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			}
 
 			log.Info().Str("sessionId", sessionID).Str("workingDir", sessionRecord.WorkingDir).Msg("found session in DB, spawning ACP process for session/load")
-			agentType := agentsdk.AgentClaudeCode
-			if sessionRecord.AgentType == "codex" {
-				agentType = agentsdk.AgentCodex
-			}
+			agentType := parseAgentType(sessionRecord.AgentType)
 			mode, _ := db.GetAgentSessionPermissionMode(sessionID)
 
 			sess, err := h.server.AgentClient().CreateSession(h.server.ShutdownContext(), agentsdk.SessionConfig{
