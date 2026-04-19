@@ -16,13 +16,15 @@ enabled: true
 You are an inbox organizer. When a new file arrives in the inbox,
 categorize it and move it to the appropriate folder.
 `
-	def, err := ParseAgentDef([]byte(input), "organize-inbox.md")
+	// Folder name wins over the YAML "name:" field.
+	def, err := ParseAgentDef([]byte(input), "organize-inbox", "organize-inbox.md")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if def.Name != "Organize Inbox" {
-		t.Errorf("Name = %q, want %q", def.Name, "Organize Inbox")
+	// def.Name must be the folder-derived name, not the YAML value.
+	if def.Name != "organize-inbox" {
+		t.Errorf("Name = %q, want %q", def.Name, "organize-inbox")
 	}
 	if def.Agent != "claude_code" {
 		t.Errorf("Agent = %q, want %q", def.Agent, "claude_code")
@@ -53,7 +55,7 @@ schedule: "0 9 * * *"
 
 Generate a daily summary of all changes.
 `
-	def, err := ParseAgentDef([]byte(input), "daily-summary.md")
+	def, err := ParseAgentDef([]byte(input), "daily-summary", "daily-summary.md")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -68,7 +70,6 @@ Generate a daily summary of all changes.
 
 func TestDefaultEnabledTrue(t *testing.T) {
 	input := `---
-name: Test Agent
 agent: claude_code
 trigger: file.created
 path: "**"
@@ -76,7 +77,7 @@ path: "**"
 
 Some prompt.
 `
-	def, err := ParseAgentDef([]byte(input), "test.md")
+	def, err := ParseAgentDef([]byte(input), "test-agent", "test.md")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -91,7 +92,6 @@ Some prompt.
 
 func TestEnabledFalse(t *testing.T) {
 	input := `---
-name: Disabled Agent
 agent: claude_code
 trigger: file.created
 path: "**"
@@ -100,7 +100,7 @@ enabled: false
 
 Some prompt.
 `
-	def, err := ParseAgentDef([]byte(input), "disabled.md")
+	def, err := ParseAgentDef([]byte(input), "disabled-agent", "disabled.md")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -113,31 +113,36 @@ Some prompt.
 	}
 }
 
-func TestErrorOnMissingName(t *testing.T) {
+// TestFolderNameWinsOverYAMLName verifies that the name argument always
+// overrides any "name:" field present in the YAML frontmatter.
+func TestFolderNameWinsOverYAMLName(t *testing.T) {
 	input := `---
+name: Some Other Name
 agent: claude_code
-trigger: file.created
-path: "**"
+trigger: cron
+schedule: "0 9 * * *"
 ---
 
 Some prompt.
 `
-	_, err := ParseAgentDef([]byte(input), "bad.md")
-	if err == nil {
-		t.Fatal("expected error for missing name, got nil")
+	def, err := ParseAgentDef([]byte(input), "folder-name", "folder-name.md")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if def.Name != "folder-name" {
+		t.Errorf("Name = %q, want %q (folder name must win)", def.Name, "folder-name")
 	}
 }
 
 func TestErrorOnCronWithoutSchedule(t *testing.T) {
 	input := `---
-name: Bad Cron
 agent: claude_code
 trigger: cron
 ---
 
 Some prompt.
 `
-	_, err := ParseAgentDef([]byte(input), "bad-cron.md")
+	_, err := ParseAgentDef([]byte(input), "bad-cron", "bad-cron.md")
 	if err == nil {
 		t.Fatal("expected error for cron without schedule, got nil")
 	}
@@ -145,7 +150,6 @@ Some prompt.
 
 func TestParseFileAgentWithPath(t *testing.T) {
 	input := `---
-name: Inbox Watcher
 agent: claude_code
 trigger: file.created
 path: "inbox/**"
@@ -153,7 +157,7 @@ path: "inbox/**"
 
 Process the new file.
 `
-	def, err := ParseAgentDef([]byte(input), "inbox-watcher.md")
+	def, err := ParseAgentDef([]byte(input), "inbox-watcher", "inbox-watcher.md")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -164,14 +168,13 @@ Process the new file.
 
 func TestErrorOnFileCreatedWithoutPath(t *testing.T) {
 	input := `---
-name: No Path Agent
 agent: claude_code
 trigger: file.created
 ---
 
 Some prompt.
 `
-	_, err := ParseAgentDef([]byte(input), "no-path.md")
+	_, err := ParseAgentDef([]byte(input), "no-path-agent", "no-path.md")
 	if err == nil {
 		t.Fatal("expected error for file.created without path, got nil")
 	}
@@ -179,14 +182,13 @@ Some prompt.
 
 func TestErrorOnFileChangedWithoutPath(t *testing.T) {
 	input := `---
-name: No Path Agent
 agent: claude_code
 trigger: file.changed
 ---
 
 Some prompt.
 `
-	_, err := ParseAgentDef([]byte(input), "no-path.md")
+	_, err := ParseAgentDef([]byte(input), "no-path-agent", "no-path.md")
 	if err == nil {
 		t.Fatal("expected error for file.changed without path, got nil")
 	}
@@ -194,14 +196,13 @@ Some prompt.
 
 func TestErrorOnFileMovedWithoutPath(t *testing.T) {
 	input := `---
-name: No Path Agent
 agent: claude_code
 trigger: file.moved
 ---
 
 Some prompt.
 `
-	_, err := ParseAgentDef([]byte(input), "no-path.md")
+	_, err := ParseAgentDef([]byte(input), "no-path-agent", "no-path.md")
 	if err == nil {
 		t.Fatal("expected error for file.moved without path, got nil")
 	}
@@ -209,14 +210,13 @@ Some prompt.
 
 func TestErrorOnFileDeletedWithoutPath(t *testing.T) {
 	input := `---
-name: No Path Agent
 agent: claude_code
 trigger: file.deleted
 ---
 
 Some prompt.
 `
-	_, err := ParseAgentDef([]byte(input), "no-path.md")
+	_, err := ParseAgentDef([]byte(input), "no-path-agent", "no-path.md")
 	if err == nil {
 		t.Fatal("expected error for file.deleted without path, got nil")
 	}
@@ -224,7 +224,6 @@ Some prompt.
 
 func TestCronAgentIgnoresPath(t *testing.T) {
 	input := `---
-name: Daily Summary
 agent: claude_code
 trigger: cron
 schedule: "0 9 * * *"
@@ -232,7 +231,7 @@ schedule: "0 9 * * *"
 
 Generate a daily summary.
 `
-	def, err := ParseAgentDef([]byte(input), "daily-summary.md")
+	def, err := ParseAgentDef([]byte(input), "daily-summary", "daily-summary.md")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

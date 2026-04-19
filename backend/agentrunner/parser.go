@@ -25,7 +25,10 @@ var separator = []byte("---")
 // ParseAgentDef parses a markdown file with YAML frontmatter delimited by
 // "---" lines. It extracts the frontmatter, unmarshals it into an AgentDef,
 // sets defaults, and validates required fields.
-func ParseAgentDef(data []byte, filename string) (*AgentDef, error) {
+//
+// name is the agent folder name and always wins over any "name:" field in the
+// YAML frontmatter. filename is the source file name (e.g. "my-agent.md").
+func ParseAgentDef(data []byte, name, filename string) (*AgentDef, error) {
 	frontmatter, body, err := splitFrontmatter(data)
 	if err != nil {
 		return nil, fmt.Errorf("parsing %s: %w", filename, err)
@@ -43,12 +46,11 @@ func ParseAgentDef(data []byte, filename string) (*AgentDef, error) {
 	}
 
 	def.Prompt = strings.TrimSpace(string(body))
+	// Folder-derived name wins; overwrite whatever the YAML had.
+	def.Name = name
 	def.File = filename
 
 	// Validation
-	if def.Name == "" {
-		return nil, fmt.Errorf("parsing %s: missing required field \"name\"", filename)
-	}
 	if def.Agent == "" {
 		return nil, fmt.Errorf("parsing %s: missing required field \"agent\"", filename)
 	}
