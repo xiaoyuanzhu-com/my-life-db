@@ -15,29 +15,29 @@ type AgentSessionRecord struct {
 	WorkingDir string `json:"workingDir"`
 	Title      string `json:"title"`
 	Source     string `json:"source"`    // "user" or "auto"
-	AgentFile  string `json:"agentFile"` // agent definition filename (for auto sessions)
+	AgentName  string `json:"agentName"` // agent folder name (for auto sessions)
 	CreatedAt  int64  `json:"createdAt"`
 	UpdatedAt  int64  `json:"updatedAt"`
 	ArchivedAt *int64 `json:"archivedAt,omitempty"`
 }
 
 // CreateAgentSession inserts a new agent session record.
-func CreateAgentSession(sessionID, agentType, workingDir, title, source, agentFile string) error {
+func CreateAgentSession(sessionID, agentType, workingDir, title, source, agentName string) error {
 	now := NowMs()
 	if source == "" {
 		source = "user"
 	}
 	_, err := Run(
-		`INSERT INTO agent_sessions (session_id, agent_type, working_dir, title, source, agent_file, created_at, updated_at)
+		`INSERT INTO agent_sessions (session_id, agent_type, working_dir, title, source, agent_name, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(session_id) DO UPDATE SET
 		   agent_type = excluded.agent_type,
 		   working_dir = excluded.working_dir,
 		   title = CASE WHEN excluded.title != '' THEN excluded.title ELSE agent_sessions.title END,
 		   source = excluded.source,
-		   agent_file = excluded.agent_file,
+		   agent_name = excluded.agent_name,
 		   updated_at = excluded.updated_at`,
-		sessionID, agentType, workingDir, title, source, agentFile, now, now,
+		sessionID, agentType, workingDir, title, source, agentName, now, now,
 	)
 	return err
 }
@@ -47,10 +47,10 @@ func GetAgentSession(sessionID string) (*AgentSessionRecord, error) {
 	var r AgentSessionRecord
 	var archivedAt sql.NullInt64
 	err := GetDB().QueryRow(
-		`SELECT session_id, agent_type, working_dir, title, source, agent_file, created_at, updated_at, archived_at
+		`SELECT session_id, agent_type, working_dir, title, source, agent_name, created_at, updated_at, archived_at
 		 FROM agent_sessions WHERE session_id = ?`,
 		sessionID,
-	).Scan(&r.SessionID, &r.AgentType, &r.WorkingDir, &r.Title, &r.Source, &r.AgentFile, &r.CreatedAt, &r.UpdatedAt, &archivedAt)
+	).Scan(&r.SessionID, &r.AgentType, &r.WorkingDir, &r.Title, &r.Source, &r.AgentName, &r.CreatedAt, &r.UpdatedAt, &archivedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -67,7 +67,7 @@ func GetAgentSession(sessionID string) (*AgentSessionRecord, error) {
 // cursor is the updated_at value of the last item from the previous page (0 for first page).
 // limit is the max number of results to return (0 for no limit).
 func ListAgentSessions(includeArchived bool, cursor int64, limit int) ([]AgentSessionRecord, error) {
-	query := `SELECT session_id, agent_type, working_dir, title, source, agent_file, created_at, updated_at, archived_at
+	query := `SELECT session_id, agent_type, working_dir, title, source, agent_name, created_at, updated_at, archived_at
 		 FROM agent_sessions`
 
 	var conditions []string
@@ -93,7 +93,7 @@ func ListAgentSessions(includeArchived bool, cursor int64, limit int) ([]AgentSe
 	return Select(query, params, func(rows *sql.Rows) (AgentSessionRecord, error) {
 		var r AgentSessionRecord
 		var archivedAt sql.NullInt64
-		err := rows.Scan(&r.SessionID, &r.AgentType, &r.WorkingDir, &r.Title, &r.Source, &r.AgentFile, &r.CreatedAt, &r.UpdatedAt, &archivedAt)
+		err := rows.Scan(&r.SessionID, &r.AgentType, &r.WorkingDir, &r.Title, &r.Source, &r.AgentName, &r.CreatedAt, &r.UpdatedAt, &archivedAt)
 		if archivedAt.Valid {
 			r.ArchivedAt = &archivedAt.Int64
 		}
