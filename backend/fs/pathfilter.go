@@ -52,15 +52,13 @@ const (
 	ExcludeDefault = CategoryHidden | CategoryBackup | CategoryVCS | CategoryDependencies |
 		CategoryCache | CategoryVirtualEnv | CategoryOS
 
-	// ExcludeForTree - exclusions for tree API (library browsing)
-	// Don't blanket-hide dot-prefixed dirs — specific categories (VCS, IDE, Cache, etc.)
-	// already cover the ones that should be hidden.
-	ExcludeForTree = CategoryDependencies | CategoryOS | CategoryAppReserved
-
-	// ExcludeForIndexing - exclusions for file indexing/search
-	ExcludeForIndexing = CategoryHidden | CategoryBackup | CategoryVCS | CategoryIDE |
-		CategoryDependencies | CategoryCache | CategoryBuild | CategoryVirtualEnv |
-		CategoryOS | CategoryLogs
+	// ExcludeForTree - exclusions for the data page tree and for scanning/indexing.
+	// Excludes every specific "junk" category (VCS, IDE, build artifacts, OS files, etc.)
+	// but NOT generic hidden dot-dirs, so app-relevant dot-dirs like .generated,
+	// .claude, and .obsidian stay visible on the data page AND searchable.
+	ExcludeForTree = CategoryBackup | CategoryVCS | CategoryIDE | CategoryDependencies |
+		CategoryCache | CategoryBuild | CategoryVirtualEnv | CategoryOS |
+		CategoryLogs | CategoryAppReserved
 
 	// ExcludeAll - all categories
 	ExcludeAll = CategoryHidden | CategoryBackup | CategoryVCS | CategoryIDE |

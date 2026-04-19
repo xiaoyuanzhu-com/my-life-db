@@ -33,7 +33,7 @@ func TestValidatePath_SecurityOnly(t *testing.T) {
 		".DS_Store",
 		".git/config",
 		"media/.DS_Store",
-		".obsidian/workspace",
+		"node_modules/foo",
 	}
 
 	for _, path := range excludedPaths {
@@ -58,18 +58,19 @@ func TestExclusionPatterns(t *testing.T) {
 		excluded bool
 		desc     string
 	}{
-		// Directories starting with . at root
-		{".my-life-db/database.sqlite", true, "should exclude .my-life-db directory"},
-		{".git/config", true, "should exclude .git directory"},
-		{".obsidian/workspace", true, "should exclude .obsidian directory"},
-		{".claude/settings", true, "should exclude .claude directory (hidden by default)"},
-		{".DS_Store", true, "should exclude .DS_Store files"},
-
-		// Directories starting with . in subdirectories
-		{"notes/.obsidian/workspace", true, "should exclude .obsidian in subdirectories"},
+		// Specific "junk" dot-dirs are excluded
+		{".git/config", true, "should exclude .git directory (VCS)"},
+		{".DS_Store", true, "should exclude .DS_Store files (OS)"},
+		{"node_modules/pkg/index.js", true, "should exclude node_modules (deps)"},
 		{"library/.git/config", true, "should exclude .git in subdirectories"},
 
-		// Valid paths that should NOT be excluded
+		// App-relevant dot-dirs are NOT excluded (visible on data page + searchable)
+		{".generated/report.html", false, "should NOT exclude .generated"},
+		{".claude/settings", false, "should NOT exclude .claude"},
+		{".obsidian/workspace", false, "should NOT exclude .obsidian"},
+		{"notes/.obsidian/workspace", false, "should NOT exclude .obsidian in subdirectories"},
+
+		// Valid paths are NOT excluded
 		{"inbox/document.pdf", false, "should NOT exclude inbox files"},
 		{"notes/2024/january.md", false, "should NOT exclude notes"},
 		{"journal/entry.txt", false, "should NOT exclude journal"},

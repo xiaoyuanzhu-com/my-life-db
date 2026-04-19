@@ -10,10 +10,11 @@ type validator struct {
 	pathFilter *PathFilter
 }
 
-// newValidator creates a new validator with default exclusion patterns
+// newValidator creates a new validator for scanning and indexing.
+// Uses ExcludeForTree so what gets indexed matches what the data page displays.
 func newValidator() *validator {
 	return &validator{
-		pathFilter: DefaultPathFilter(),
+		pathFilter: NewPathFilter(ExcludeForTree),
 	}
 }
 

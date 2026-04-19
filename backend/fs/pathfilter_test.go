@@ -137,10 +137,8 @@ func TestPathFilter_Presets(t *testing.T) {
 		{"tree no hidden", ExcludeForTree, CategoryHidden, false},
 		{"tree has deps", ExcludeForTree, CategoryDependencies, true},
 		{"tree has app reserved", ExcludeForTree, CategoryAppReserved, true},
-		{"tree no build", ExcludeForTree, CategoryBuild, false},
-
-		{"indexing has all common", ExcludeForIndexing, CategoryHidden | CategoryVCS | CategoryDependencies, true},
-		{"indexing has build", ExcludeForIndexing, CategoryBuild, true},
+		{"tree has vcs", ExcludeForTree, CategoryVCS, true},
+		{"tree has build", ExcludeForTree, CategoryBuild, true},
 
 		{"all has everything", ExcludeAll, CategoryHidden | CategoryBackup | CategoryVCS | CategoryIDE |
 			CategoryDependencies | CategoryCache | CategoryBuild | CategoryVirtualEnv |
