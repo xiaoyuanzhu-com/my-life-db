@@ -145,6 +145,13 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		agentRoutes.POST("/sessions/:id/unarchive", h.UnarchiveAgentSession)
 		agentRoutes.POST("/sessions/:id/share", h.ShareAgentSession)
 		agentRoutes.DELETE("/sessions/:id/share", h.UnshareAgentSession)
+
+		// Auto agent definitions (markdown files with triggers that spawn sessions)
+		agentRoutes.GET("/defs", h.ListAutoAgents)
+		agentRoutes.GET("/defs/:name", h.GetAutoAgent)
+		agentRoutes.PUT("/defs/:name", h.SaveAutoAgent)
+		agentRoutes.DELETE("/defs/:name", h.DeleteAutoAgent)
+		agentRoutes.POST("/defs/:name/run", h.RunAutoAgent)
 	}
 	r.GET("/api/agent/sessions/:id/subscribe", wsAuth, h.AgentSessionWebSocket)
 

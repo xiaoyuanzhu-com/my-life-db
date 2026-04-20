@@ -6,6 +6,8 @@ import { type AgentType } from '~/components/agent/agent-type-selector'
 import type { ConfigOption } from '~/hooks/use-agent-runtime'
 import { AgentChat } from '~/components/agent/agent-chat'
 import { AgentContextProvider } from '~/components/agent/agent-context'
+import { AutoAgentList } from '~/components/agent/auto-agent-list'
+import { AutoAgentEditor } from '~/components/agent/auto-agent-editor'
 import { useAgentRuntime } from '~/hooks/use-agent-runtime'
 import { Button } from '~/components/ui/button'
 import { Plus, PanelLeftClose, PanelLeftOpen, ChevronDown, ArrowLeft, Share2, Link, Check, Globe, Loader2 } from 'lucide-react'
@@ -57,6 +59,7 @@ interface Pagination {
 }
 
 type StatusFilter = 'all' | 'active' | 'archived'
+type SidebarView = 'sessions' | 'agents'
 
 function ShareButton({ session, onUpdate }: { session: Session; onUpdate: (s: Partial<Session>) => void }) {
   const [open, setOpen] = useState(false)
@@ -206,6 +209,68 @@ export default function AgentPage() {
     }
     return false
   })
+
+  // Sidebar view: either the user-initiated session list or the auto-agent list
+  const [sidebarView, setSidebarView] = useState<SidebarView>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('agent-sidebar-view')
+      if (saved === 'sessions' || saved === 'agents') return saved
+    }
+    return 'sessions'
+  })
+
+  // Auto-agent selection state. Creation is done via a chat session (seeded
+  // with a prompt that triggers the create-agent skill), so there is no
+  // in-page "new agent" form — only view/edit for existing agents.
+  const [activeAgentName, setActiveAgentName] = useState<string | null>(null)
+  // Bumped after saves/deletes to force the AutoAgentList to refetch.
+  const [agentListRefresh, setAgentListRefresh] = useState(0)
+
+  useEffect(() => {
+    localStorage.setItem('agent-sidebar-view', sidebarView)
+  }, [sidebarView])
+
+  // Bumped when we seed the new-session composer via localStorage — forces
+  // AgentChat (empty state) to remount so useDraftPersistence re-reads the seed.
+  const [newSessionComposerKey, setNewSessionComposerKey] = useState(0)
+
+  const handleSelectAgent = useCallback((name: string) => {
+    setActiveAgentName(name)
+  }, [])
+
+  const handleAgentSaved = useCallback((name: string) => {
+    setActiveAgentName(name)
+    setAgentListRefresh((n) => n + 1)
+  }, [])
+
+  const handleAgentDeleted = useCallback(() => {
+    setActiveAgentName(null)
+    setAgentListRefresh((n) => n + 1)
+  }, [])
+
+  // Seed the new-session composer with a prompt, then navigate to the
+  // Sessions view's empty/new state. The composer picks up the seed via the
+  // `agent-input:new-session` localStorage key on mount.
+  const seedNewSession = useCallback((prompt: string) => {
+    localStorage.setItem('agent-input:new-session', prompt)
+    setSidebarView('sessions')
+    setActiveSessionId(null)
+    setActiveAgentName(null)
+    setShowNewSessionMobile(true)
+    setNewSessionComposerKey((k) => k + 1)
+  }, [])
+
+  const handleCreateAgentWithAI = useCallback(() => {
+    seedNewSession(`/create-agent`)
+  }, [seedNewSession])
+
+  const handleEditAgentWithAI = useCallback((name: string, markdown: string) => {
+    seedNewSession(
+      `/create-agent\n\n` +
+      `Help me edit my existing auto agent at \`agents/${name}/${name}.md\`.\n\n` +
+      `Current definition:\n\n\`\`\`markdown\n${markdown}\n\`\`\``
+    )
+  }, [seedNewSession])
 
   const sidebarPanelRef = useRef<ImperativePanelHandle>(null)
 
@@ -924,56 +989,102 @@ export default function AgentPage() {
 
   // ─── Shared header for desktop sidebar and mobile list view ────────────────
   const SessionsHeader = ({ showCollapseButton = false }: { showCollapseButton?: boolean }) => (
-    <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
-      {/* Left: collapse toggle (desktop only) */}
-      <div className="w-8 flex items-center">
-        {showCollapseButton && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={() => setIsSidebarCollapsed(true)}
-            title="Collapse sidebar"
+    <div className="flex flex-col border-b border-border">
+      {/* View toggle row — Sessions vs. Auto Agents */}
+      <div className="flex items-center justify-between px-3 pt-2.5">
+        <div className="w-8 flex items-center">
+          {showCollapseButton && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => setIsSidebarCollapsed(true)}
+              title="Collapse sidebar"
+            >
+              <PanelLeftClose className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+        <div className="flex items-center gap-0.5 rounded-md bg-muted/50 p-0.5">
+          <button
+            onClick={() => setSidebarView('sessions')}
+            className={cn(
+              'rounded px-2.5 py-1 text-xs font-medium transition-colors',
+              sidebarView === 'sessions'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
           >
-            <PanelLeftClose className="h-4 w-4" />
-          </Button>
-        )}
-      </div>
-
-      {/* Center: filter dropdown */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button className="flex items-center gap-1.5 text-sm font-semibold hover:text-primary transition-colors px-2 py-1 rounded-md hover:bg-muted/50">
-            Sessions · {statusFilter === 'active' ? 'Active' : statusFilter === 'archived' ? 'Archived' : 'All'}
-            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            Sessions
           </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="center">
-          <DropdownMenuRadioGroup value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
-            <DropdownMenuRadioItem value="active">Active</DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="all">All</DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="archived">Archived</DropdownMenuRadioItem>
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      {/* Right: new button */}
-      <div className="w-8 flex items-center justify-end">
-        {sessionCreateNew && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={() => {
-              setActiveSessionId(null)
-              setShowNewSessionMobile(true)
-            }}
-            title="New session"
+          <button
+            onClick={() => setSidebarView('agents')}
+            className={cn(
+              'rounded px-2.5 py-1 text-xs font-medium transition-colors',
+              sidebarView === 'agents'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
           >
-            <Plus className="h-4 w-4" />
-          </Button>
-        )}
+            Auto Agents
+          </button>
+        </div>
+        <div className="w-8" />
       </div>
+
+      {/* Row 2: context for the active view */}
+      {sidebarView === 'sessions' ? (
+        <div className="flex items-center justify-between px-3 py-1.5">
+          <div className="w-8" />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex items-center gap-1.5 text-sm font-semibold hover:text-primary transition-colors px-2 py-1 rounded-md hover:bg-muted/50">
+                {statusFilter === 'active' ? 'Active' : statusFilter === 'archived' ? 'Archived' : 'All'}
+                <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center">
+              <DropdownMenuRadioGroup value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
+                <DropdownMenuRadioItem value="active">Active</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="all">All</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="archived">Archived</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <div className="w-8 flex items-center justify-end">
+            {sessionCreateNew && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => {
+                  setActiveSessionId(null)
+                  setShowNewSessionMobile(true)
+                }}
+                title="New session"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between px-3 py-1.5">
+          <div className="w-8" />
+          <span className="text-sm font-semibold">Auto Agents</span>
+          <div className="w-8 flex items-center justify-end">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={handleCreateAgentWithAI}
+              title="Create a new auto agent with AI"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   )
 
@@ -1002,7 +1113,11 @@ export default function AgentPage() {
           >
             <SessionsHeader showCollapseButton />
             <div className="flex flex-1 min-h-0 flex-col overflow-hidden p-2">
-              <ThreadList activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} sessionAgentNames={sessionAgentNames} hasMore={pagination.hasMore} isLoadingMore={isLoadingMore} onLoadMore={loadMoreSessions} />
+              {sidebarView === 'sessions' ? (
+                <ThreadList activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} sessionAgentNames={sessionAgentNames} hasMore={pagination.hasMore} isLoadingMore={isLoadingMore} onLoadMore={loadMoreSessions} />
+              ) : (
+                <AutoAgentList activeName={activeAgentName} onSelect={handleSelectAgent} refreshKey={agentListRefresh} />
+              )}
             </div>
           </ResizablePanel>
 
@@ -1025,7 +1140,7 @@ export default function AgentPage() {
                 </Button>
               )}
               {/* Top-right buttons: share */}
-              {activeSessionId && effectiveActiveSession && (
+              {sidebarView === 'sessions' && activeSessionId && effectiveActiveSession && (
                 <div className="absolute top-2 right-2 z-20 flex items-center gap-1">
                   <ShareButton
                     session={effectiveActiveSession}
@@ -1033,13 +1148,36 @@ export default function AgentPage() {
                   />
                 </div>
               )}
-              {activeSessionId ? (
+              {sidebarView === 'agents' ? (
+                activeAgentName ? (
+                  <AutoAgentEditor
+                    key={activeAgentName}
+                    name={activeAgentName}
+                    onSaved={handleAgentSaved}
+                    onDeleted={handleAgentDeleted}
+                    onEditWithAI={handleEditAgentWithAI}
+                  />
+                ) : (
+                  <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+                    <div className="text-lg font-semibold">Auto Agents</div>
+                    <p className="max-w-md text-sm text-muted-foreground">
+                      Auto agents are markdown files with a trigger (cron, file event, or manual) and a prompt.
+                      When the trigger fires, the agent runs a session on your behalf.
+                    </p>
+                    <Button variant="default" size="sm" className="gap-1.5" onClick={handleCreateAgentWithAI}>
+                      <Plus className="h-4 w-4" />
+                      Create with AI
+                    </Button>
+                  </div>
+                )
+              ) : activeSessionId ? (
                 <AgentChat
                   sessionId={activeSessionId}
                   className="flex-1"
                 />
               ) : (
                 <AgentChat
+                  key={`new-${newSessionComposerKey}`}
                   sessionId=""
                   className="flex-1 agent-bg"
                 />
@@ -1067,9 +1205,10 @@ export default function AgentPage() {
   )
 
   // ─── Mobile layout ────────────────────────────────────────────────────────
+  const onAgentsDetailView = sidebarView === 'agents' && activeAgentName !== null
   const mobileLayout = (
     <div className="flex flex-1 h-full min-w-0 overflow-hidden">
-      {activeSessionId ? (
+      {sidebarView === 'sessions' && activeSessionId ? (
         /* Detail view: full-screen chat with floating back button */
         <div className="relative flex flex-1 flex-col bg-background overflow-hidden min-w-0">
           {sessionSidebar && (
@@ -1095,7 +1234,7 @@ export default function AgentPage() {
             className="flex-1"
           />
         </div>
-      ) : sessionSidebar && showNewSessionMobile ? (
+      ) : sidebarView === 'sessions' && sessionSidebar && showNewSessionMobile ? (
         /* New session view: full-screen chat input with back button */
         <div className="relative flex flex-1 flex-col agent-bg min-w-0">
           <Button
@@ -1107,16 +1246,40 @@ export default function AgentPage() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <AgentChat
+            key={`new-${newSessionComposerKey}`}
             sessionId=""
             className="flex-1"
           />
         </div>
+      ) : onAgentsDetailView ? (
+        /* Auto-agent detail: editor with back button */
+        <div className="relative flex flex-1 flex-col bg-background overflow-hidden min-w-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute top-2 left-2 z-20 h-10 w-10 rounded-full bg-background/80 backdrop-blur"
+            onClick={() => setActiveAgentName(null)}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <AutoAgentEditor
+            key={activeAgentName!}
+            name={activeAgentName!}
+            onSaved={handleAgentSaved}
+            onDeleted={handleAgentDeleted}
+            onEditWithAI={handleEditAgentWithAI}
+          />
+        </div>
       ) : sessionSidebar ? (
-        /* List view: full-screen session list */
+        /* List view: full-screen session list or auto-agent list */
         <div className="flex flex-1 flex-col bg-muted/30 min-w-0 overflow-hidden">
           <SessionsHeader />
           <div className="flex-1 min-h-0 overflow-hidden p-2">
-            <ThreadList activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} sessionAgentNames={sessionAgentNames} hasMore={pagination.hasMore} isLoadingMore={isLoadingMore} onLoadMore={loadMoreSessions} />
+            {sidebarView === 'sessions' ? (
+              <ThreadList activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} sessionAgentNames={sessionAgentNames} hasMore={pagination.hasMore} isLoadingMore={isLoadingMore} onLoadMore={loadMoreSessions} />
+            ) : (
+              <AutoAgentList activeName={activeAgentName} onSelect={handleSelectAgent} refreshKey={agentListRefresh} />
+            )}
           </div>
         </div>
       ) : (

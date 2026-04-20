@@ -456,6 +456,119 @@ func (r *Runner) Defs() []*AgentDef {
 	return out
 }
 
+// AgentsDir returns the root folder holding agent definitions.
+func (r *Runner) AgentsDir() string {
+	return r.cfg.AgentsDir
+}
+
+// GetDef returns the in-memory def for an agent name, along with the raw
+// markdown source read from disk. Returns nil, nil if the agent folder or
+// file does not exist.
+func (r *Runner) GetDef(name string) (*AgentDef, []byte, error) {
+	if err := validateAgentName(name); err != nil {
+		return nil, nil, err
+	}
+	r.mu.RLock()
+	var def *AgentDef
+	for _, d := range r.defs {
+		if d.Name == name {
+			def = d
+			break
+		}
+	}
+	r.mu.RUnlock()
+	path := filepath.Join(r.cfg.AgentsDir, name, name+".md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return def, nil, nil
+		}
+		return def, nil, err
+	}
+	return def, data, nil
+}
+
+// SaveDef writes markdown for the given agent name, validating the frontmatter
+// before touching disk, then triggers a reload so triggers are re-registered.
+// Creates the <AgentsDir>/<name>/ folder if it does not exist.
+func (r *Runner) SaveDef(name string, markdown []byte) (*AgentDef, error) {
+	if err := validateAgentName(name); err != nil {
+		return nil, err
+	}
+	def, err := ParseAgentDef(markdown, name, name+".md")
+	if err != nil {
+		return nil, err
+	}
+	dir := filepath.Join(r.cfg.AgentsDir, name)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, fmt.Errorf("creating agent dir: %w", err)
+	}
+	path := filepath.Join(dir, name+".md")
+	if err := os.WriteFile(path, markdown, 0644); err != nil {
+		return nil, fmt.Errorf("writing agent file: %w", err)
+	}
+	// Force an immediate reload — the fs watcher will also fire, but the
+	// HTTP response should reflect the new state.
+	r.reload()
+	return def, nil
+}
+
+// DeleteDef removes the agent folder from disk and triggers a reload.
+func (r *Runner) DeleteDef(name string) error {
+	if err := validateAgentName(name); err != nil {
+		return err
+	}
+	dir := filepath.Join(r.cfg.AgentsDir, name)
+	if err := os.RemoveAll(dir); err != nil {
+		return fmt.Errorf("removing agent dir: %w", err)
+	}
+	r.reload()
+	return nil
+}
+
+// RunNow manually executes an agent by name, bypassing its trigger.
+// Runs async — returns immediately after kicking off the goroutine.
+func (r *Runner) RunNow(ctx context.Context, name string) error {
+	if err := validateAgentName(name); err != nil {
+		return err
+	}
+	r.mu.RLock()
+	var def *AgentDef
+	for _, d := range r.defs {
+		if d.Name == name {
+			def = d
+			break
+		}
+	}
+	r.mu.RUnlock()
+	if def == nil {
+		return fmt.Errorf("agent %q not found", name)
+	}
+	payload := hooks.Payload{
+		EventType: hooks.EventType("manual"),
+		Timestamp: time.Now(),
+		Data:      map[string]any{"source": "run-now"},
+	}
+	go r.execute(context.Background(), def, payload)
+	return nil
+}
+
+// validateAgentName rejects names that could escape the agents dir or
+// otherwise clash with filesystem rules. Keep this strict — we treat the
+// name as both a folder and a file stem.
+func validateAgentName(name string) error {
+	if name == "" {
+		return fmt.Errorf("agent name is required")
+	}
+	if strings.HasPrefix(name, ".") {
+		return fmt.Errorf("agent name must not start with '.'")
+	}
+	if strings.ContainsAny(name, "/\\") || name == "." || name == ".." {
+		return fmt.Errorf("agent name contains invalid characters")
+	}
+	return nil
+}
+
 // execute builds a prompt, creates a session via the shared path, and
 // closes the ACP session after completion (fire-and-forget).
 func (r *Runner) execute(ctx context.Context, def *AgentDef, payload hooks.Payload) {
