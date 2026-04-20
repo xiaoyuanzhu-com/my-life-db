@@ -1,20 +1,27 @@
 ---
 name: create-agent
-description: Create an auto-run agent definition for MyLifeDB. Use when the user wants to automate a task — organizing files, running backups, scheduled reports, processing new uploads, or any recurring workflow. Trigger on phrases like "create an agent", "automate this", "run this automatically", "set up a task", "I want this to happen whenever", "do this every day", "when a new file arrives", or when the user describes any workflow they want to happen without manual intervention. Also trigger when the user asks to edit, update, or modify an existing agent definition.
+description: Create or edit an auto-run agent definition for MyLifeDB. Use when the user wants to automate a task — organizing files, running backups, scheduled reports, processing new uploads, or any recurring workflow. Trigger on phrases like "create an agent", "automate this", "run this automatically", "set up a task", "I want this to happen whenever", "do this every day", "when a new file arrives", or when the user describes any workflow they want to happen without manual intervention. Also trigger when the user asks to edit, update, or modify an existing agent definition. If the user invokes the skill with no specific task in mind ("make me an agent", "I don't know, inspire me", or just opening the skill), run the cold-start inspire flow.
 ---
 
 # Create Agent
 
-Help the user create an auto-run agent definition — a markdown file that tells MyLifeDB when and how to run an AI agent automatically.
+Help the user create an auto-run agent definition — a markdown file that tells MyLifeDB when and how to run an AI agent automatically. When MyLifeDB detects the trigger event, it spawns an ACP agent session, injects the trigger context (what file appeared, what cron fired), and sends the prompt. The agent decides whether and how to act.
 
-## What you're building
+## File layout (IMPORTANT — don't get this wrong)
 
-A markdown file saved to the `agents/` folder in the user's data directory. The file has two parts:
+Each agent lives in its **own subfolder** under `<USER_DATA_DIR>/agents/`:
 
-1. **Frontmatter** — structured metadata (trigger type, schedule, agent name)
-2. **Prompt** — natural language instructions the agent follows when triggered
+```
+<USER_DATA_DIR>/agents/
+├── organize-inbox/
+│   └── organize-inbox.md
+├── weekly-review/
+│   └── weekly-review.md
+└── flash-cards-from-words/
+    └── flash-cards-from-words.md
+```
 
-When MyLifeDB detects the trigger event, it spawns an ACP agent session, injects the trigger context (what file appeared, what cron fired), and sends the prompt. The agent decides whether and how to act.
+Flat files like `agents/organize-inbox.md` are **ignored** by the runner. Always create the subfolder. The folder name and the `.md` filename stem must match and be kebab-case.
 
 ## The format
 
@@ -23,44 +30,52 @@ When MyLifeDB detects the trigger event, it spawns an ACP agent session, injects
 name: <display name>
 agent: claude_code
 trigger: <event type>
-schedule: "<cron expression>"  # only if trigger is cron
+path: "<glob>"          # required for file.* triggers
+schedule: "<cron>"      # required for cron trigger
 enabled: true
 ---
 
-<natural language prompt — all logic lives here>
+<natural language prompt — all action logic lives here>
 ```
 
 ### Frontmatter fields
 
-| Field | Required | Values | Notes |
-|-------|----------|--------|-------|
-| `name` | yes | any string | Display name shown on agent page |
-| `agent` | yes | `claude_code` or `codex` | Which AI agent to use |
-| `trigger` | yes | `file.created`, `file.changed`, `file.moved`, `file.deleted`, `cron` | What event starts the agent |
-| `schedule` | if cron | cron expression | e.g., `"0 8 * * *"` for daily at 8am |
-| `enabled` | no | `true`/`false` | Default true. Set false to pause without deleting |
+| Field | Required when | Values | Notes |
+|-------|---------------|--------|-------|
+| `name` | always | any string | Display name shown in the agent list. Note: the folder name always wins over this field for the internal ID — keep them in sync for sanity. |
+| `agent` | always | `claude_code`, `codex`, `qwen`, `gemini`, `opencode` | Which ACP agent to spawn. Default to `claude_code` unless the user specifies. |
+| `trigger` | always | `file.created`, `file.changed`, `file.moved`, `file.deleted`, `cron` | Event that starts the agent. |
+| `path` | file.* triggers | doublestar glob | Path pattern matched against the event path. **Required for every file trigger.** See "Path globs" below. |
+| `schedule` | cron trigger | cron expression | Standard 5-field cron (minute hour day-of-month month day-of-week). |
+| `enabled` | optional | `true` / `false` | Default `true`. Set `false` to pause without deleting the file. |
 
 ### Trigger types
 
-**File events** — the agent runs whenever a file event occurs anywhere in the data directory. The agent receives the full event payload (path, name, folder, size, mime type) and decides in its prompt whether to act.
+**File events** (`file.created`, `file.changed`, `file.moved`, `file.deleted`) — the agent runs whenever the event fires on a path matching the `path` glob. The prompt receives a trigger context block with the full event payload (path, name, folder).
 
-**Cron** — the agent runs on a schedule. Uses standard cron syntax with second precision available:
+**Cron** — the agent runs on a schedule. Examples:
 - `"0 8 * * *"` — daily at 8am
 - `"0 */6 * * *"` — every 6 hours
 - `"0 9 * * 1"` — every Monday at 9am
 - `"0 0 1 * *"` — first of every month at midnight
 
-### The prompt
+### Path globs
 
-The body below the frontmatter is the agent's instructions. This is where all the intelligence lives — there are no path filters or config options in the frontmatter. The prompt handles everything:
+The `path` field uses [doublestar](https://github.com/bmatcuk/doublestar) glob syntax (like gitignore, with `**` for recursive). Common patterns:
 
-- **When to act vs skip** — "Only process files in the inbox/ folder. Ignore everything else."
-- **What to do** — "Read the file, analyze its content, move it to the right folder."
-- **How to report** — "Summarize what you did in a short message."
+| Pattern | Matches |
+|---------|---------|
+| `inbox/**` | anything inside `inbox/`, recursively |
+| `words/*.png` | PNG files directly under `words/` (not subfolders) |
+| `**/*.pdf` | any PDF anywhere in the data dir |
+| `journal/2026/**` | anything under `journal/2026/` recursively |
+| `photos/**/*.{jpg,png,heic}` | image extensions under `photos/` at any depth |
+
+**Trial an unfamiliar glob:** write a test path through `doublestar.Match(pattern, path)` mentally or ask the user to confirm which real files should match.
 
 ### Trigger context injection
 
-When the agent runs, it receives a trigger context block prepended to the prompt:
+When the agent runs, the runner prepends this block to the prompt:
 
 ```
 [Trigger Context]
@@ -75,91 +90,127 @@ Folder: inbox
 <your prompt follows here>
 ```
 
-The agent can read these values to decide what to do.
+For `cron` triggers, the Path/Name/Folder lines are absent and a `Schedule:` line is included instead. The prompt can read these values to decide what to do.
 
-## How to guide the user
+## Available MCP tools
 
-Follow this process — it's designed to produce good prompts through real experience, not abstract description.
+This skill can call MCP tools provided by MyLifeDB. **Before you reference any tool in an agent's prompt, confirm it's actually connected in the current session** (tool names appear prefixed with `mcp__<server>__<tool>` in your tool list). The two MyLifeDB servers are:
 
-### Step 1: Understand the task
+- **`mylifedb-agent`**
+  - `mcp__mylifedb-agent__validateAgent({ name, markdown })` → `{ valid, error?, parsed? }`. Parses the frontmatter without writing to disk. **Always call this before `Write`** so the user doesn't land a broken file that the runner silently ignores.
+- **`explore`**
+  - `mcp__explore__createPost({ author, title, content, media, tags })` — publishes a post to the explore feed.
+  - `mcp__explore__listPosts`, `addComment`, `addTags`, `deletePost` — other feed operations.
 
-Ask what they want to automate. One question at a time. Understand:
-- What triggers it? (new file? schedule? file change?)
-- What should the agent do?
-- Any conditions for skipping?
+Other MCP tools may be connected (e.g. `chrome-devtools` for rendering). Only hint a tool in an agent's prompt if you can see it in your current session — a prompt that references a missing tool will fail at runtime.
 
-### Step 2: Do it together
+## Workflow
 
-This is the key step. Instead of writing the prompt from imagination, walk through the task with the user on a real example.
+### Phase 1 — Inspire (cold start only)
 
-Say something like: *"Let's do this together first so I can learn exactly how you want it done. Can you point me to a real example?"*
+Use this when the user opens the skill without a specific task ("make me an agent", "inspire me", or any phrasing where they clearly want suggestions rather than help with a task they've already formed).
 
-Then actually do the task — read the file, analyze it, propose the action, execute it. Let the user correct you along the way. This builds the muscle memory that becomes the prompt.
+1. Scan the user's data dir to ground the proposals:
+   - `Glob` `<USER_DATA_DIR>/*` for top-level folders (signals: domains — `inbox/`, `words/`, `photos/`, `journal/`, …).
+   - `Glob` `<USER_DATA_DIR>/agents/*/` for existing agents (signals: what's already automated — don't duplicate).
+   - `Glob` the 20 most-recently-modified files under `<USER_DATA_DIR>/` (excluding `agents/`, `.*`, `.generated/`) for an activity signal — where is the user actually working today?
+2. Propose exactly **3 examples** designed to span trigger diversity:
+   - one `cron` agent (scheduled report / digest / cleanup),
+   - one `file.*` agent that uses an MCP tool (e.g. `publish-post`) on interesting content,
+   - one `file.*` agent that's a pure side-effect (move, rename, backup, generate derivative).
+   Bias the choice toward folders that actually exist and have recent activity. Never propose an agent whose `trigger + path` overlaps an existing agent.
+3. Each proposal is a one-line pitch ("What about a weekly review that runs Sunday 9am and posts a summary to the explore feed?"). Let the user pick one or redirect, then continue into Phase 2.
 
-### Step 3: Refine through repetition
+### Phase 2 — Understand & iterate on a real example
 
-If there are edge cases or variations, try a few more examples. Each correction sharpens the eventual prompt. Ask: *"Want to try another one to make sure I've got it right?"*
+The goal is to write the prompt from **experience**, not imagination. Walk through the task on a real file or a real run; the corrections the user makes as you go become the prompt.
 
-### Step 4: Distill into a prompt
+1. Ask one question at a time to pin down:
+   - What triggers it? (New file? Schedule? File change?)
+   - If file: which paths count? — propose 2–3 candidate globs and have the user pick (e.g. `inbox/**`, `inbox/*.pdf`, `**/receipt-*`).
+   - If cron: which schedule? — translate the user's natural phrasing ("every weekday morning" → `0 8 * * 1-5`) and read it back in words.
+   - What should the agent do when fired?
+   - Any conditions where it should skip and do nothing?
+2. **Collision check.** `Glob` `<USER_DATA_DIR>/agents/*/*.md` and scan their frontmatter for the same trigger + overlapping path. If there's overlap, tell the user and ask whether this is the extension of an existing agent or genuinely new.
+3. Pick a real example and walk through it *with* the user — read the file, analyze, propose the action, execute it. Let them correct you. After corrections, try another example. 2–3 iterations is usually enough; stop when you get through a new example with no corrections.
 
-Synthesize what you learned into clear instructions. The prompt should:
-- State the agent's role in one sentence
-- List the rules and patterns learned from the walkthrough
-- Include concrete examples where they help (e.g., "receipts go to finance/receipts/")
-- Be clear about when to skip ("If the file is not in inbox/, do nothing")
+### Phase 3 — Save, validate, and trial-run
 
-Prefer distilled instructions over raw examples, but include specific examples when they're the clearest way to communicate a rule.
+1. Assemble the frontmatter + prompt. Include the correctness basics you learned in Phase 2; state skip cases explicitly (*"If the file is NOT in inbox/, respond 'Skipping' and do nothing."*).
+2. **Validate with the MCP tool before writing.** Call `mcp__mylifedb-agent__validateAgent` with the name and markdown. If `valid: false`, fix the error and re-validate. Do **not** call `Write` until validation passes.
+3. Write the file with `Write` to `<USER_DATA_DIR>/agents/<kebab-name>/<kebab-name>.md`. The fs watcher picks it up within ~500ms; no restart needed.
+4. Trial run:
+   - **File-triggered agent with non-destructive action**: drop a real test file into the trigger path. The runner fires the agent; watch the session page for output.
+   - **File-triggered agent with destructive action** (move/delete/overwrite): set `enabled: false` in the frontmatter first, then trigger manually via `POST /api/agent/defs/<name>/run` (e.g. `curl -X POST http://localhost:12345/api/agent/defs/<name>/run`). Review what it would have done. Flip to `enabled: true` only after the user confirms.
+   - **Cron agent**: trigger manually via the same `POST /api/agent/defs/<name>/run` endpoint — don't make the user wait for the next scheduled fire.
+5. If the trial reveals a flaw, go back to Phase 2 on that specific edge case, revise the prompt, re-validate, re-save.
 
-### Step 5: Mention publish-post (when relevant)
+### Phase 4 — Summarize
 
-MyLifeDB has a publish-post MCP tool that creates posts visible on the explore page. For agents that process interesting content, hint this option in the prompt:
+Once the agent is working, give the user a ≤5-line report:
 
-*"If the result is interesting enough to share, you can use the publish-post tool to create a short post about it on the explore page."*
+- **Name and path** — `organize-inbox` at `data/agents/organize-inbox/organize-inbox.md`
+- **Fires on** — `file.created` matching `inbox/**` / or / `cron 0 8 * * *` (daily 8am)
+- **What it does** — one sentence
+- **Pause it** — set `enabled: false` in the frontmatter
+- **Re-run manually** — `curl -X POST http://localhost:12345/api/agent/defs/<name>/run`
 
-Don't force it — only suggest when the use case fits (e.g., organizing interesting files, summarizing new content, daily reports). Don't suggest it for purely mechanical tasks (backups, cleanup).
+Then stop. Don't over-explain.
 
-### Step 6: Assemble and save
+## Writing good prompts
 
-Build the frontmatter + prompt and show the user the complete file for review.
+Prompts carry all the intelligence — there are no config-based filters. A good prompt:
 
-The filename should be kebab-case: `organize-inbox.md`, `daily-backup.md`, `process-receipts.md`.
+- **Opens with the role**, one sentence: *"You are an inbox organizer for a personal life database."*
+- **States the skip case first**, explicitly: *"If the file is not in `inbox/`, respond 'Skipping' and do nothing."* Every file-trigger agent sees every matching event; missing the skip case makes the agent chatty and expensive.
+- **Lists rules learned from the walkthrough**, preferring distilled rules over raw examples, but includes concrete examples where a rule needs a hook (*"Receipts and invoices → `finance/receipts/YYYY/`"*).
+- **Says how to report** — a short summary message so the session page is useful.
+- **Names real MCP tools** (not ones you hope exist). If you used `publish-post` in the walkthrough and it's actually connected, hint it in the prompt. If it isn't, don't pretend it is.
 
-Save to: `<USER_DATA_DIR>/agents/<name>.md`
+### Destructive actions — extra care
 
-The agent runner watches this folder and picks up new files automatically — no restart needed.
+For agents that move, delete, or overwrite files (backups, cleanup, auto-organize), bake in a guard:
+
+> *"Before moving or deleting anything, log the full source → destination path and the reason. On your first 3 runs, log the intended action and skip actually executing it — print 'DRY RUN' so I can review the log. After I flip you to live mode, proceed."*
+
+Combine with the `enabled: false` → trial → `enabled: true` rollout in Phase 3.
 
 ## Examples
 
-### File-triggered agent
+### File-triggered agent with collision-aware glob
 
 ```markdown
 ---
 name: Organize Inbox
 agent: claude_code
 trigger: file.created
+path: "inbox/**"
+enabled: true
 ---
 
 You are an inbox organizer for a personal life database.
 
-When a new file arrives, check the trigger context. If the file is NOT in the inbox/ folder, do nothing — just respond "Skipping, not an inbox file."
+If the trigger context shows the file is NOT in the inbox/ folder, respond "Skipping, not an inbox file." and do nothing.
 
-If the file IS in inbox/, analyze it:
+Otherwise, analyze the file and move it to the right home:
 
-1. Read the file to understand what it is
-2. Check the existing folder structure to find the best destination
-3. Move the file to the appropriate folder
+1. Read the file to understand what it is.
+2. Check the existing folder structure (use the Read and Glob tools) to find the best destination.
+3. Move the file (Bash `mv`) to the appropriate folder.
 
 Rules learned from experience:
 - Receipts and invoices → finance/receipts/YYYY/
 - Work documents → work/
 - Photos → photos/YYYY/MM/
 - Personal documents → documents/
-- If unsure, leave the file in inbox/ and explain why
+- If unsure, leave the file in inbox/ and explain why in your summary.
 
-If the file is something interesting or noteworthy, use the publish-post tool to share a brief note about it on the explore page.
+If the file is something genuinely interesting or noteworthy, use the `createPost` tool from the `explore` MCP server to share a brief note on the explore feed.
+
+Summarize what you did in a short message.
 ```
 
-### Cron-triggered agent
+### Cron-triggered agent with publish-post
 
 ```markdown
 ---
@@ -167,20 +218,24 @@ name: Weekly Review
 agent: claude_code
 trigger: cron
 schedule: "0 9 * * 0"
+enabled: true
 ---
 
 Generate a weekly review of activity in this life database.
 
-1. Check what files were added or changed in the past 7 days
-2. Summarize the activity by category (documents, photos, notes, etc.)
-3. Note anything that might need attention (large files in inbox, orphaned items)
+1. Check what files were added or changed in the past 7 days (use Bash `find <dir> -mtime -7`).
+2. Summarize activity by category (documents, photos, notes, etc.).
+3. Note anything that might need attention (large files in inbox, orphaned items, gaps where the user normally writes).
 
-Use the publish-post tool to share the weekly summary on the explore page.
+Use the `createPost` tool from the `explore` MCP server to share the weekly summary on the feed. Title it with the date range.
 ```
 
 ## Common pitfalls
 
-- **Over-filtering in frontmatter** — there are no filters. All filtering logic goes in the prompt. This is intentional — natural language is more flexible than any config DSL.
-- **Forgetting to handle skip cases** — every file.created agent fires on ALL file creations. The prompt must say when to skip.
-- **Vague prompts** — "organize my files" is too vague. Be specific: which files, where do they go, what rules apply.
-- **Missing cron schedule** — if trigger is `cron`, the `schedule` field is required. Help users translate "every morning" into `"0 8 * * *"`.
+- **Forgetting the subfolder** — `agents/foo.md` is ignored. It must be `agents/foo/foo.md`.
+- **Missing `path` on file triggers** — the runner rejects the def. Use `path: "**"` only if you genuinely want every file event.
+- **Over-broad globs** — `path: "**"` fires on every digest output, thumbnail, `.generated/` write, and more. Scope tighter unless you want that.
+- **Missing `schedule` on cron** — also rejected by the runner.
+- **No skip case in the prompt** — every matching event fires the agent. Without a skip branch, the agent acts on things it shouldn't.
+- **Inventing MCP tool names** — only reference tools that are actually connected in the current session.
+- **Destructive agent without dry-run** — if the walkthrough revealed moves/deletes, include the DRY RUN guard above.

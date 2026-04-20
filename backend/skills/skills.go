@@ -2,6 +2,8 @@ package skills
 
 import (
 	_ "embed"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -58,4 +60,113 @@ func Install(dataDir string) {
 			log.Debug().Str("path", dest).Msg("bundled skill installed")
 		}
 	}
+}
+
+// mcpToolAllowlist names the MyLifeDB MCP tools that Claude Code sessions
+// started in the data directory should be pre-allowed to call. Kept in sync
+// with the tools actually exposed by the backend.
+var mcpToolAllowlist = []string{
+	"mcp__mylifedb-agent__validateAgent",
+	"mcp__explore__createPost",
+	"mcp__explore__listPosts",
+	"mcp__explore__addComment",
+	"mcp__explore__addTags",
+}
+
+// InstallClientConfig writes Claude Code client-discovery files into the user's
+// data directory so that CLI sessions started inside USER_DATA_DIR connect to
+// MyLifeDB's MCP servers without any manual setup. Two files are managed:
+//
+//   - <dataDir>/.mcp.json — registers the mylifedb-agent MCP server at the
+//     configured port. Fully server-owned (overwritten each startup) so that
+//     changing PORT is reflected without manual edits.
+//   - <dataDir>/.claude/settings.local.json — adds MyLifeDB's MCP tools to the
+//     permissions.allow list. Merged (not replaced) so any user-added entries
+//     survive.
+func InstallClientConfig(dataDir string, port int) {
+	installMCPJSON(dataDir, port)
+	mergeAllowlist(dataDir)
+}
+
+func installMCPJSON(dataDir string, port int) {
+	path := filepath.Join(dataDir, ".mcp.json")
+	config := map[string]any{
+		"mcpServers": map[string]any{
+			"mylifedb-agent": map[string]any{
+				"type": "http",
+				"url":  fmt.Sprintf("http://localhost:%d/api/agent/mcp", port),
+			},
+		},
+	}
+	body, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		log.Error().Err(err).Msg("failed to marshal .mcp.json")
+		return
+	}
+	if err := os.WriteFile(path, append(body, '\n'), 0644); err != nil {
+		log.Error().Err(err).Str("path", path).Msg("failed to write .mcp.json")
+		return
+	}
+	log.Debug().Str("path", path).Msg(".mcp.json installed")
+}
+
+func mergeAllowlist(dataDir string) {
+	path := filepath.Join(dataDir, ".claude", "settings.local.json")
+
+	// Read any existing settings so we preserve user-added entries.
+	var settings map[string]any
+	if existing, err := os.ReadFile(path); err == nil {
+		if err := json.Unmarshal(existing, &settings); err != nil {
+			log.Warn().Err(err).Str("path", path).Msg("existing settings.local.json is invalid JSON, rewriting from scratch")
+			settings = nil
+		}
+	}
+	if settings == nil {
+		settings = map[string]any{}
+	}
+
+	perms, _ := settings["permissions"].(map[string]any)
+	if perms == nil {
+		perms = map[string]any{}
+		settings["permissions"] = perms
+	}
+
+	// Normalize existing allow list into a set so we only append missing entries
+	// and keep the file diff-friendly across restarts.
+	existing, _ := perms["allow"].([]any)
+	present := map[string]bool{}
+	for _, v := range existing {
+		if s, ok := v.(string); ok {
+			present[s] = true
+		}
+	}
+	changed := false
+	for _, tool := range mcpToolAllowlist {
+		if !present[tool] {
+			existing = append(existing, tool)
+			present[tool] = true
+			changed = true
+		}
+	}
+	perms["allow"] = existing
+
+	if !changed {
+		log.Debug().Str("path", path).Msg("settings.local.json allow-list already up to date")
+		return
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		log.Error().Err(err).Str("path", path).Msg("failed to create .claude directory")
+		return
+	}
+	body, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		log.Error().Err(err).Msg("failed to marshal settings.local.json")
+		return
+	}
+	if err := os.WriteFile(path, append(body, '\n'), 0644); err != nil {
+		log.Error().Err(err).Str("path", path).Msg("failed to write settings.local.json")
+		return
+	}
+	log.Debug().Str("path", path).Msg("settings.local.json allow-list merged")
 }

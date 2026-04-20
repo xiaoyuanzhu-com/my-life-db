@@ -91,6 +91,12 @@ func New(cfg *Config) (*Server, error) {
 	// Install bundled skills for agent discovery
 	skills.Install(cfg.UserDataDir)
 
+	// Install Claude Code client-discovery files (.mcp.json + settings.local.json)
+	// into the data dir so CLI sessions started inside USER_DATA_DIR auto-connect
+	// to our MCP servers with the right tools pre-allowed. Must be called after
+	// cfg.Port is set.
+	skills.InstallClientConfig(cfg.UserDataDir, cfg.Port)
+
 	// 1.5. Initialize explore service
 	s.explore = explore.NewService(cfg.UserDataDir)
 
@@ -338,6 +344,16 @@ http_headers = { "x-litellm-customer-id" = %q }
 				Name: "explore",
 				Type: "http",
 				Url:  fmt.Sprintf("http://localhost:%d/api/explore/mcp", cfg.Port),
+				Headers: []acp.HttpHeader{
+					{Name: "Authorization", Value: "Bearer " + s.mcpToken},
+				},
+			},
+		})
+		mcpServers = append(mcpServers, acp.McpServer{
+			Http: &acp.McpServerHttpInline{
+				Name: "mylifedb-agent",
+				Type: "http",
+				Url:  fmt.Sprintf("http://localhost:%d/api/agent/mcp", cfg.Port),
 				Headers: []acp.HttpHeader{
 					{Name: "Authorization", Value: "Bearer " + s.mcpToken},
 				},

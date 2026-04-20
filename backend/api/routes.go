@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/xiaoyuanzhu-com/my-life-db/agentrunner"
 	"github.com/xiaoyuanzhu-com/my-life-db/explore"
 )
 
@@ -31,6 +32,15 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		exploreMCP := explore.NewMCPHandler(h.server.Explore(), h.server.MCPToken())
 		public.POST("/explore/mcp", exploreMCP.HandleMCP)
 		public.GET("/explore/mcp", func(c *gin.Context) {
+			c.Status(http.StatusMethodNotAllowed)
+		})
+
+		// Agent MCP endpoint — exposes validateAgent for the create-agent skill.
+		// Accepts the server's MCP token when auto-run agents call in; accepts
+		// no-auth requests from Claude Code CLI on localhost.
+		agentMCP := agentrunner.NewMCPHandler(h.server.AgentRunner(), h.server.MCPToken())
+		public.POST("/agent/mcp", agentMCP.HandleMCP)
+		public.GET("/agent/mcp", func(c *gin.Context) {
 			c.Status(http.StatusMethodNotAllowed)
 		})
 	}
