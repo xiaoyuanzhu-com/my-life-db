@@ -989,58 +989,35 @@ export default function AgentPage() {
 
   // ─── Shared header for desktop sidebar and mobile list view ────────────────
   const SessionsHeader = ({ showCollapseButton = false }: { showCollapseButton?: boolean }) => (
-    <div className="flex flex-col border-b border-border">
-      {/* View toggle row — Sessions vs. Auto Agents */}
-      <div className="flex items-center justify-between px-3 pt-2.5">
-        <div className="w-8 flex items-center">
-          {showCollapseButton && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={() => setIsSidebarCollapsed(true)}
-              title="Collapse sidebar"
-            >
-              <PanelLeftClose className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
-        <div className="flex items-center gap-0.5 rounded-md bg-muted/50 p-0.5">
-          <button
-            onClick={() => setSidebarView('sessions')}
-            className={cn(
-              'rounded px-2.5 py-1 text-xs font-medium transition-colors',
-              sidebarView === 'sessions'
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
+    <div className="flex items-center justify-between border-b border-border px-3 py-2">
+      {/* Left: collapse toggle (desktop only) */}
+      <div className="w-8 flex items-center">
+        {showCollapseButton && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => setIsSidebarCollapsed(true)}
+            title="Collapse sidebar"
           >
-            Sessions
-          </button>
-          <button
-            onClick={() => setSidebarView('agents')}
-            className={cn(
-              'rounded px-2.5 py-1 text-xs font-medium transition-colors',
-              sidebarView === 'agents'
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            Auto Agents
-          </button>
-        </div>
-        <div className="w-8" />
+            <PanelLeftClose className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
-      {/* Row 2: context for the active view */}
-      {sidebarView === 'sessions' ? (
-        <div className="flex items-center justify-between px-3 py-1.5">
-          <div className="w-8" />
+      {/* Center: Sessions ▾ | Auto segmented toggle.
+          The Sessions pill carries a chevron that opens the status filter
+          dropdown — the filter value itself is not rendered, only the chevron. */}
+      <div className="flex items-center gap-0.5 rounded-md bg-muted/50 p-0.5">
+        {sidebarView === 'sessions' ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-1.5 text-sm font-semibold hover:text-primary transition-colors px-2 py-1 rounded-md hover:bg-muted/50">
-                {statusFilter === 'active' ? 'Active' : statusFilter === 'archived' ? 'Archived' : 'All'}
-                <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+              <button
+                className="flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium bg-background text-foreground shadow-sm"
+                title={`Filter · ${statusFilter}`}
+              >
+                Sessions
+                <ChevronDown className="h-3 w-3 text-muted-foreground" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="center">
@@ -1051,40 +1028,56 @@ export default function AgentPage() {
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
-          <div className="w-8 flex items-center justify-end">
-            {sessionCreateNew && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => {
-                  setActiveSessionId(null)
-                  setShowNewSessionMobile(true)
-                }}
-                title="New session"
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className="flex items-center justify-between px-3 py-1.5">
-          <div className="w-8" />
-          <span className="text-sm font-semibold">Auto Agents</span>
-          <div className="w-8 flex items-center justify-end">
+        ) : (
+          <button
+            onClick={() => setSidebarView('sessions')}
+            className="rounded px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Sessions
+          </button>
+        )}
+        <button
+          onClick={() => setSidebarView('agents')}
+          className={cn(
+            'rounded px-2.5 py-1 text-xs font-medium transition-colors',
+            sidebarView === 'agents'
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
+          )}
+        >
+          Auto
+        </button>
+      </div>
+
+      {/* Right: new button (context-aware) */}
+      <div className="w-8 flex items-center justify-end">
+        {sidebarView === 'sessions' ? (
+          sessionCreateNew && (
             <Button
               variant="ghost"
               size="icon"
               className="h-7 w-7"
-              onClick={handleCreateAgentWithAI}
-              title="Create a new auto agent with AI"
+              onClick={() => {
+                setActiveSessionId(null)
+                setShowNewSessionMobile(true)
+              }}
+              title="New session"
             >
               <Plus className="h-4 w-4" />
             </Button>
-          </div>
-        </div>
-      )}
+          )
+        ) : (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={handleCreateAgentWithAI}
+            title="Create a new auto agent with AI"
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
     </div>
   )
 
