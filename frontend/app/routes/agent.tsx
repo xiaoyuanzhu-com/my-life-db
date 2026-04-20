@@ -1150,23 +1150,7 @@ export default function AgentPage() {
                   className="flex-1"
                 />
               ) : sidebarView === 'agents' ? (
-                <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-                  <div className="text-lg font-semibold">Auto agent sessions</div>
-                  <p className="max-w-md text-sm text-muted-foreground">
-                    Sessions spawned automatically by your auto agents appear here.
-                    Create one with the + button above, or open a session on the left.
-                  </p>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setManageAgentsOpen(true)}>
-                      <Settings2 className="h-4 w-4" />
-                      Manage agents
-                    </Button>
-                    <Button variant="default" size="sm" className="gap-1.5" onClick={handleCreateAgentWithAI}>
-                      <Plus className="h-4 w-4" />
-                      Create with AI
-                    </Button>
-                  </div>
-                </div>
+                <div className="flex-1" />
               ) : (
                 <AgentChat
                   key={`new-${newSessionComposerKey}`}
