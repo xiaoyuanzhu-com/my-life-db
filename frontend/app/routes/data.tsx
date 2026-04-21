@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useSearchParams } from "react-router";
 import { toast } from "sonner";
-import { Search, Upload, FolderUp, FolderPlus, RefreshCw, Plus } from "lucide-react";
+import { Search, Upload, FolderUp, FolderPlus, RefreshCw, Plus, Boxes } from "lucide-react";
 import { FileGrid } from "~/components/library/file-grid";
 import { BreadcrumbNav } from "~/components/library/breadcrumb-nav";
 import { useSearch } from "~/components/omni-input/modules/use-search";
@@ -20,6 +20,7 @@ import {
 import { useAuth } from "~/contexts/auth-context";
 import { useUploadNotifications } from "~/hooks/use-upload-notifications";
 import { cn } from "~/lib/utils";
+import { ImportAppsSheet } from "~/components/apps/import-apps-sheet";
 
 function fileNodeToFileWithDigests(node: FileNode): FileWithDigests {
   const name = node.path.split("/").pop() || node.path;
@@ -113,6 +114,7 @@ function DataContent() {
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [createFolderTrigger, setCreateFolderTrigger] = useState(0);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [importSheetOpen, setImportSheetOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const dragCounterRef = useRef(0);
@@ -409,6 +411,10 @@ function DataContent() {
               <FolderPlus className="h-4 w-4 mr-2" />
               New Folder
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setImportSheetOpen(true)}>
+              <Boxes className="h-4 w-4 mr-2" />
+              Import from app…
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
         <Button
@@ -442,6 +448,7 @@ function DataContent() {
           />
         )}
       </div>
+      <ImportAppsSheet open={importSheetOpen} onOpenChange={setImportSheetOpen} />
     </div>
   );
 }
