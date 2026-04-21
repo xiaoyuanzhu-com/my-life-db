@@ -87,6 +87,7 @@ func main() {
 			PermissionMode: params.PermissionMode,
 			Source:         params.Source,
 			AgentName:      params.AgentName,
+			DefaultModel:   params.DefaultModel,
 		})
 		if err != nil {
 			return nil, nil, err

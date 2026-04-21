@@ -124,10 +124,12 @@ func (m *MCPHandler) handleToolsList(req jsonrpcRequest) *jsonrpcResponse {
 		{
 			"name": "validateAgent",
 			"description": "Parse an agent definition's frontmatter and validate required fields without writing to disk. " +
-				"Use this BEFORE writing an agent markdown file to catch syntax errors (missing fields, wrong trigger type, " +
+				"Use this BEFORE writing an agent markdown file to catch syntax errors (wrong trigger type, " +
 				"missing schedule on cron, missing path glob on file triggers). " +
-				"Returns { valid: bool, error?: string, parsed?: { agent, trigger, path, schedule, enabled } } — on success, " +
-				"the parsed frontmatter; on failure, a human-readable error explaining what to fix.",
+				"`agent` and `model` are optional — when omitted, the runner falls back to the global default agent " +
+				"(claude_code) and the first gateway model compatible with that agent. " +
+				"Returns { valid: bool, error?: string, parsed?: { agent, model, trigger, path, schedule, enabled } } — on success, " +
+				"the parsed frontmatter (with `agent` filled in to the default if omitted); on failure, a human-readable error explaining what to fix.",
 			"inputSchema": map[string]any{
 				"type":     "object",
 				"required": []string{"name", "markdown"},
@@ -217,6 +219,7 @@ func (m *MCPHandler) callValidateAgent(id json.RawMessage, args map[string]any) 
 		"parsed": map[string]any{
 			"name":     def.Name,
 			"agent":    def.Agent,
+			"model":    def.Model,
 			"trigger":  def.Trigger,
 			"path":     def.Path,
 			"schedule": def.Schedule,

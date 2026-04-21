@@ -28,7 +28,6 @@ Flat files like `agents/organize-inbox.md` are **ignored** by the runner. Always
 ```markdown
 ---
 name: <display name>
-agent: claude_code
 trigger: <event type>
 path: "<glob>"          # required for file.* triggers
 schedule: "<cron>"      # required for cron trigger
@@ -43,7 +42,8 @@ enabled: true
 | Field | Required when | Values | Notes |
 |-------|---------------|--------|-------|
 | `name` | always | any string | Display name shown in the agent list. Note: the folder name always wins over this field for the internal ID — keep them in sync for sanity. |
-| `agent` | always | `claude_code`, `codex`, `qwen`, `gemini`, `opencode` | Which ACP agent to spawn. Default to `claude_code` unless the user specifies. |
+| `agent` | optional | `claude_code`, `codex`, `qwen`, `gemini`, `opencode` | Which ACP agent to spawn. **Defaults to `claude_code`.** Omit unless the task specifically needs a different agent — the global default may change as the app evolves, and omitting keeps the def portable. |
+| `model` | optional | gateway model ID (e.g. `claude-opus-4-7`) | Which model to use. **Defaults to the first AGENT_MODELS entry compatible with the chosen agent.** Only set this when the task genuinely needs a specific model (cost/capability tradeoff). Omitting keeps the def portable as available models evolve. |
 | `trigger` | always | `file.created`, `file.changed`, `file.moved`, `file.deleted`, `cron` | Event that starts the agent. |
 | `path` | file.* triggers | doublestar glob | Path pattern matched against the event path. **Required for every file trigger.** See "Path globs" below. |
 | `schedule` | cron trigger | cron expression | Standard 5-field cron (minute hour day-of-month month day-of-week). |
@@ -182,7 +182,6 @@ Combine with the `enabled: false` → trial → `enabled: true` rollout in Phase
 ```markdown
 ---
 name: Organize Inbox
-agent: claude_code
 trigger: file.created
 path: "inbox/**"
 enabled: true
@@ -215,7 +214,6 @@ Summarize what you did in a short message.
 ```markdown
 ---
 name: Weekly Review
-agent: claude_code
 trigger: cron
 schedule: "0 9 * * 0"
 enabled: true

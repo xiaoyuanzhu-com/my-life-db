@@ -222,6 +222,45 @@ Some prompt.
 	}
 }
 
+func TestAgentFieldOptionalDefaultsToClaudeCode(t *testing.T) {
+	input := `---
+trigger: cron
+schedule: "0 9 * * *"
+---
+
+Some prompt.
+`
+	def, err := ParseAgentDef([]byte(input), "no-agent-field", "no-agent-field.md")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if def.Agent != DefaultAgent {
+		t.Errorf("Agent = %q, want default %q", def.Agent, DefaultAgent)
+	}
+	if def.Model != "" {
+		t.Errorf("Model = %q, want empty (AgentManager fills per-agent default)", def.Model)
+	}
+}
+
+func TestModelFieldPassesThrough(t *testing.T) {
+	input := `---
+agent: claude_code
+model: claude-opus-4-7
+trigger: cron
+schedule: "0 9 * * *"
+---
+
+Some prompt.
+`
+	def, err := ParseAgentDef([]byte(input), "with-model", "with-model.md")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if def.Model != "claude-opus-4-7" {
+		t.Errorf("Model = %q, want %q", def.Model, "claude-opus-4-7")
+	}
+}
+
 func TestCronAgentIgnoresPath(t *testing.T) {
 	input := `---
 agent: claude_code

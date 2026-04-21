@@ -99,7 +99,7 @@ Some prompt.
 	}
 }
 
-func TestValidateDef_RejectsMissingAgent(t *testing.T) {
+func TestValidateDef_MissingAgentFallsBackToDefault(t *testing.T) {
 	r := New(Config{})
 	md := `---
 trigger: cron
@@ -108,8 +108,12 @@ schedule: "0 9 * * *"
 
 Prompt.
 `
-	if _, err := r.ValidateDef("no-agent", []byte(md)); err == nil {
-		t.Fatal("expected error for missing agent field")
+	def, err := r.ValidateDef("no-agent", []byte(md))
+	if err != nil {
+		t.Fatalf("expected no error (agent is optional and defaults to %s), got %v", DefaultAgent, err)
+	}
+	if def.Agent != DefaultAgent {
+		t.Errorf("Agent = %q, want default %q", def.Agent, DefaultAgent)
 	}
 }
 

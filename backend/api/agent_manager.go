@@ -333,6 +333,17 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 
 	gatewayModels := m.GatewayModels(agentTypeStr)
 
+	// MyLifeDB is a managed-agents-only deployment: every session (user-initiated
+	// or auto-run) must use a model from AGENT_MODELS. When the caller didn't
+	// pick one, default to gatewayModels[0]. This centralizes the fallback so
+	// auto-run callers don't need to know about the gateway list, and guarantees
+	// SetupACP's SetModel call below fires — which is what overrides stale model
+	// preferences in the CLI's own ~/.claude/settings.json (e.g. "opus[1m]"
+	// resolving to claude-opus-4-6 when the gateway only allows claude-opus-4-7).
+	if params.DefaultModel == "" && len(gatewayModels) > 0 {
+		params.DefaultModel = gatewayModels[0].Value
+	}
+
 	// When the caller picked a non-default gateway model, override the env
 	// vars the agent process would normally inherit from the pre-warmed pool.
 	// Keeps the spawned process's ANTHROPIC_MODEL / ANTHROPIC_SMALL_FAST_MODEL

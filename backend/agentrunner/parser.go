@@ -9,9 +9,15 @@ import (
 )
 
 // AgentDef represents a parsed agent definition from a markdown file.
+//
+// Both Agent and Model are optional — when omitted, the runner falls back to
+// the global default agent (claude_code) and the first AGENT_MODELS entry
+// compatible with that agent. This keeps agent .md files portable as the app's
+// available agents and models evolve.
 type AgentDef struct {
 	Name     string `yaml:"name"`
-	Agent    string `yaml:"agent"`
+	Agent    string `yaml:"agent,omitempty"`
+	Model    string `yaml:"model,omitempty"`
 	Trigger  string `yaml:"trigger"`
 	Schedule string `yaml:"schedule,omitempty"`
 	Path     string `yaml:"path,omitempty"`
@@ -19,6 +25,9 @@ type AgentDef struct {
 	Prompt   string `yaml:"-"` // markdown body below frontmatter
 	File     string `yaml:"-"` // source filename
 }
+
+// DefaultAgent is the agent type used when an AgentDef omits `agent:`.
+const DefaultAgent = "claude_code"
 
 var separator = []byte("---")
 
@@ -44,6 +53,9 @@ func ParseAgentDef(data []byte, name, filename string) (*AgentDef, error) {
 		t := true
 		def.Enabled = &t
 	}
+	if def.Agent == "" {
+		def.Agent = DefaultAgent
+	}
 
 	def.Prompt = strings.TrimSpace(string(body))
 	// Folder-derived name wins; overwrite whatever the YAML had.
@@ -51,9 +63,6 @@ func ParseAgentDef(data []byte, name, filename string) (*AgentDef, error) {
 	def.File = filename
 
 	// Validation
-	if def.Agent == "" {
-		return nil, fmt.Errorf("parsing %s: missing required field \"agent\"", filename)
-	}
 	if def.Trigger == "" {
 		return nil, fmt.Errorf("parsing %s: missing required field \"trigger\"", filename)
 	}

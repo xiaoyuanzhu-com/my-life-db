@@ -26,6 +26,7 @@ type SessionParams struct {
 	PermissionMode string
 	Source         string // "auto"
 	AgentName      string // agent folder name
+	DefaultModel   string // optional — empty means "let AgentManager pick the per-agent default"
 }
 
 // Config holds the configuration for the agent runner.
@@ -611,6 +612,7 @@ func (r *Runner) execute(ctx context.Context, def *AgentDef, payload hooks.Paylo
 		PermissionMode: "bypassPermissions",
 		Source:         "auto",
 		AgentName:      def.Name,
+		DefaultModel:   def.Model,
 	})
 	if err != nil {
 		log.Error().Err(err).Str("agent", def.Name).Msg("failed to create agent session")
