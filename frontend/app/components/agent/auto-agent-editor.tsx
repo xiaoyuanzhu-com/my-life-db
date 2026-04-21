@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Check, Copy, Loader2, Play, Save, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowLeft, Check, Copy, Loader2, Play, Save, Sparkles, Trash2 } from 'lucide-react'
 import { Button } from '~/components/ui/button'
 import { Textarea } from '~/components/ui/textarea'
 import {
@@ -38,9 +38,10 @@ interface Props {
   onSaved: (name: string) => void
   onDeleted: () => void
   onEditWithAI: (name: string, markdown: string) => void
+  onBack?: () => void
 }
 
-export function AutoAgentEditor({ name, onSaved, onDeleted, onEditWithAI }: Props) {
+export function AutoAgentEditor({ name, onSaved, onDeleted, onEditWithAI, onBack }: Props) {
   const [markdown, setMarkdown] = useState('')
   const [originalMarkdown, setOriginalMarkdown] = useState('')
   const [loading, setLoading] = useState(true)
@@ -147,7 +148,18 @@ export function AutoAgentEditor({ name, onSaved, onDeleted, onEditWithAI }: Prop
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Header */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2.5">
+        {onBack && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={onBack}
+            title="Back to agents"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        )}
         <div className="flex-1 truncate text-sm font-semibold">{name}</div>
 
         <div className="ml-auto flex items-center gap-1.5">

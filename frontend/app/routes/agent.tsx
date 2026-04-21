@@ -6,10 +6,11 @@ import { type AgentType } from '~/components/agent/agent-type-selector'
 import type { ConfigOption } from '~/hooks/use-agent-runtime'
 import { AgentChat } from '~/components/agent/agent-chat'
 import { AgentContextProvider } from '~/components/agent/agent-context'
-import { AutoAgentsSheet } from '~/components/agent/auto-agents-sheet'
+import { AutoAgentList } from '~/components/agent/auto-agent-list'
+import { AutoAgentEditor } from '~/components/agent/auto-agent-editor'
 import { useAgentRuntime } from '~/hooks/use-agent-runtime'
 import { Button } from '~/components/ui/button'
-import { Plus, PanelLeftClose, PanelLeftOpen, ChevronDown, ArrowLeft, Share2, Link, Check, Globe, Loader2, Settings2 } from 'lucide-react'
+import { Plus, PanelLeftClose, PanelLeftOpen, ChevronDown, ArrowLeft, Share2, Link, Check, Globe, Loader2, Blocks } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -218,9 +219,46 @@ export default function AgentPage() {
     return 'sessions'
   })
 
-  // Auto-agent management sheet (list + editor) is toggled from the Auto tab
-  // header. The sheet owns its own selection state internally.
-  const [manageAgentsOpen, setManageAgentsOpen] = useState(false)
+  // Auto-agent management panel — renders in the session-detail container
+  // when active. Mode flows: closed → list → editor → list → closed.
+  const [agentsPanelMode, setAgentsPanelMode] = useState<'closed' | 'list' | 'editor'>('closed')
+  const [agentsPanelName, setAgentsPanelName] = useState<string | null>(null)
+  // Bumped after save/delete to force the list to refetch.
+  const [agentsPanelRefresh, setAgentsPanelRefresh] = useState(0)
+
+  // Blocks button: closed → list, list → closed, editor → list (drill-up).
+  const toggleAgentsList = useCallback(() => {
+    setAgentsPanelMode((prev) => {
+      if (prev === 'closed') {
+        setActiveSessionId(null)
+        setAgentsPanelName(null)
+        return 'list'
+      }
+      if (prev === 'editor') {
+        setAgentsPanelName(null)
+        return 'list'
+      }
+      // list → closed
+      setAgentsPanelName(null)
+      return 'closed'
+    })
+  }, [])
+  const openAgentEditor = useCallback((name: string) => {
+    setAgentsPanelMode('editor')
+    setAgentsPanelName(name)
+  }, [])
+  const backToAgentsList = useCallback(() => {
+    setAgentsPanelMode('list')
+    setAgentsPanelName(null)
+  }, [])
+  const handleAgentSaved = useCallback(() => {
+    setAgentsPanelRefresh((n) => n + 1)
+  }, [])
+  const handleAgentDeleted = useCallback(() => {
+    setAgentsPanelRefresh((n) => n + 1)
+    setAgentsPanelMode('list')
+    setAgentsPanelName(null)
+  }, [])
 
   useEffect(() => {
     localStorage.setItem('agent-sidebar-view', sidebarView)
@@ -239,6 +277,8 @@ export default function AgentPage() {
     setActiveSessionId(null)
     setShowNewSessionMobile(true)
     setNewSessionComposerKey((k) => k + 1)
+    setAgentsPanelMode('closed')
+    setAgentsPanelName(null)
   }, [])
 
   const handleCreateAgentWithAI = useCallback(() => {
@@ -811,6 +851,8 @@ export default function AgentPage() {
     )
     setActiveSessionId(sessionId)
     setShowNewSessionMobile(false)
+    setAgentsPanelMode('closed')
+    setAgentsPanelName(null)
   }, [])
 
   // Update share fields on a session (called by ShareButton)
@@ -1059,11 +1101,14 @@ export default function AgentPage() {
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7"
-              onClick={() => setManageAgentsOpen(true)}
+              className={cn(
+                'h-7 w-7',
+                agentsPanelMode !== 'closed' && 'text-primary'
+              )}
+              onClick={toggleAgentsList}
               title="Manage auto agents"
             >
-              <Settings2 className="h-4 w-4" />
+              <Blocks className="h-4 w-4" />
             </Button>
             <Button
               variant="ghost"
@@ -1077,6 +1122,30 @@ export default function AgentPage() {
           </>
         )}
       </div>
+    </div>
+  )
+
+  // ─── Auto-agents panel (rendered in place of AgentChat when active) ───────
+  const agentsPanel = (
+    <div className="flex h-full min-h-0 flex-col">
+      {agentsPanelMode === 'editor' && agentsPanelName ? (
+        <AutoAgentEditor
+          key={agentsPanelName}
+          name={agentsPanelName}
+          onSaved={handleAgentSaved}
+          onDeleted={handleAgentDeleted}
+          onEditWithAI={handleEditAgentWithAI}
+          onBack={backToAgentsList}
+        />
+      ) : (
+        <div className="h-full overflow-y-auto p-3">
+          <AutoAgentList
+            activeName={null}
+            onSelect={openAgentEditor}
+            refreshKey={agentsPanelRefresh}
+          />
+        </div>
+      )}
     </div>
   )
 
@@ -1136,7 +1205,7 @@ export default function AgentPage() {
                 </Button>
               )}
               {/* Top-right buttons: share */}
-              {activeSessionId && effectiveActiveSession && (
+              {activeSessionId && effectiveActiveSession && agentsPanelMode === 'closed' && (
                 <div className="absolute top-2 right-2 z-20 flex items-center gap-1">
                   <ShareButton
                     session={effectiveActiveSession}
@@ -1144,7 +1213,9 @@ export default function AgentPage() {
                   />
                 </div>
               )}
-              {activeSessionId ? (
+              {agentsPanelMode !== 'closed' ? (
+                agentsPanel
+              ) : activeSessionId ? (
                 <AgentChat
                   sessionId={activeSessionId}
                   className="flex-1"
@@ -1183,7 +1254,11 @@ export default function AgentPage() {
   // ─── Mobile layout ────────────────────────────────────────────────────────
   const mobileLayout = (
     <div className="flex flex-1 h-full min-w-0 overflow-hidden">
-      {activeSessionId ? (
+      {agentsPanelMode !== 'closed' ? (
+        <div className="flex flex-1 flex-col bg-background overflow-hidden min-w-0">
+          {agentsPanel}
+        </div>
+      ) : activeSessionId ? (
         /* Detail view: full-screen chat with floating back button */
         <div className="relative flex flex-1 flex-col bg-background overflow-hidden min-w-0">
           {sessionSidebar && (
@@ -1258,11 +1333,6 @@ export default function AgentPage() {
         <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
           {isMobile ? mobileLayout : desktopLayout}
         </div>
-        <AutoAgentsSheet
-          open={manageAgentsOpen}
-          onOpenChange={setManageAgentsOpen}
-          onEditWithAI={handleEditAgentWithAI}
-        />
       </AssistantRuntimeProvider>
     </AgentContextProvider>
   )
