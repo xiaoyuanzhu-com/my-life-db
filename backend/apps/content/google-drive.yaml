@@ -1,5 +1,6 @@
-id: googledrive
+id: google-drive
 name: Google Drive
 category: cloud
 website: https://drive.google.com
 description: Google's file storage and synchronization service.
+icon: googledrive
