@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useParams, Link } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
@@ -39,14 +40,16 @@ interface DigesterInfo {
 }
 
 function SettingsHeader() {
+  const { t } = useTranslation('settings');
   return (
     <div>
-      <h1 className="text-3xl font-bold">Me</h1>
+      <h1 className="text-3xl font-bold">{t('page.title', 'Me')}</h1>
     </div>
   );
 }
 
 function SettingsContent() {
+  const { t } = useTranslation('settings');
   const params = useParams();
 
   // Determine active tab from URL first
@@ -198,7 +201,7 @@ function SettingsContent() {
   if (isLoading) {
     return (
       <div className="px-[20%] py-12">
-        <div className="text-center">Loading settings...</div>
+        <div className="text-center">{t('page.loading', 'Loading settings...')}</div>
       </div>
     );
   }
@@ -206,7 +209,7 @@ function SettingsContent() {
   if (!settings) {
     return (
       <div className="px-[20%] py-12">
-        <div className="text-center text-destructive">Failed to load settings</div>
+        <div className="text-center text-destructive">{t('page.loadFailed', 'Failed to load settings')}</div>
       </div>
     );
   }
@@ -222,11 +225,11 @@ function SettingsContent() {
   };
 
   const tabs = [
-    { label: "General", value: "general", path: "/me" },
-    { label: "Vendors", value: "vendors", path: "/me/vendors" },
-    { label: "Digest", value: "digest", path: "/me/digest" },
-    { label: "Data Sources", value: "data-sources", path: "/me/data-sources" },
-    { label: "Stats", value: "stats", path: "/me/stats" },
+    { label: t('tabs.general', 'General'), value: "general", path: "/me" },
+    { label: t('tabs.vendors', 'Vendors'), value: "vendors", path: "/me/vendors" },
+    { label: t('tabs.digest', 'Digest'), value: "digest", path: "/me/digest" },
+    { label: t('tabs.dataSources', 'Data Sources'), value: "data-sources", path: "/me/data-sources" },
+    { label: t('tabs.stats', 'Stats'), value: "stats", path: "/me/stats" },
   ];
 
   return (
@@ -255,13 +258,13 @@ function SettingsContent() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5" />
-                General Settings
+                {t('general.title', 'General Settings')}
               </CardTitle>
-              <p className="text-sm text-muted-foreground mt-2">Configure application-wide preferences</p>
+              <p className="text-sm text-muted-foreground mt-2">{t('general.subtitle', 'Configure application-wide preferences')}</p>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-2">
-                <label className="text-sm font-medium">User Email</label>
+                <label className="text-sm font-medium">{t('general.userEmail.label', 'User Email')}</label>
                 <Input
                   type="email"
                   placeholder="user@example.com"
@@ -281,10 +284,10 @@ function SettingsContent() {
                     })
                   }
                 />
-                <p className="text-xs text-muted-foreground">Used for displaying your Gravatar avatar in the header.</p>
+                <p className="text-xs text-muted-foreground">{t('general.userEmail.hint', 'Used for displaying your Gravatar avatar in the header.')}</p>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Log Level</label>
+                <label className="text-sm font-medium">{t('general.logLevel.label', 'Log Level')}</label>
                 <select
                   className="w-full px-3 py-2 rounded-md border bg-background"
                   value={settings.preferences?.logLevel || "info"}
@@ -309,13 +312,13 @@ function SettingsContent() {
                   <option value="error">error</option>
                 </select>
                 <p className="text-xs text-muted-foreground">
-                  A browser refresh or server restart may be required to apply.
+                  {t('general.logLevel.hint', 'A browser refresh or server restart may be required to apply.')}
                 </p>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Languages</label>
+                <label className="text-sm font-medium">{t('general.languages.label', 'Languages')}</label>
                 <p className="text-xs text-muted-foreground mb-3">
-                  Languages you use, in order of preference. Drag to reorder.
+                  {t('general.languages.hint', 'Languages you use, in order of preference. Drag to reorder.')}
                 </p>
                 <LanguageSelector
                   languages={settings.preferences?.languages || []}
@@ -343,14 +346,14 @@ function SettingsContent() {
         {activeTab === "vendors" && (
           <Card>
             <CardHeader>
-              <CardTitle>Vendor Configuration</CardTitle>
+              <CardTitle>{t('vendors.title', 'Vendor Configuration')}</CardTitle>
               <p className="text-sm text-muted-foreground mt-2">
-                Configure third-party vendor endpoints and credentials
+                {t('vendors.subtitle', 'Configure third-party vendor endpoints and credentials')}
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">OpenAI - Base URL</label>
+                <label className="text-sm font-medium">{t('vendors.openaiBaseUrl.label', 'OpenAI - Base URL')}</label>
                 <Input
                   placeholder="https://api.openai.com/v1"
                   value={settings.vendors?.openai?.baseUrl || ""}
@@ -366,7 +369,7 @@ function SettingsContent() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">OpenAI - API Key</label>
+                <label className="text-sm font-medium">{t('vendors.openaiApiKey.label', 'OpenAI - API Key')}</label>
                 <Input
                   type="password"
                   placeholder="sk-..."
@@ -384,9 +387,9 @@ function SettingsContent() {
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium">OpenAI - Model</label>
+                  <label className="text-sm font-medium">{t('vendors.openaiModel.label', 'OpenAI - Model')}</label>
                   <Button variant="outline" size="sm" onClick={handleOpenModelSelector} disabled={isModelLoading}>
-                    {isModelLoading ? "Loading..." : "Select Model"}
+                    {isModelLoading ? t('actions.loadingModels', 'Loading...') : t('actions.selectModel', 'Select Model')}
                   </Button>
                 </div>
                 <Input
@@ -402,10 +405,10 @@ function SettingsContent() {
                     })
                   }
                 />
-                <p className="text-xs text-muted-foreground">Used for all LLM tasks. Leave blank to use default.</p>
+                <p className="text-xs text-muted-foreground">{t('vendors.openaiModel.hint', 'Used for all LLM tasks. Leave blank to use default.')}</p>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Search - Meilisearch Host</label>
+                <label className="text-sm font-medium">{t('vendors.meilisearchHost.label', 'Search - Meilisearch Host')}</label>
                 <Input
                   placeholder="http://localhost:7700"
                   value={settings.vendors?.meilisearch?.host || ""}
@@ -423,11 +426,11 @@ function SettingsContent() {
                   }
                 />
                 <p className="text-xs text-muted-foreground">
-                  Used by the search API to connect to your local Meilisearch instance.
+                  {t('vendors.meilisearchHost.hint', 'Used by the search API to connect to your local Meilisearch instance.')}
                 </p>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Search - Qdrant Host</label>
+                <label className="text-sm font-medium">{t('vendors.qdrantHost.label', 'Search - Qdrant Host')}</label>
                 <Input
                   placeholder="http://localhost:6333"
                   value={settings.vendors?.qdrant?.host || ""}
@@ -445,7 +448,7 @@ function SettingsContent() {
                   }
                 />
                 <p className="text-xs text-muted-foreground">
-                  Base URL for the Qdrant vector service used by semantic search.
+                  {t('vendors.qdrantHost.hint', 'Base URL for the Qdrant vector service used by semantic search.')}
                 </p>
               </div>
             </CardContent>
@@ -456,9 +459,9 @@ function SettingsContent() {
         {activeTab === "digest" && (
           <Card>
             <CardHeader>
-              <CardTitle>Digester Configuration</CardTitle>
+              <CardTitle>{t('digest.title', 'Digester Configuration')}</CardTitle>
               <p className="text-sm text-muted-foreground mt-2">
-                Enable or disable individual digesters for file processing
+                {t('digest.subtitle', 'Enable or disable individual digesters for file processing')}
               </p>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -467,7 +470,7 @@ function SettingsContent() {
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 </div>
               ) : digesters.length === 0 ? (
-                <div className="text-center text-muted-foreground py-8">No digesters found</div>
+                <div className="text-center text-muted-foreground py-8">{t('digest.noDigesters', 'No digesters found')}</div>
               ) : (
                 <div className="space-y-4">
                   {digesters.map(({ name, label, description }) => (
@@ -488,12 +491,12 @@ function SettingsContent() {
                           {resetingDigester === name ? (
                             <>
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              <span className="text-xs">Resetting</span>
+                              <span className="text-xs">{t('actions.resetting', 'Resetting')}</span>
                             </>
                           ) : (
                             <>
                               <RotateCcw className="h-3.5 w-3.5" />
-                              <span className="text-xs">Reset</span>
+                              <span className="text-xs">{t('actions.reset', 'Reset')}</span>
                             </>
                           )}
                         </Button>
@@ -543,32 +546,32 @@ function SettingsContent() {
                 <div className="space-y-6">
                   {/* Library Stats */}
                   <div>
-                    <h3 className="text-sm font-medium mb-3">Library</h3>
+                    <h3 className="text-sm font-medium mb-3">{t('stats.library', 'Library')}</h3>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="p-4 rounded-lg border bg-muted/50">
                         <div className="text-2xl font-semibold">{stats.library.fileCount.toLocaleString()}</div>
-                        <div className="text-xs text-muted-foreground mt-1">Files</div>
+                        <div className="text-xs text-muted-foreground mt-1">{t('stats.files', 'Files')}</div>
                       </div>
                       <div className="p-4 rounded-lg border bg-muted/50">
                         <div className="text-2xl font-semibold">
                           {(stats.library.totalSize / (1000 * 1000)).toFixed(2)} MB
                         </div>
-                        <div className="text-xs text-muted-foreground mt-1">Total Size</div>
+                        <div className="text-xs text-muted-foreground mt-1">{t('stats.totalSize', 'Total Size')}</div>
                       </div>
                     </div>
                   </div>
 
                   {/* Digest Stats */}
                   <div>
-                    <h3 className="text-sm font-medium mb-3">Digests</h3>
+                    <h3 className="text-sm font-medium mb-3">{t('stats.digests', 'Digests')}</h3>
                     <div className="grid grid-cols-3 gap-4">
                       <div className="p-4 rounded-lg border bg-muted/50">
                         <div className="text-2xl font-semibold">{stats.digests.digestedFiles.toLocaleString()}</div>
-                        <div className="text-xs text-muted-foreground mt-1">Digested Files</div>
+                        <div className="text-xs text-muted-foreground mt-1">{t('stats.digestedFiles', 'Digested Files')}</div>
                       </div>
                       <div className="p-4 rounded-lg border bg-muted/50">
                         <div className="text-2xl font-semibold">{stats.digests.totalFiles.toLocaleString()}</div>
-                        <div className="text-xs text-muted-foreground mt-1">Total Files</div>
+                        <div className="text-xs text-muted-foreground mt-1">{t('stats.totalFiles', 'Total Files')}</div>
                       </div>
                       <div className="p-4 rounded-lg border bg-muted/50">
                         <div className="flex items-center gap-2">
@@ -579,13 +582,13 @@ function SettingsContent() {
                           )}
                           <div className="text-2xl font-semibold">{stats.digests.pendingDigests.toLocaleString()}</div>
                         </div>
-                        <div className="text-xs text-muted-foreground mt-1">Pending</div>
+                        <div className="text-xs text-muted-foreground mt-1">{t('stats.pending', 'Pending')}</div>
                       </div>
                     </div>
                   </div>
                 </div>
               ) : (
-                <div className="text-center text-muted-foreground py-8">Failed to load statistics</div>
+                <div className="text-center text-muted-foreground py-8">{t('stats.loadFailed', 'Failed to load statistics')}</div>
               )}
             </CardContent>
           </Card>
@@ -609,7 +612,7 @@ function SettingsContent() {
             )}
             <Button onClick={handleSave} disabled={isSaving} className="gap-2">
               <Save className="h-4 w-4" />
-              {isSaving ? "Saving..." : "Save Settings"}
+              {isSaving ? t('actions.saving', 'Saving...') : t('actions.save', 'Save Settings')}
             </Button>
           </div>
         )}
@@ -623,20 +626,20 @@ function SettingsContent() {
         >
           <div className="w-full max-w-lg rounded-lg bg-background p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-base font-semibold">Select OpenAI Model</h3>
+              <h3 className="text-base font-semibold">{t('vendors.modelSelector.title', 'Select OpenAI Model')}</h3>
               <Button variant="ghost" size="sm" onClick={() => setIsModelModalOpen(false)}>
-                Close
+                {t('actions.close', 'Close')}
               </Button>
             </div>
             <div className="space-y-3">
-              <Input placeholder="Filter models..." value={modelQuery} onChange={(e) => setModelQuery(e.target.value)} />
+              <Input placeholder={t('vendors.modelSelector.filterPlaceholder', 'Filter models...')} value={modelQuery} onChange={(e) => setModelQuery(e.target.value)} />
               {modelError && (
                 <div className="space-y-2">
                   <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                     {modelError}
                   </div>
                   <Button variant="outline" size="sm" onClick={() => void fetchModels()} disabled={isModelLoading}>
-                    Retry
+                    {t('actions.retry', 'Retry')}
                   </Button>
                 </div>
               )}
@@ -659,7 +662,7 @@ function SettingsContent() {
                         <div className="flex flex-col">
                           <span className="text-sm font-medium">{model.id}</span>
                           {model.owned_by && (
-                            <span className="text-xs text-muted-foreground">Owner: {model.owned_by}</span>
+                            <span className="text-xs text-muted-foreground">{t('vendors.modelSelector.ownerLabel', 'Owner: {{owner}}', { owner: model.owned_by })}</span>
                           )}
                         </div>
                       </button>
@@ -667,7 +670,7 @@ function SettingsContent() {
                   })}
                   {filteredModels.length === 0 && !modelError && (
                     <p className="py-6 text-center text-sm text-muted-foreground">
-                      No models found. Check your API key permissions.
+                      {t('vendors.modelSelector.noModels', 'No models found. Check your API key permissions.')}
                     </p>
                   )}
                 </div>
@@ -684,17 +687,15 @@ function SettingsContent() {
           onClick={() => setConfirmResetDigester(null)}
         >
           <div className="w-full max-w-md rounded-lg bg-background p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold mb-2">Reset Digester</h3>
+            <h3 className="text-lg font-semibold mb-2">{t('digestReset.dialogTitle', 'Reset Digester')}</h3>
             <p className="text-sm text-muted-foreground mb-4">
-              This will delete all existing{" "}
-              <span className="font-medium text-foreground">{confirmResetDigester}</span> digests and trigger
-              regeneration for all files. Use this to refresh data after changing settings or to fix processing errors.
+              {t('digestReset.description', 'This will delete all existing {{name}} digests and trigger regeneration for all files. Use this to refresh data after changing settings or to fix processing errors.', { name: confirmResetDigester })}
             </p>
             <div className="flex justify-end gap-3">
               <Button variant="outline" onClick={() => setConfirmResetDigester(null)}>
-                Cancel
+                {t('actions.cancel', 'Cancel')}
               </Button>
-              <Button onClick={() => handleResetDigester(confirmResetDigester)}>Reset</Button>
+              <Button onClick={() => handleResetDigester(confirmResetDigester)}>{t('actions.reset', 'Reset')}</Button>
             </div>
           </div>
         </div>
@@ -704,6 +705,7 @@ function SettingsContent() {
 }
 
 export default function MePage() {
+  const { t } = useTranslation('settings');
   const { isAuthenticated, isLoading } = useAuth();
 
   // Show loading state while checking authentication
@@ -716,12 +718,12 @@ export default function MePage() {
     return (
       <div className="flex items-center justify-center h-screen p-8 text-center">
         <div>
-          <h1 className="text-3xl font-bold mb-4">Me</h1>
+          <h1 className="text-3xl font-bold mb-4">{t('page.title', 'Me')}</h1>
           <p className="text-muted-foreground text-lg mb-8 max-w-2xl">
-            Configure your preferences and system settings.
+            {t('page.unauthDescription', 'Configure your preferences and system settings.')}
           </p>
           <p className="text-muted-foreground">
-            Please sign in using the button in the header to get started.
+            {t('page.unauthSignInHint', 'Please sign in using the button in the header to get started.')}
           </p>
         </div>
       </div>

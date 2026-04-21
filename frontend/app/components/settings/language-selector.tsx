@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { MultiTagInput, type TagOption } from "~/components/ui/multi-tag-input";
 import {
   COMMON_LANGUAGES,
@@ -12,6 +13,7 @@ interface LanguageSelectorProps {
 }
 
 export function LanguageSelector({ languages, onChange }: LanguageSelectorProps) {
+  const { t } = useTranslation('settings');
   // Build options with native labels and English search terms
   const options: TagOption[] = useMemo(() => {
     return COMMON_LANGUAGES.map((code) => ({
@@ -26,7 +28,7 @@ export function LanguageSelector({ languages, onChange }: LanguageSelectorProps)
       options={options}
       selected={languages}
       onChange={onChange}
-      placeholder="Search languages..."
+      placeholder={t('general.languages.searchPlaceholder', 'Search languages...')}
     />
   );
 }

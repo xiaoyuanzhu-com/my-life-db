@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, type ComponentType } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ArrowLeft, Clock, Heart, UtensilsCrossed, MessageCircle, BookOpen,
   Monitor, Calendar, Target, Footprints, HeartPulse, Moon,
@@ -249,6 +250,7 @@ function DetailView({
   onToggle: (id: string, enabled: boolean) => void;
   onBack: () => void;
 }) {
+  const { t } = useTranslation('settings');
   const result = findCollector(collectorId);
   if (!result) {
     return (
@@ -258,9 +260,9 @@ function DetailView({
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-6"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back
+          {t('dataSources.back', 'Back')}
         </button>
-        <p className="text-muted-foreground">Collector not found.</p>
+        <p className="text-muted-foreground">{t('dataSources.notFound', 'Collector not found.')}</p>
       </div>
     );
   }
@@ -277,7 +279,7 @@ function DetailView({
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-6"
       >
         <ArrowLeft className="w-4 h-4" />
-        Data Sources
+        {t('dataSources.title', 'Data Sources')}
       </button>
 
       {/* Header with toggle */}
@@ -297,7 +299,7 @@ function DetailView({
 
       {/* Breadcrumb context */}
       <div className="text-xs text-muted-foreground mb-6">
-        {category.name} &rsaquo; {collector.name} &middot; {collector.sources.length} data {collector.sources.length === 1 ? "source" : "sources"}
+        {category.name} &rsaquo; {collector.name} &middot; {t('dataSources.count', { count: collector.sources.length })}
       </div>
 
       {/* Sources list (informational, no individual toggles) */}

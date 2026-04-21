@@ -10,7 +10,108 @@
       "signIn": "Sign In"
     }
   },
-  "settings": {},
+  "settings": {
+    "page": {
+      "title": "Me",
+      "loading": "Loading settings...",
+      "loadFailed": "Failed to load settings",
+      "unauthDescription": "Configure your preferences and system settings.",
+      "unauthSignInHint": "Please sign in using the button in the header to get started."
+    },
+    "tabs": {
+      "general": "General",
+      "vendors": "Vendors",
+      "digest": "Digest",
+      "dataSources": "Data Sources",
+      "stats": "Stats"
+    },
+    "actions": {
+      "save": "Save Settings",
+      "saving": "Saving...",
+      "reset": "Reset",
+      "resetting": "Resetting",
+      "close": "Close",
+      "retry": "Retry",
+      "cancel": "Cancel",
+      "selectModel": "Select Model",
+      "loadingModels": "Loading..."
+    },
+    "toast": {
+      "saveSuccess": "Settings saved successfully!",
+      "saveFailure": "Failed to save settings"
+    },
+    "general": {
+      "title": "General Settings",
+      "subtitle": "Configure application-wide preferences",
+      "userEmail": {
+        "label": "User Email",
+        "hint": "Used for displaying your Gravatar avatar in the header."
+      },
+      "logLevel": {
+        "label": "Log Level",
+        "hint": "A browser refresh or server restart may be required to apply."
+      },
+      "languages": {
+        "label": "Languages",
+        "hint": "Languages you use, in order of preference. Drag to reorder.",
+        "searchPlaceholder": "Search languages..."
+      }
+    },
+    "vendors": {
+      "title": "Vendor Configuration",
+      "subtitle": "Configure third-party vendor endpoints and credentials",
+      "openaiBaseUrl": {
+        "label": "OpenAI - Base URL"
+      },
+      "openaiApiKey": {
+        "label": "OpenAI - API Key"
+      },
+      "openaiModel": {
+        "label": "OpenAI - Model",
+        "hint": "Used for all LLM tasks. Leave blank to use default."
+      },
+      "meilisearchHost": {
+        "label": "Search - Meilisearch Host",
+        "hint": "Used by the search API to connect to your local Meilisearch instance."
+      },
+      "qdrantHost": {
+        "label": "Search - Qdrant Host",
+        "hint": "Base URL for the Qdrant vector service used by semantic search."
+      },
+      "modelSelector": {
+        "title": "Select OpenAI Model",
+        "filterPlaceholder": "Filter models...",
+        "noModels": "No models found. Check your API key permissions.",
+        "ownerLabel": "Owner: {{owner}}"
+      }
+    },
+    "digest": {
+      "title": "Digester Configuration",
+      "subtitle": "Enable or disable individual digesters for file processing",
+      "noDigesters": "No digesters found"
+    },
+    "digestReset": {
+      "dialogTitle": "Reset Digester",
+      "description": "This will delete all existing {{name}} digests and trigger regeneration for all files. Use this to refresh data after changing settings or to fix processing errors."
+    },
+    "stats": {
+      "library": "Library",
+      "files": "Files",
+      "totalSize": "Total Size",
+      "digests": "Digests",
+      "digestedFiles": "Digested Files",
+      "totalFiles": "Total Files",
+      "pending": "Pending",
+      "loadFailed": "Failed to load statistics"
+    },
+    "dataSources": {
+      "back": "Back",
+      "title": "Data Sources",
+      "notFound": "Collector not found.",
+      "count_one": "{{count}} source",
+      "count_other": "{{count}} sources"
+    }
+  },
   "data": {},
   "agent": {},
   "explore": {},
