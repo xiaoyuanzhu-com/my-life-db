@@ -32,6 +32,7 @@ export function AppCard({ app, onClick }: Props) {
 
   return (
     <button
+      type="button"
       onClick={onClick}
       className={cn(
         'flex flex-col items-center gap-2 p-4 rounded-lg',
@@ -43,10 +44,10 @@ export function AppCard({ app, onClick }: Props) {
         {icon ? (
           <svg
             className="h-10 w-10"
-            role="img"
+            aria-hidden="true"
+            focusable="false"
             viewBox="0 0 24 24"
             fill="currentColor"
-            aria-label={app.name}
           >
             <path d={icon.path} />
           </svg>
