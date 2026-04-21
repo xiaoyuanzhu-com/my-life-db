@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Plus } from 'lucide-react'
 import { cn } from '~/lib/utils'
 import { api } from '~/lib/api'
 import { Avatar, AvatarFallback } from '~/components/ui/avatar'
@@ -15,6 +16,8 @@ export interface AutoAgentSummary {
 interface Props {
   activeName: string | null
   onSelect: (name: string) => void
+  /** Invoked when the user clicks the trailing "+" card to create an agent. */
+  onCreate?: () => void
   /** Bumped by the parent to force a refetch after mutations. */
   refreshKey?: number
 }
@@ -53,7 +56,7 @@ function personaInitials(name: string): string {
 }
 
 
-export function AutoAgentList({ activeName, onSelect, refreshKey = 0 }: Props) {
+export function AutoAgentList({ activeName, onSelect, onCreate, refreshKey = 0 }: Props) {
   const [defs, setDefs] = useState<AutoAgentSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -85,14 +88,6 @@ export function AutoAgentList({ activeName, onSelect, refreshKey = 0 }: Props) {
     return <div className="p-4 text-sm text-destructive">{error}</div>
   }
 
-  if (defs.length === 0) {
-    return (
-      <div className="p-4 text-sm text-muted-foreground">
-        No auto agents yet. Create one to get started.
-      </div>
-    )
-  }
-
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(8rem,1fr))] gap-6 p-4">
       {defs.map((def) => {
@@ -122,6 +117,24 @@ export function AutoAgentList({ activeName, onSelect, refreshKey = 0 }: Props) {
           </button>
         )
       })}
+      {onCreate && (
+        <button
+          onClick={onCreate}
+          className="flex flex-col items-center gap-2 rounded-lg p-3 text-center transition-colors hover:bg-muted"
+          title="Create a new auto agent with AI"
+        >
+          <Avatar size="lg" className="size-14">
+            <AvatarFallback className="bg-muted text-muted-foreground border border-dashed border-muted-foreground/40">
+              <Plus className="h-5 w-5" />
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="line-clamp-2 text-sm font-medium break-words text-muted-foreground">
+              New
+            </span>
+          </div>
+        </button>
+      )}
     </div>
   )
 }

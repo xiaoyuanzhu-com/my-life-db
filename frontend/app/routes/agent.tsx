@@ -1108,15 +1108,6 @@ export default function AgentPage() {
             >
               <Blocks className="h-4 w-4" />
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={handleCreateAgentWithAI}
-              title="Create a new auto agent with AI"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
           </>
         )}
       </div>
@@ -1140,6 +1131,7 @@ export default function AgentPage() {
           <AutoAgentList
             activeName={null}
             onSelect={openAgentEditor}
+            onCreate={handleCreateAgentWithAI}
             refreshKey={agentsPanelRefresh}
           />
         </div>
@@ -1224,6 +1216,7 @@ export default function AgentPage() {
                   <AutoAgentList
                     activeName={null}
                     onSelect={openAgentEditor}
+                    onCreate={handleCreateAgentWithAI}
                     refreshKey={agentsPanelRefresh}
                   />
                 </div>
