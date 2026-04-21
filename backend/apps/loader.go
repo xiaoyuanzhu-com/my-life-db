@@ -1,6 +1,7 @@
 package apps
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"path"
@@ -31,7 +32,7 @@ func LoadAll(fsys fs.FS, dir string) ([]App, error) {
 		}
 		apps = append(apps, a)
 	}
-	sort.Slice(apps, func(i, j int) bool { return apps[i].Name < apps[j].Name })
+	sort.SliceStable(apps, func(i, j int) bool { return apps[i].Name < apps[j].Name })
 	return apps, nil
 }
 
@@ -48,8 +49,10 @@ func LoadOne(fsys fs.FS, dir, id string) (*AppDetail, error) {
 		return nil, fmt.Errorf("parse %s: %w", yamlPath, err)
 	}
 	detail := &AppDetail{App: a}
-	if doc, err := fs.ReadFile(fsys, path.Join(dir, id+".md")); err == nil {
-		detail.Doc = string(doc)
+	doc, err := fs.ReadFile(fsys, path.Join(dir, id+".md"))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("read %s: %w", id+".md", err)
 	}
+	detail.Doc = string(doc)
 	return detail, nil
 }
