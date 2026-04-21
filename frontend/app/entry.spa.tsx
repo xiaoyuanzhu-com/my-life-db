@@ -4,6 +4,7 @@
  * This entry point renders the app as a client-side SPA without SSR.
  * Used when building for the Go server.
  */
+import '~/lib/i18n/config';
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
