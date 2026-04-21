@@ -567,6 +567,20 @@ export default function AgentPage() {
       setSessions((prevSessions) => {
         const newMap = new Map(newSessionList.map((s) => [s.id, s]))
 
+        // Diagnostic: log per-session state transitions (prev→new).
+        // Critical for diagnosing working→idle skip — distinguishes whether
+        // backend returned the wrong state vs frontend dropped an unread state.
+        const transitions: string[] = []
+        for (const s of newSessionList) {
+          const prev = prevSessions.find(p => p.id === s.id)
+          if (prev && prev.sessionState !== s.sessionState) {
+            transitions.push(`${s.id.slice(0, 8)}:${prev.sessionState}→${s.sessionState}`)
+          }
+        }
+        if (transitions.length > 0) {
+          console.log('[agent] refreshSessions transitions:', transitions.join(', '), '| activeSessionId:', activeSessionIdRef.current?.slice(0, 8) ?? 'none')
+        }
+
         // API response is the source of truth for the first page.
         const result = [...newSessionList]
 
@@ -614,6 +628,10 @@ export default function AgentPage() {
   // session list update (clicking around, SSE refreshes, etc.).
   const sessionsRef = useRef(sessions)
   sessionsRef.current = sessions
+  // Kept in sync for diagnostic logging in refreshSessions (whose useCallback
+  // intentionally excludes activeSessionId from deps to avoid cascade re-runs).
+  const activeSessionIdRef = useRef(activeSessionId)
+  activeSessionIdRef.current = activeSessionId
 
   useEffect(() => {
     if (!activeSessionId || loading) return

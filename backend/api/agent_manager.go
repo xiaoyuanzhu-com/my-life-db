@@ -476,10 +476,16 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 
 			sessionState.Mu.Lock()
 			sessionState.ResultCount++
+			newResultCount := sessionState.ResultCount
 			sessionState.SetProcessing(false, params.Source+"-prompt-complete")
 			sessionState.ClearPrompt()
 			sessionState.Mu.Unlock()
 
+			log.Info().
+				Str("sessionId", sessionID).
+				Int("resultCount", newResultCount).
+				Str("source", params.Source+"-prompt-complete").
+				Msg("[diag] turn complete: ResultCount++")
 			m.notifService.NotifyAgentSessionUpdated(sessionID, "result")
 		}(sess, params.Message)
 	}
