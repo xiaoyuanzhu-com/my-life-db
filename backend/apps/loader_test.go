@@ -73,3 +73,13 @@ func TestLoadOne_NotFound(t *testing.T) {
 		t.Fatalf("want error, got nil")
 	}
 }
+
+func TestContentFS_LoadsSeededApps(t *testing.T) {
+	got, err := LoadAll(contentFS, ContentDir)
+	if err != nil {
+		t.Fatalf("LoadAll: %v", err)
+	}
+	if len(got) < 7 {
+		t.Fatalf("want >= 7 seeded apps, got %d", len(got))
+	}
+}
