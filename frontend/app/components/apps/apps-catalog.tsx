@@ -33,10 +33,12 @@ export function AppsCatalog({ onSelect }: Props) {
           <button
             key={c}
             type="button"
+            aria-pressed={filter === c}
             onClick={() => setFilter(c)}
             className={cn(
               "rounded px-2.5 py-1 text-xs font-medium capitalize",
-              filter === c ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              filter === c ? "bg-muted text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
             )}
           >
             {c}
