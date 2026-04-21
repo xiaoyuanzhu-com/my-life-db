@@ -33,6 +33,11 @@ export function AppDetail({ id, onBack }: Props) {
       const mldMatch = href.match(/^mld:(?:\/\/)?(.*)$/);
       if (mldMatch) {
         finalHref = `/agent?seed=${encodeURIComponent(mldMatch[1])}`;
+      } else if (!/^(https?:|mailto:|\/|#)/i.test(finalHref)) {
+        // Drop anything that is not http(s), mailto, root-relative, or in-page anchor.
+        // Defense-in-depth: docs are trusted today but this prevents `javascript:` /
+        // `data:` URLs from ever reaching the DOM.
+        finalHref = "#";
       }
       const safeHref = escapeHtml(finalHref);
       const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
