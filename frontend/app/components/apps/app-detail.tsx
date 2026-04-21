@@ -10,6 +10,16 @@ interface Props {
   onBack: () => void;
 }
 
+// Escape for safe interpolation into HTML attribute or text content.
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export function AppDetail({ id, onBack }: Props) {
   const { data: app, isLoading, error } = useApp(id);
   const navigate = useNavigate();
@@ -19,14 +29,18 @@ export function AppDetail({ id, onBack }: Props) {
     const renderer = new Renderer();
     renderer.link = ({ href, title, text }) => {
       let finalHref = href;
-      if (href.startsWith("mld:")) {
-        const prompt = href.slice(4);
-        finalHref = `/agent?seed=${encodeURIComponent(prompt)}`;
+      // `mld:` and `mld://` both strip to the prompt body.
+      const mldMatch = href.match(/^mld:(?:\/\/)?(.*)$/);
+      if (mldMatch) {
+        finalHref = `/agent?seed=${encodeURIComponent(mldMatch[1])}`;
       }
-      const titleAttr = title ? ` title="${title}"` : "";
+      const safeHref = escapeHtml(finalHref);
+      const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
       const isInternal = finalHref.startsWith("/");
       const externalAttrs = isInternal ? "" : ' target="_blank" rel="noopener noreferrer"';
-      return `<a href="${finalHref}"${titleAttr}${externalAttrs} class="underline text-primary hover:text-primary/80">${text}</a>`;
+      // `text` from marked is already HTML-safe (inline tokens rendered);
+      // we do not re-escape it so inline markdown (e.g. `**bold**`) still renders.
+      return `<a href="${safeHref}"${titleAttr}${externalAttrs} class="underline text-primary hover:text-primary/80">${text}</a>`;
     };
     return marked.parse(app.doc, { renderer, gfm: true, breaks: true, async: false }) as string;
   }, [app?.doc]);
@@ -44,7 +58,7 @@ export function AppDetail({ id, onBack }: Props) {
           <a
             href={app.website}
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
             className="text-xs text-muted-foreground inline-flex items-center gap-1 hover:text-foreground"
           >
             {app.website} <ExternalLink className="h-3 w-3" />
@@ -61,6 +75,8 @@ export function AppDetail({ id, onBack }: Props) {
           <div
             className="prose dark:prose-invert max-w-none"
             onClick={(e) => {
+              // Let the browser handle modifier-clicks (new tab / new window).
+              if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
               const t = e.target as HTMLElement;
               const a = t.closest("a");
               if (!a) return;
