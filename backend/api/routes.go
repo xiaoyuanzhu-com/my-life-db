@@ -123,6 +123,10 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		// Directories
 		api.GET("/directories", h.GetDirectories)
 
+		// Apps registry (import catalog)
+		api.GET("/apps", h.GetApps)
+		api.GET("/apps/:id", h.GetApp)
+
 		// Vendor routes
 		api.GET("/vendors/openai/models", h.GetOpenAIModels)
 
