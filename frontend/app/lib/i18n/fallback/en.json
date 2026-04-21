@@ -1,5 +1,15 @@
 {
-  "common": {},
+  "common": {
+    "nav": {
+      "data": "Data",
+      "agent": "Agent",
+      "explore": "Explore",
+      "me": "Me"
+    },
+    "auth": {
+      "signIn": "Sign In"
+    }
+  },
   "settings": {},
   "data": {},
   "agent": {},

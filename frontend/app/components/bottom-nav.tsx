@@ -1,33 +1,19 @@
 import { Link, useLocation } from 'react-router';
 import { Database, Bot, User, Compass } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '~/lib/utils';
 
 const navItems = [
-  {
-    href: '/',
-    label: 'Data',
-    icon: Database,
-  },
-  {
-    href: '/agent',
-    label: 'Agent',
-    icon: Bot,
-  },
-  {
-    href: '/explore',
-    label: 'Explore',
-    icon: Compass,
-  },
-  {
-    href: '/me',
-    label: 'Me',
-    icon: User,
-  },
-];
+  { href: '/', labelKey: 'nav.data', icon: Database },
+  { href: '/agent', labelKey: 'nav.agent', icon: Bot },
+  { href: '/explore', labelKey: 'nav.explore', icon: Compass },
+  { href: '/me', labelKey: 'nav.me', icon: User },
+] as const;
 
 export function BottomNav() {
   const location = useLocation();
   const pathname = location.pathname;
+  const { t } = useTranslation('common');
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card border-t md:hidden">
@@ -52,7 +38,7 @@ export function BottomNav() {
                 )}
               >
                 <Icon className="h-5 w-5" aria-hidden="true" />
-                <span className="text-xs font-medium">{item.label}</span>
+                <span className="text-xs font-medium">{t(item.labelKey)}</span>
               </Link>
             );
           })}

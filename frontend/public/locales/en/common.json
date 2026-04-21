@@ -1,0 +1,11 @@
+{
+  "nav": {
+    "data": "Data",
+    "agent": "Agent",
+    "explore": "Explore",
+    "me": "Me"
+  },
+  "auth": {
+    "signIn": "Sign In"
+  }
+}
