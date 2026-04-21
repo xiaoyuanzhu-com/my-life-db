@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import { ThreadList } from '~/components/assistant-ui/thread-list'
 import { type AgentType } from '~/components/agent/agent-type-selector'
@@ -292,6 +292,20 @@ export default function AgentPage() {
       `Current definition:\n\n\`\`\`markdown\n${markdown}\n\`\`\``
     )
   }, [seedNewSession])
+
+  // Honor ?seed=<prompt> URL param: prefill the new-session composer on mount,
+  // then strip the param so a refresh doesn't re-seed.
+  const [searchParams, setSearchParams] = useSearchParams()
+  useEffect(() => {
+    const seed = searchParams.get('seed')
+    if (!seed) return
+    seedNewSession(seed)
+    const next = new URLSearchParams(searchParams)
+    next.delete('seed')
+    setSearchParams(next, { replace: true })
+    // Run once on mount only; we don't want to re-seed on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const sidebarPanelRef = useRef<ImperativePanelHandle>(null)
 
