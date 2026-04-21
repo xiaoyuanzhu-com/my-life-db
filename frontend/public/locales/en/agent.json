@@ -1,0 +1,24 @@
+{
+  "page": {
+    "title": "Agent Sessions",
+    "description": "Access your agent sessions for software development tasks.",
+    "signInHint": "Please sign in using the button in the header to get started."
+  },
+  "loading": "Loading...",
+  "sidebar": {
+    "sessions": "Sessions",
+    "auto": "Auto",
+    "filter": {
+      "active": "Active",
+      "all": "All",
+      "archived": "Archived"
+    }
+  },
+  "share": {
+    "dialogTitle": "Share session",
+    "dialogDescription": "Anyone with the link can view this session (read-only).",
+    "publicLink": "Public link",
+    "copyLink": "Copy link",
+    "copied": "Copied"
+  }
+}

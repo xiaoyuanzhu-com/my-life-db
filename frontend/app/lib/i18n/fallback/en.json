@@ -8,6 +8,12 @@
     },
     "auth": {
       "signIn": "Sign In"
+    },
+    "errorBoundary": {
+      "oops": "Oops!",
+      "generic": "An unexpected error occurred.",
+      "notFoundTitle": "404",
+      "notFoundDetails": "The requested page could not be found."
     }
   },
   "settings": {
@@ -112,8 +118,53 @@
       "count_other": "{{count}} sources"
     }
   },
-  "data": {},
-  "agent": {},
+  "data": {
+    "page": {
+      "title": "Data",
+      "description": "Browse and manage your personal data files.",
+      "signInHint": "Please sign in to get started."
+    },
+    "search": {
+      "placeholder": "Search files...",
+      "searching": "Searching...",
+      "failed": "Search failed: {{error}}",
+      "noResults": "No results found"
+    },
+    "actions": {
+      "uploadFile": "Upload File",
+      "uploadFolder": "Upload Folder",
+      "newFolder": "New Folder",
+      "importFromApp": "Import from app\u2026"
+    },
+    "dropzone": {
+      "prompt": "Drop files to upload",
+      "destination": "to {{path}}"
+    }
+  },
+  "agent": {
+    "page": {
+      "title": "Agent Sessions",
+      "description": "Access your agent sessions for software development tasks.",
+      "signInHint": "Please sign in using the button in the header to get started."
+    },
+    "loading": "Loading...",
+    "sidebar": {
+      "sessions": "Sessions",
+      "auto": "Auto",
+      "filter": {
+        "active": "Active",
+        "all": "All",
+        "archived": "Archived"
+      }
+    },
+    "share": {
+      "dialogTitle": "Share session",
+      "dialogDescription": "Anyone with the link can view this session (read-only).",
+      "publicLink": "Public link",
+      "copyLink": "Copy link",
+      "copied": "Copied"
+    }
+  },
   "explore": {},
   "errors": {}
 }

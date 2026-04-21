@@ -23,7 +23,7 @@ void i18n
     fallbackLng: 'en',
     // Namespaces MUST be listed here so i18next knows which to load on boot.
     // Add more namespaces over time; not all need to be preloaded.
-    ns: ['common', 'settings'],
+    ns: ['common', 'settings', 'data', 'agent'],
     defaultNS: 'common',
     supportedLngs: ['en', 'zh-Hans'],
     // Bundle English inline so the app renders instantly even if the network

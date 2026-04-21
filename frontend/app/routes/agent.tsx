@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate, useParams, useLocation, useSearchParams } from 'react-router'
+import { useTranslation } from 'react-i18next'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import { ThreadList } from '~/components/assistant-ui/thread-list'
 import { type AgentType } from '~/components/agent/agent-type-selector'
@@ -106,6 +107,7 @@ type StatusFilter = 'all' | 'active' | 'archived'
 type SidebarView = 'sessions' | 'agents'
 
 function ShareButton({ session, onUpdate }: { session: Session; onUpdate: (s: Partial<Session>) => void }) {
+  const { t } = useTranslation('agent')
   const [open, setOpen] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -162,9 +164,9 @@ function ShareButton({ session, onUpdate }: { session: Session; onUpdate: (s: Pa
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Share session</DialogTitle>
+            <DialogTitle>{t('share.dialogTitle', 'Share session')}</DialogTitle>
             <DialogDescription>
-              Anyone with the link can view this session (read-only).
+              {t('share.dialogDescription', 'Anyone with the link can view this session (read-only).')}
             </DialogDescription>
           </DialogHeader>
 
@@ -173,7 +175,7 @@ function ShareButton({ session, onUpdate }: { session: Session; onUpdate: (s: Pa
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Globe className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">Public link</span>
+                <span className="text-sm font-medium">{t('share.publicLink', 'Public link')}</span>
               </div>
               <div className="flex items-center gap-2">
                 {sharing && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
@@ -201,10 +203,10 @@ function ShareButton({ session, onUpdate }: { session: Session; onUpdate: (s: Pa
                   {copied ? (
                     <>
                       <Check className="h-4 w-4" />
-                      Copied
+                      {t('share.copied', 'Copied')}
                     </>
                   ) : (
-                    'Copy link'
+                    t('share.copyLink', 'Copy link')
                   )}
                 </Button>
               </div>
@@ -217,6 +219,7 @@ function ShareButton({ session, onUpdate }: { session: Session; onUpdate: (s: Pa
 }
 
 export default function AgentPage() {
+  const { t } = useTranslation('agent')
   const { isAuthenticated, isLoading: authLoading } = useAuth()
   const { sessionSidebar, sessionCreateNew } = useFeatureFlags()
   const isMobile = useIsMobile()
@@ -1011,7 +1014,7 @@ export default function AgentPage() {
   if (authLoading || loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <div className="text-muted-foreground">Loading...</div>
+        <div className="text-muted-foreground">{t('loading', 'Loading...')}</div>
       </div>
     )
   }
@@ -1021,12 +1024,12 @@ export default function AgentPage() {
     return (
       <div className="flex h-full items-center justify-center p-8 text-center">
         <div>
-          <h1 className="text-3xl font-bold mb-4">Agent Sessions</h1>
+          <h1 className="text-3xl font-bold mb-4">{t('page.title', 'Agent Sessions')}</h1>
           <p className="text-muted-foreground text-lg mb-8 max-w-2xl">
-            Access your agent sessions for software development tasks.
+            {t('page.description', 'Access your agent sessions for software development tasks.')}
           </p>
           <p className="text-muted-foreground">
-            Please sign in using the button in the header to get started.
+            {t('page.signInHint', 'Please sign in using the button in the header to get started.')}
           </p>
         </div>
       </div>
@@ -1121,15 +1124,15 @@ export default function AgentPage() {
                 className="flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium bg-background text-foreground shadow-sm"
                 title={`Filter · ${statusFilter}`}
               >
-                Sessions
+                {t('sidebar.sessions', 'Sessions')}
                 <ChevronDown className="h-3 w-3 text-muted-foreground" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="center">
               <DropdownMenuRadioGroup value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
-                <DropdownMenuRadioItem value="active">Active</DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="all">All</DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="archived">Archived</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="active">{t('sidebar.filter.active', 'Active')}</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="all">{t('sidebar.filter.all', 'All')}</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="archived">{t('sidebar.filter.archived', 'Archived')}</DropdownMenuRadioItem>
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -1138,7 +1141,7 @@ export default function AgentPage() {
             onClick={() => navigate('/agent')}
             className="rounded px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
-            Sessions
+            {t('sidebar.sessions', 'Sessions')}
           </button>
         )}
         <button
@@ -1150,7 +1153,7 @@ export default function AgentPage() {
               : 'text-muted-foreground hover:text-foreground'
           )}
         >
-          Auto
+          {t('sidebar.auto', 'Auto')}
         </button>
       </div>
 

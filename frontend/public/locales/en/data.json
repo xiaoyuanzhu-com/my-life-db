@@ -1,0 +1,23 @@
+{
+  "page": {
+    "title": "Data",
+    "description": "Browse and manage your personal data files.",
+    "signInHint": "Please sign in to get started."
+  },
+  "search": {
+    "placeholder": "Search files...",
+    "searching": "Searching...",
+    "failed": "Search failed: {{error}}",
+    "noResults": "No results found"
+  },
+  "actions": {
+    "uploadFile": "Upload File",
+    "uploadFolder": "Upload Folder",
+    "newFolder": "New Folder",
+    "importFromApp": "Import from app\u2026"
+  },
+  "dropzone": {
+    "prompt": "Drop files to upload",
+    "destination": "to {{path}}"
+  }
+}

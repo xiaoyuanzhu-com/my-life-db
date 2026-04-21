@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useSearchParams } from "react-router";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Search, Upload, FolderUp, FolderPlus, RefreshCw, Plus, Boxes } from "lucide-react";
 import { FileGrid } from "~/components/library/file-grid";
@@ -47,6 +48,7 @@ function SearchResultsGrid({
   isSearching: boolean;
   error: string | null;
 }) {
+  const { t } = useTranslation('data');
   const { openModal } = useModalNavigation();
 
   const nodes: FileNode[] = useMemo(() => {
@@ -63,7 +65,7 @@ function SearchResultsGrid({
   if (isSearching && nodes.length === 0) {
     return (
       <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-        Searching...
+        {t('search.searching', 'Searching...')}
       </div>
     );
   }
@@ -71,7 +73,7 @@ function SearchResultsGrid({
   if (error && nodes.length === 0) {
     return (
       <div className="flex items-center justify-center h-32 text-sm text-destructive">
-        Search failed: {error}
+        {t('search.failed', 'Search failed: {{error}}', { error })}
       </div>
     );
   }
@@ -79,7 +81,7 @@ function SearchResultsGrid({
   if (results && nodes.length === 0) {
     return (
       <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-        No results found
+        {t('search.noResults', 'No results found')}
       </div>
     );
   }
@@ -107,6 +109,7 @@ function SearchResultsGrid({
 }
 
 function DataContent() {
+  const { t } = useTranslation('data');
   const { openModal } = useModalNavigation();
   const [searchParams, setSearchParams] = useSearchParams();
   const currentPath = searchParams.get("path") || "";
@@ -321,9 +324,9 @@ function DataContent() {
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm pointer-events-none">
           <div className="flex flex-col items-center gap-2 text-primary">
             <Upload className="h-12 w-12" />
-            <p className="text-lg font-medium">Drop files to upload</p>
+            <p className="text-lg font-medium">{t('dropzone.prompt', 'Drop files to upload')}</p>
             {currentPath && (
-              <p className="text-sm text-muted-foreground">to {currentPath}</p>
+              <p className="text-sm text-muted-foreground">{t('dropzone.destination', 'to {{path}}', { path: currentPath })}</p>
             )}
           </div>
         </div>
@@ -376,7 +379,7 @@ function DataContent() {
             <Input
               ref={searchInputRef}
               type="text"
-              placeholder="Search files..."
+              placeholder={t('search.placeholder', 'Search files...')}
               value={searchQuery}
               onChange={(e) => handleSearchChange(e.target.value)}
               onKeyDown={(e) => {
@@ -401,19 +404,19 @@ function DataContent() {
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={handleUploadFile}>
               <Upload className="h-4 w-4 mr-2" />
-              Upload File
+              {t('actions.uploadFile', 'Upload File')}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={handleUploadFolder}>
               <FolderUp className="h-4 w-4 mr-2" />
-              Upload Folder
+              {t('actions.uploadFolder', 'Upload Folder')}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setCreateFolderTrigger(n => n + 1)}>
               <FolderPlus className="h-4 w-4 mr-2" />
-              New Folder
+              {t('actions.newFolder', 'New Folder')}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setImportSheetOpen(true)}>
               <Boxes className="h-4 w-4 mr-2" />
-              Import from app…
+              {t('actions.importFromApp', 'Import from app\u2026')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -454,6 +457,7 @@ function DataContent() {
 }
 
 export default function DataPage() {
+  const { t } = useTranslation('data');
   const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) return null;
@@ -462,12 +466,12 @@ export default function DataPage() {
     return (
       <div className="flex items-center justify-center h-screen p-8 text-center">
         <div>
-          <h1 className="text-3xl font-bold mb-4">Data</h1>
+          <h1 className="text-3xl font-bold mb-4">{t('page.title', 'Data')}</h1>
           <p className="text-muted-foreground text-lg mb-8 max-w-2xl">
-            Browse and manage your personal data files.
+            {t('page.description', 'Browse and manage your personal data files.')}
           </p>
           <p className="text-muted-foreground">
-            Please sign in to get started.
+            {t('page.signInHint', 'Please sign in to get started.')}
           </p>
         </div>
       </div>
