@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -174,6 +175,17 @@ func (h *Handlers) GetAgentSessions(c *gin.Context) {
 		if s.AgentName != "" {
 			entry["agentName"] = s.AgentName
 		}
+		if s.TriggerKind != "" {
+			entry["triggerKind"] = s.TriggerKind
+		}
+		if s.TriggerData != "" {
+			// Parse on the wire so the frontend gets a structured object
+			// instead of having to JSON.parse twice.
+			var td map[string]any
+			if err := json.Unmarshal([]byte(s.TriggerData), &td); err == nil {
+				entry["triggerData"] = td
+			}
+		}
 		result = append(result, entry)
 	}
 
@@ -226,6 +238,15 @@ func (h *Handlers) GetAgentSession(c *gin.Context) {
 	}
 	if session.AgentName != "" {
 		resp["agentName"] = session.AgentName
+	}
+	if session.TriggerKind != "" {
+		resp["triggerKind"] = session.TriggerKind
+	}
+	if session.TriggerData != "" {
+		var td map[string]any
+		if err := json.Unmarshal([]byte(session.TriggerData), &td); err == nil {
+			resp["triggerData"] = td
+		}
 	}
 	c.JSON(http.StatusOK, resp)
 }

@@ -2,6 +2,7 @@ package agentrunner
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -27,6 +28,8 @@ type SessionParams struct {
 	Source         string // "auto"
 	AgentName      string // agent folder name
 	DefaultModel   string // optional — empty means "let AgentManager pick the per-agent default"
+	TriggerKind    string // event type that fired this run, e.g. "cron.tick", "file.created"
+	TriggerData    string // JSON-encoded trigger payload data (path, schedule, etc.)
 }
 
 // Config holds the configuration for the agent runner.
@@ -601,6 +604,17 @@ func (r *Runner) execute(ctx context.Context, def *AgentDef, payload hooks.Paylo
 
 	prompt := r.buildPrompt(def, payload)
 
+	// Serialize the trigger payload data so we can persist structured
+	// per-run context (schedule, file path, etc.) and render a descriptive
+	// label for each session row. Falls back to empty string on encode
+	// failure — the session is still created, just without trigger data.
+	var triggerData string
+	if len(payload.Data) > 0 {
+		if b, err := json.Marshal(payload.Data); err == nil {
+			triggerData = string(b)
+		}
+	}
+
 	// Create session through the shared api path. The shared function
 	// handles DB persistence, frame broadcasting, synth user message,
 	// and sending the prompt in a background goroutine.
@@ -613,6 +627,8 @@ func (r *Runner) execute(ctx context.Context, def *AgentDef, payload hooks.Paylo
 		Source:         "auto",
 		AgentName:      def.Name,
 		DefaultModel:   def.Model,
+		TriggerKind:    string(payload.EventType),
+		TriggerData:    triggerData,
 	})
 	if err != nil {
 		log.Error().Err(err).Str("agent", def.Name).Msg("failed to create agent session")

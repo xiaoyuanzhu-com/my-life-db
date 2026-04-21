@@ -50,6 +50,45 @@ interface Session {
   shareUrl?: string
   source?: 'user' | 'auto'
   agentName?: string
+  triggerKind?: string
+  triggerData?: Record<string, unknown>
+}
+
+// Build a short, per-run label describing what fired an auto session.
+// Examples: "cron 10:30", "new file inbox/foo.md", "changed notes/bar.md".
+// Returns undefined for user sessions or auto sessions from before the
+// trigger context columns were added (migration 022).
+function formatTriggerLabel(
+  kind: string | undefined,
+  data: Record<string, unknown> | undefined,
+  createdAt: number
+): string | undefined {
+  if (!kind) return undefined
+  const path = typeof data?.path === 'string' ? (data.path as string) : undefined
+  switch (kind) {
+    case 'cron.tick': {
+      // Use the fire timestamp (createdAt) so consecutive cron runs are
+      // distinguishable. Local 24h HH:MM keeps it compact.
+      const d = new Date(createdAt)
+      const hh = String(d.getHours()).padStart(2, '0')
+      const mm = String(d.getMinutes()).padStart(2, '0')
+      return `cron ${hh}:${mm}`
+    }
+    case 'file.created':
+      return path ? `new ${path}` : 'new file'
+    case 'file.changed':
+      return path ? `changed ${path}` : 'changed file'
+    case 'file.moved':
+      return path ? `moved ${path}` : 'moved file'
+    case 'file.deleted':
+      return path ? `deleted ${path}` : 'deleted file'
+    case 'app.started':
+      return 'app started'
+    case 'app.stopping':
+      return 'app stopping'
+    default:
+      return kind
+  }
 }
 
 interface Pagination {
@@ -590,6 +629,10 @@ export default function AgentPage() {
         lastUserActivity: data.lastUserActivity,
         messageCount: data.messageCount,
         permissionMode: data.permissionMode,
+        source: data.source,
+        agentName: data.agentName,
+        triggerKind: data.triggerKind,
+        triggerData: data.triggerData,
       }
       setSessions((prev) => {
         if (prev.some((s) => s.id === session.id)) return prev
@@ -894,6 +937,17 @@ export default function AgentPage() {
     return map
   }, [sessions])
 
+  // Build a map of session ID → triggerLabel for the thread list row's
+  // main label on auto sessions (replaces the static title).
+  const sessionTriggerLabels = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const s of sessions) {
+      const label = formatTriggerLabel(s.triggerKind, s.triggerData, s.createdAt)
+      if (label) map[s.id] = label
+    }
+    return map
+  }, [sessions])
+
   // ── Agent Runtime (lifted from AgentChat) ─────────────────────────────────
   // The runtime is owned at the route level so that AssistantRuntimeProvider
   // wraps all AgentChat instances. The key on the provider forces a remount
@@ -1169,6 +1223,7 @@ export default function AgentPage() {
                 sessionStates={sessionStates}
                 sessionSources={sessionSources}
                 sessionAgentNames={sessionAgentNames}
+                sessionTriggerLabels={sessionTriggerLabels}
                 hasMore={pagination.hasMore}
                 isLoadingMore={isLoadingMore}
                 onLoadMore={loadMoreSessions}
@@ -1309,6 +1364,7 @@ export default function AgentPage() {
               sessionStates={sessionStates}
               sessionSources={sessionSources}
               sessionAgentNames={sessionAgentNames}
+              sessionTriggerLabels={sessionTriggerLabels}
               hasMore={pagination.hasMore}
               isLoadingMore={isLoadingMore}
               onLoadMore={loadMoreSessions}

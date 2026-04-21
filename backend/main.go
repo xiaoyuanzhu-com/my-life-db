@@ -88,6 +88,8 @@ func main() {
 			Source:         params.Source,
 			AgentName:      params.AgentName,
 			DefaultModel:   params.DefaultModel,
+			TriggerKind:    params.TriggerKind,
+			TriggerData:    params.TriggerData,
 		})
 		if err != nil {
 			return nil, nil, err

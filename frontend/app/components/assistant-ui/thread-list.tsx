@@ -27,6 +27,8 @@ interface ThreadListProps {
   sessionSources?: Record<string, string>;
   /** Map of session ID → agentName, used to label auto sessions with their agent */
   sessionAgentNames?: Record<string, string>;
+  /** Map of session ID → pre-formatted trigger label ("cron 10:30", "new inbox/foo.md"); auto rows only */
+  sessionTriggerLabels?: Record<string, string>;
   /** Whether more sessions can be loaded */
   hasMore?: boolean;
   /** Whether more sessions are currently loading */
@@ -35,7 +37,7 @@ interface ThreadListProps {
   onLoadMore?: () => void;
 }
 
-export const ThreadList: FC<ThreadListProps> = ({ activeSessionId, sessionStates, sessionSources, sessionAgentNames, hasMore, isLoadingMore, onLoadMore }) => {
+export const ThreadList: FC<ThreadListProps> = ({ activeSessionId, sessionStates, sessionSources, sessionAgentNames, sessionTriggerLabels, hasMore, isLoadingMore, onLoadMore }) => {
   const sentinelRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -61,10 +63,10 @@ export const ThreadList: FC<ThreadListProps> = ({ activeSessionId, sessionStates
       </AuiIf>
       <AuiIf condition={(s) => !s.threads.isLoading}>
         <ThreadListPrimitive.Items>
-          {() => <ThreadListItem activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} sessionAgentNames={sessionAgentNames} />}
+          {() => <ThreadListItem activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} sessionAgentNames={sessionAgentNames} sessionTriggerLabels={sessionTriggerLabels} />}
         </ThreadListPrimitive.Items>
         <ThreadListPrimitive.Items archived>
-          {() => <ThreadListItem activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} sessionAgentNames={sessionAgentNames} />}
+          {() => <ThreadListItem activeSessionId={activeSessionId} sessionStates={sessionStates} sessionSources={sessionSources} sessionAgentNames={sessionAgentNames} sessionTriggerLabels={sessionTriggerLabels} />}
         </ThreadListPrimitive.Items>
         {/* Scroll sentinel for infinite loading */}
         <div ref={sentinelRef} className="shrink-0 h-1" />
@@ -96,7 +98,7 @@ const ThreadListSkeleton: FC = () => {
   );
 };
 
-const ThreadListItem: FC<{ activeSessionId?: string | null; sessionStates?: Record<string, SessionState>; sessionSources?: Record<string, string>; sessionAgentNames?: Record<string, string> }> = ({ activeSessionId, sessionStates, sessionSources, sessionAgentNames }) => {
+const ThreadListItem: FC<{ activeSessionId?: string | null; sessionStates?: Record<string, SessionState>; sessionSources?: Record<string, string>; sessionAgentNames?: Record<string, string>; sessionTriggerLabels?: Record<string, string> }> = ({ activeSessionId, sessionStates, sessionSources, sessionAgentNames, sessionTriggerLabels }) => {
   // Workaround: assistant-ui's ExternalStoreThreadListRuntimeCore has a bug where
   // _mainThreadId is not set from the adapter's threadId on initial construction
   // (constructor sets this.adapter before calling __internal_setAdapter, so
@@ -113,6 +115,12 @@ const ThreadListItem: FC<{ activeSessionId?: string | null; sessionStates?: Reco
   const showDot = !isActive && (sessionState === 'working' || sessionState === 'unread');
   const isAuto = itemId ? sessionSources?.[itemId] === 'auto' : false;
   const agentName = itemId ? sessionAgentNames?.[itemId] : undefined;
+  const triggerLabel = itemId ? sessionTriggerLabels?.[itemId] : undefined;
+  // Auto rows with a trigger label use a different layout: the agent name
+  // leads as a pill, followed by the per-run trigger label as the main
+  // text. This gives each run a unique, informative label instead of the
+  // static session title, which is always "Run <agent>" for auto agents.
+  const useAutoLayout = isAuto && !!triggerLabel;
 
   return (
     <ThreadListItemPrimitive.Root
@@ -120,24 +128,48 @@ const ThreadListItem: FC<{ activeSessionId?: string | null; sessionStates?: Reco
       className="aui-thread-list-item group flex h-8 items-center gap-1 rounded-md transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none data-active:bg-muted"
     >
       <ThreadListItemPrimitive.Trigger className="aui-thread-list-item-trigger flex h-full min-w-0 flex-1 items-center px-2.5 text-start text-[13px]">
-        <span className={cn(
-          "aui-thread-list-item-title min-w-0 flex-1 truncate group-data-active:text-foreground",
-          isArchived ? "text-foreground/40" : "text-foreground/80"
-        )}>
-          <ThreadListItemPrimitive.Title fallback="New Chat" />
-        </span>
-        {isAuto && agentName && (
-          <span
-            className="shrink-0 text-[10px] leading-none px-1.5 py-0.5 rounded bg-muted text-muted-foreground truncate max-w-[40%]"
-            title={agentName}
-          >
-            {agentName}
-          </span>
-        )}
-        {isAuto && !agentName && (
-          <span className="shrink-0 text-[10px] leading-none px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-            auto
-          </span>
+        {useAutoLayout ? (
+          <>
+            {agentName && (
+              <span
+                className="shrink-0 text-[10px] leading-none px-1.5 py-0.5 rounded bg-muted text-muted-foreground truncate max-w-[40%] mr-1.5"
+                title={agentName}
+              >
+                {agentName}
+              </span>
+            )}
+            <span
+              className={cn(
+                "aui-thread-list-item-title min-w-0 flex-1 truncate group-data-active:text-foreground",
+                isArchived ? "text-foreground/40" : "text-foreground/80"
+              )}
+              title={triggerLabel}
+            >
+              {triggerLabel}
+            </span>
+          </>
+        ) : (
+          <>
+            <span className={cn(
+              "aui-thread-list-item-title min-w-0 flex-1 truncate group-data-active:text-foreground",
+              isArchived ? "text-foreground/40" : "text-foreground/80"
+            )}>
+              <ThreadListItemPrimitive.Title fallback="New Chat" />
+            </span>
+            {isAuto && agentName && (
+              <span
+                className="shrink-0 text-[10px] leading-none px-1.5 py-0.5 rounded bg-muted text-muted-foreground truncate max-w-[40%]"
+                title={agentName}
+              >
+                {agentName}
+              </span>
+            )}
+            {isAuto && !agentName && (
+              <span className="shrink-0 text-[10px] leading-none px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                auto
+              </span>
+            )}
+          </>
         )}
         {/* Fixed-width dot column — keeps dots vertically aligned across rows */}
         <span className="w-2 shrink-0 flex items-center ml-1">

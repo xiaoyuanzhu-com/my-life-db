@@ -14,6 +14,8 @@ type SessionParams struct {
 	DefaultModel   string // default model to set via ACP (from AGENT_MODELS)
 	Source         string // "user" or "auto"
 	AgentName      string // agent folder name (auto-run only)
+	TriggerKind    string // event type that fired the session, e.g. "cron.tick", "file.created" (auto-run only)
+	TriggerData    string // JSON-encoded hooks.Payload.Data (auto-run only)
 }
 
 // SessionHandle is returned by AgentManager.CreateSession so the caller can
