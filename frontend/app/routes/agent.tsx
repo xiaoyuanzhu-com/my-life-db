@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router'
+import { useNavigate, useParams, useLocation, useSearchParams } from 'react-router'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import { ThreadList } from '~/components/assistant-ui/thread-list'
 import { type AgentType } from '~/components/agent/agent-type-selector'
@@ -177,13 +177,40 @@ export default function AgentPage() {
   const { sessionSidebar, sessionCreateNew } = useFeatureFlags()
   const isMobile = useIsMobile()
   const navigate = useNavigate()
+  const location = useLocation()
   const { sessionId: urlSessionId } = useParams()
+  // URL is the source of truth for both sidebarView and activeSessionId.
+  // `/agent/auto` and `/agent/auto/:sessionId` → 'agents'; otherwise → 'sessions'.
+  const isAutoRoute =
+    location.pathname === '/agent/auto' || location.pathname.startsWith('/agent/auto/')
+  const sidebarView: SidebarView = isAutoRoute ? 'agents' : 'sessions'
+  const activeSessionId = urlSessionId ?? null
   const [sessions, setSessions] = useState<Session[]>([])
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(urlSessionId || null)
   const [loading, setLoading] = useState(true)
   const touchStartX = useRef<number>(0)
   const touchEndX = useRef<number>(0)
+  // Track previous activeSessionId so handlers can choose push vs replace
+  // (push when entering from list, replace when switching between sessions).
   const prevActiveSessionIdRef = useRef<string | null>(activeSessionId)
+  useEffect(() => {
+    prevActiveSessionIdRef.current = activeSessionId
+  }, [activeSessionId])
+
+  // Navigate to the URL for a session, preserving native-app replace semantics
+  // and correct push vs replace for browser history.
+  const goToSession = useCallback(
+    (sessionId: string, source?: 'auto' | 'user') => {
+      const useReplace = isNativeApp() || prevActiveSessionIdRef.current != null
+      const base = source === 'auto' ? '/agent/auto' : '/agent'
+      navigate(`${base}/${sessionId}`, { replace: useReplace })
+    },
+    [navigate]
+  )
+
+  // Navigate to the list URL for the current tab.
+  const goToList = useCallback(() => {
+    navigate(isAutoRoute ? '/agent/auto' : '/agent')
+  }, [isAutoRoute, navigate])
 
   // Pagination state
   const [pagination, setPagination] = useState<Pagination>({
@@ -210,15 +237,6 @@ export default function AgentPage() {
     return false
   })
 
-  // Sidebar view: either the user-initiated session list or the auto-agent list
-  const [sidebarView, setSidebarView] = useState<SidebarView>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('agent-sidebar-view')
-      if (saved === 'sessions' || saved === 'agents') return saved
-    }
-    return 'sessions'
-  })
-
   // Auto-agent management panel — renders in the session-detail container
   // when active. Mode flows: closed → list → editor → list → closed.
   const [agentsPanelMode, setAgentsPanelMode] = useState<'closed' | 'list' | 'editor'>('closed')
@@ -230,7 +248,7 @@ export default function AgentPage() {
   const toggleAgentsList = useCallback(() => {
     setAgentsPanelMode((prev) => {
       if (prev === 'closed') {
-        setActiveSessionId(null)
+        goToList()
         setAgentsPanelName(null)
         return 'list'
       }
@@ -242,7 +260,7 @@ export default function AgentPage() {
       setAgentsPanelName(null)
       return 'closed'
     })
-  }, [])
+  }, [goToList])
   const openAgentEditor = useCallback((name: string) => {
     setAgentsPanelMode('editor')
     setAgentsPanelName(name)
@@ -260,10 +278,6 @@ export default function AgentPage() {
     setAgentsPanelName(null)
   }, [])
 
-  useEffect(() => {
-    localStorage.setItem('agent-sidebar-view', sidebarView)
-  }, [sidebarView])
-
   // Bumped when we seed the new-session composer via localStorage — forces
   // AgentChat (empty state) to remount so useDraftPersistence re-reads the seed.
   const [newSessionComposerKey, setNewSessionComposerKey] = useState(0)
@@ -273,13 +287,12 @@ export default function AgentPage() {
   // `agent-input:new-session` localStorage key on mount.
   const seedNewSession = useCallback((prompt: string) => {
     localStorage.setItem('agent-input:new-session', prompt)
-    setSidebarView('sessions')
-    setActiveSessionId(null)
+    navigate('/agent')
     setShowNewSessionMobile(true)
     setNewSessionComposerKey((k) => k + 1)
     setAgentsPanelMode('closed')
     setAgentsPanelName(null)
-  }, [])
+  }, [navigate])
 
   const handleCreateAgentWithAI = useCallback(() => {
     seedNewSession(`/create-agent`)
@@ -587,37 +600,6 @@ export default function AgentPage() {
     return () => { cancelled = true }
   }, [activeSessionId, loading])
 
-  // Sync URL with active session
-  useEffect(() => {
-    const prevId = prevActiveSessionIdRef.current
-    prevActiveSessionIdRef.current = activeSessionId
-
-    if (activeSessionId) {
-      // Skip if URL already matches (e.g. after browser back/forward popstate)
-      if (urlSessionId === activeSessionId) return
-      // Push a new history entry when navigating from list → detail (prevId was null).
-      // This lets the browser's native swipe-back gesture return to the session list.
-      // Use replace when switching between sessions to avoid stacking history entries.
-      //
-      // IMPORTANT: In the native app (iOS/macOS), ALWAYS replace. The native
-      // NavigationStack owns back navigation via its interactive pop gesture.
-      // If we push browser history entries here, the WebView consumes the
-      // edge-swipe to go back in browser history instead of letting the
-      // NavigationStack pop — causing the user to land on a stale empty page
-      // instead of the session list.
-      const useReplace = isNativeApp() || prevId != null
-      navigate(`/agent/${activeSessionId}`, { replace: useReplace })
-    } else if (urlSessionId) {
-      // Going back to list — replace so we don't duplicate the list entry
-      navigate('/agent', { replace: true })
-    }
-  }, [activeSessionId, urlSessionId, navigate])
-
-  // Sync active session from URL (handles both mount and native bridge navigation)
-  useEffect(() => {
-    setActiveSessionId(urlSessionId || null)
-  }, [urlSessionId])
-
   // Push a history entry when entering mobile new-session view so that
   // the browser's native swipe-back returns to the session list.
   // Skip in native app — SwiftUI NavigationStack owns back navigation.
@@ -670,7 +652,7 @@ export default function AgentPage() {
       // 3. Swipe distance was significant (> 100px)
       if (touchStartX.current > 0 && touchEndX.current - touchStartX.current > 100) {
         if (activeSessionId) {
-          setActiveSessionId(null)
+          goToList()
         } else if (showNewSessionMobile) {
           // Pop the history entry we pushed for the new-session view
           window.history.back()
@@ -696,7 +678,7 @@ export default function AgentPage() {
       document.removeEventListener('touchmove', handleTouchMove)
       document.removeEventListener('touchend', handleTouchEnd)
     }
-  }, [activeSessionId, showNewSessionMobile])
+  }, [activeSessionId, showNewSessionMobile, goToList])
 
   // Refresh session list when titles change (SSE from backend)
   // Uses refreshSessions for seamless background updates without loading flash
@@ -783,7 +765,8 @@ export default function AgentPage() {
         const without = prevSessions.filter((s) => s.id !== newSession.id)
         return sortSessions([newSession, ...without])
       })
-      setActiveSessionId(session.id)
+      // New sessions created via the composer are user sessions → /agent/:id.
+      goToSession(session.id, 'user')
       setShowNewSessionMobile(false)
       localStorage.removeItem('agent-input:new-session')
     } catch (error) {
@@ -863,11 +846,12 @@ export default function AgentPage() {
           : s
       )
     )
-    setActiveSessionId(sessionId)
+    const session = sessionsRef.current.find((s) => s.id === sessionId)
+    goToSession(sessionId, session?.source === 'auto' ? 'auto' : 'user')
     setShowNewSessionMobile(false)
     setAgentsPanelMode('closed')
     setAgentsPanelName(null)
-  }, [])
+  }, [goToSession])
 
   // Update share fields on a session (called by ShareButton)
   const updateSessionShare = useCallback((sessionId: string, fields: Partial<Session>) => {
@@ -929,7 +913,7 @@ export default function AgentPage() {
       sessions: visibleSessions,
       activeSessionId,
       onSwitchToThread: handleSelectSession,
-      onSwitchToNewThread: () => setActiveSessionId(null),
+      onSwitchToNewThread: goToList,
       onRenameThread: updateSessionTitle,
       onArchiveThread: archiveSession,
       onUnarchiveThread: unarchiveSession,
@@ -1074,14 +1058,14 @@ export default function AgentPage() {
           </DropdownMenu>
         ) : (
           <button
-            onClick={() => setSidebarView('sessions')}
+            onClick={() => navigate('/agent')}
             className="rounded px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
             Sessions
           </button>
         )}
         <button
-          onClick={() => setSidebarView('agents')}
+          onClick={() => navigate('/agent/auto')}
           className={cn(
             'rounded px-2.5 py-1 text-xs font-medium transition-colors',
             sidebarView === 'agents'
@@ -1102,7 +1086,7 @@ export default function AgentPage() {
               size="icon"
               className="h-7 w-7"
               onClick={() => {
-                setActiveSessionId(null)
+                navigate('/agent')
                 setShowNewSessionMobile(true)
               }}
               title="New session"
@@ -1235,7 +1219,14 @@ export default function AgentPage() {
                   className="flex-1"
                 />
               ) : sidebarView === 'agents' ? (
-                <div className="flex-1" />
+                // Default view on `/agent/auto` — show the list of auto agents.
+                <div className="h-full overflow-y-auto p-3">
+                  <AutoAgentList
+                    activeName={null}
+                    onSelect={openAgentEditor}
+                    refreshKey={agentsPanelRefresh}
+                  />
+                </div>
               ) : (
                 <AgentChat
                   key={`new-${newSessionComposerKey}`}
@@ -1280,7 +1271,7 @@ export default function AgentPage() {
               variant="ghost"
               size="icon"
               className="absolute top-2 left-2 z-20 h-10 w-10 rounded-full bg-background/80 backdrop-blur"
-              onClick={() => setActiveSessionId(null)}
+              onClick={goToList}
             >
               <ArrowLeft className="h-4 w-4" />
             </Button>

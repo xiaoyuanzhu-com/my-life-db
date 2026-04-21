@@ -41,6 +41,14 @@ export const routes: RouteObject[] = [
         Component: Agent,
       },
       {
+        path: "agent/auto",
+        Component: Agent,
+      },
+      {
+        path: "agent/auto/:sessionId",
+        Component: Agent,
+      },
+      {
         path: "agent/:sessionId",
         Component: Agent,
       },
