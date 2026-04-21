@@ -198,7 +198,30 @@ func (r *Runner) registerTrigger(def *AgentDef) error {
 		}
 		r.activeCrons[def.Name] = def.Schedule
 
-		// Subscribe to cron.tick ONCE — callback does dynamic lookup
+	case string(hooks.EventFileCreated),
+		string(hooks.EventFileMoved),
+		string(hooks.EventFileDeleted),
+		string(hooks.EventFileChanged):
+		// subscription handled below
+
+	default:
+		return fmt.Errorf("unknown trigger type: %s", def.Trigger)
+	}
+
+	r.ensureSubscription(def.Trigger)
+	return nil
+}
+
+// ensureSubscription subscribes the runner to the hook event backing the
+// given trigger, at most once per event type. Callbacks use dynamic lookup
+// against r.defs, so a single subscription per event type serves every
+// agent of that kind — including ones added after startup via reload().
+func (r *Runner) ensureSubscription(trigger string) {
+	if r.cfg.Registry == nil {
+		return
+	}
+	switch trigger {
+	case "cron":
 		r.subscribeOnce(hooks.EventCronTick, func(ctx context.Context, payload hooks.Payload) {
 			name, _ := payload.Data["name"].(string)
 			r.mu.RLock()
@@ -214,21 +237,15 @@ func (r *Runner) registerTrigger(def *AgentDef) error {
 				r.execute(ctx, match, payload)
 			}
 		})
-
 	case string(hooks.EventFileCreated),
 		string(hooks.EventFileMoved),
 		string(hooks.EventFileDeleted),
 		string(hooks.EventFileChanged):
-		eventType := hooks.EventType(def.Trigger)
+		eventType := hooks.EventType(trigger)
 		r.subscribeOnce(eventType, func(ctx context.Context, payload hooks.Payload) {
-			r.executeMatchingAgents(ctx, def.Trigger, payload)
+			r.executeMatchingAgents(ctx, trigger, payload)
 		})
-
-	default:
-		return fmt.Errorf("unknown trigger type: %s", def.Trigger)
 	}
-
-	return nil
 }
 
 // subscribeOnce subscribes to an event type at most once. Subsequent calls
@@ -390,13 +407,7 @@ func (r *Runner) reload() {
 
 		// Ensure event subscriptions exist for any new trigger types.
 		// subscribeOnce is a no-op if already subscribed.
-		if def.Trigger != "cron" && r.cfg.Registry != nil {
-			eventType := hooks.EventType(def.Trigger)
-			trigger := def.Trigger // capture for closure
-			r.subscribeOnce(eventType, func(ctx context.Context, payload hooks.Payload) {
-				r.executeMatchingAgents(ctx, trigger, payload)
-			})
-		}
+		r.ensureSubscription(def.Trigger)
 	}
 
 	log.Info().Int("total", len(defs)).Int("enabled", enabledCount).Msg("agent definitions reloaded")

@@ -402,3 +402,77 @@ Hello from my-agent.
 		t.Errorf("expected def.File='my-agent.md', got %q", defs[0].File)
 	}
 }
+
+// TestReloadSubscribesCronAddedAfterStartup reproduces a bug where a cron
+// agent created after the server started never executed: reload() added the
+// schedule but did not subscribe to cron.tick, so the fired event had no
+// listener. The scenario requires that NO cron agent existed at startup —
+// otherwise registerTrigger would have subscribed already.
+func TestReloadSubscribesCronAddedAfterStartup(t *testing.T) {
+	dir := t.TempDir()
+	// Start with only a file-trigger agent — no cron agents exist.
+	writeAgentDir(t, dir, "file-only", []byte(fileAgentMD))
+
+	registry := hooks.NewRegistry()
+	cronHook := hooks.NewCronHook(registry)
+	registry.Register(cronHook)
+
+	var mu sync.Mutex
+	var created []string
+	r := New(Config{
+		AgentsDir: dir,
+		Registry:  registry,
+		CronHook:  cronHook,
+		CreateSession: func(ctx context.Context, params SessionParams) (agentsdk.Session, <-chan struct{}, error) {
+			mu.Lock()
+			created = append(created, params.AgentName)
+			mu.Unlock()
+			return nil, nil, fmt.Errorf("test: skip session")
+		},
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := registry.Start(ctx); err != nil {
+		t.Fatalf("registry.Start: %v", err)
+	}
+	defer registry.Stop()
+
+	// Initial load — only file-triggered agent, so cron.tick never subscribed here.
+	if err := r.loadAndRegister(); err != nil {
+		t.Fatalf("loadAndRegister: %v", err)
+	}
+
+	// Now add a cron agent on disk and reload — mirrors the fs-watcher path.
+	cronMD := []byte(`---
+agent: claude_code
+trigger: cron
+schedule: "@every 1s"
+---
+
+late-cron prompt.
+`)
+	writeAgentDir(t, dir, "late-cron", cronMD)
+	r.reload()
+
+	// Wait up to ~3 cron ticks.
+	deadline := time.Now().Add(4 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		n := len(created)
+		mu.Unlock()
+		if n >= 1 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(created) == 0 {
+		t.Fatalf("cron agent added after startup never fired; CreateSession was not called")
+	}
+	if created[0] != "late-cron" {
+		t.Errorf("expected late-cron to fire, got %q", created[0])
+	}
+}
