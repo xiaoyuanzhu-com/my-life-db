@@ -68,11 +68,16 @@ function formatTriggerLabel(
   switch (kind) {
     case 'cron.tick': {
       // Use the fire timestamp (createdAt) so consecutive cron runs are
-      // distinguishable. Local 24h HH:MM keeps it compact.
+      // distinguishable. Include month + day since daily/weekly jobs need
+      // the date to disambiguate; time alone would collapse identical
+      // hours across different days.
       const d = new Date(createdAt)
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+      const mon = months[d.getMonth()]
+      const day = d.getDate()
       const hh = String(d.getHours()).padStart(2, '0')
       const mm = String(d.getMinutes()).padStart(2, '0')
-      return `cron ${hh}:${mm}`
+      return `cron ${mon} ${day} ${hh}:${mm}`
     }
     case 'file.created':
       return path ? `new ${path}` : 'new file'
