@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useFormatter } from "~/lib/i18n/use-formatter";
 import { useParams, Link } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
@@ -51,6 +52,7 @@ function SettingsHeader() {
 
 function SettingsContent() {
   const { t } = useTranslation('settings');
+  const fmt = useFormatter();
   const params = useParams();
 
   // Determine active tab from URL first
@@ -573,12 +575,12 @@ function SettingsContent() {
                     <h3 className="text-sm font-medium mb-3">{t('stats.library', 'Library')}</h3>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="p-4 rounded-lg border bg-muted/50">
-                        <div className="text-2xl font-semibold">{stats.library.fileCount.toLocaleString()}</div>
+                        <div className="text-2xl font-semibold">{fmt.number(stats.library.fileCount)}</div>
                         <div className="text-xs text-muted-foreground mt-1">{t('stats.files', 'Files')}</div>
                       </div>
                       <div className="p-4 rounded-lg border bg-muted/50">
                         <div className="text-2xl font-semibold">
-                          {(stats.library.totalSize / (1000 * 1000)).toFixed(2)} MB
+                          {fmt.fileSize(stats.library.totalSize)}
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">{t('stats.totalSize', 'Total Size')}</div>
                       </div>
@@ -590,11 +592,11 @@ function SettingsContent() {
                     <h3 className="text-sm font-medium mb-3">{t('stats.digests', 'Digests')}</h3>
                     <div className="grid grid-cols-3 gap-4">
                       <div className="p-4 rounded-lg border bg-muted/50">
-                        <div className="text-2xl font-semibold">{stats.digests.digestedFiles.toLocaleString()}</div>
+                        <div className="text-2xl font-semibold">{fmt.number(stats.digests.digestedFiles)}</div>
                         <div className="text-xs text-muted-foreground mt-1">{t('stats.digestedFiles', 'Digested Files')}</div>
                       </div>
                       <div className="p-4 rounded-lg border bg-muted/50">
-                        <div className="text-2xl font-semibold">{stats.digests.totalFiles.toLocaleString()}</div>
+                        <div className="text-2xl font-semibold">{fmt.number(stats.digests.totalFiles)}</div>
                         <div className="text-xs text-muted-foreground mt-1">{t('stats.totalFiles', 'Total Files')}</div>
                       </div>
                       <div className="p-4 rounded-lg border bg-muted/50">
@@ -604,7 +606,7 @@ function SettingsContent() {
                           ) : (
                             <div className="h-2 w-2 rounded-full bg-green-500" />
                           )}
-                          <div className="text-2xl font-semibold">{stats.digests.pendingDigests.toLocaleString()}</div>
+                          <div className="text-2xl font-semibold">{fmt.number(stats.digests.pendingDigests)}</div>
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">{t('stats.pending', 'Pending')}</div>
                       </div>

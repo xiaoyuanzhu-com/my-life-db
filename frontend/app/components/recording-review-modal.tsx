@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useFormatter } from '~/lib/i18n/use-formatter';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 import { X, Loader2 } from 'lucide-react';
@@ -24,6 +25,7 @@ export function RecordingReviewModal({
   onDiscard,
   onClose
 }: RecordingReviewModalProps) {
+  const fmt = useFormatter();
   const [activeTab, setActiveTab] = useState<TabType>('raw');
   const [editedRawTranscript, setEditedRawTranscript] = useState('');
   const [editedCleanedTranscript, setEditedCleanedTranscript] = useState('');
@@ -117,7 +119,7 @@ export function RecordingReviewModal({
           <div>
             <h2 className="text-lg font-semibold">Recording Complete</h2>
             <p className="text-sm text-muted-foreground">
-              {formatDuration(duration)} • {new Date().toLocaleTimeString()}
+              {formatDuration(duration)} • {fmt.time(new Date())}
             </p>
           </div>
           <Button

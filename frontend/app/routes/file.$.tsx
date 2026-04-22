@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { ReactNode } from "react";
+import { useFormatter } from "~/lib/i18n/use-formatter";
 import { useParams, useNavigate } from "react-router";
 import {
   ArrowLeft,
@@ -25,17 +26,6 @@ interface FileInfoData extends FileRecord {
   isPinned: boolean;
 }
 
-function formatFileSize(bytes: number | null): string {
-  if (bytes === null) return "N/A";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-}
-
-function formatDate(timestamp: number | string): string {
-  return new Date(timestamp).toLocaleString();
-}
 
 function getStatusIcon(status: string) {
   switch (status) {
@@ -240,6 +230,7 @@ function DigestCard({ digest, onAudioSeek, onReset, isResetting }: DigestCardPro
 export default function FileInfoPage() {
   const params = useParams();
   const navigate = useNavigate();
+  const fmt = useFormatter();
   const [fileInfo, setFileInfo] = useState<FileInfoData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -567,7 +558,7 @@ export default function FileInfoPage() {
                 <HardDrive className="w-5 h-5 text-muted-foreground mt-0.5" />
                 <div>
                   <div className="text-xs text-muted-foreground">Size</div>
-                  <div className="text-sm">{formatFileSize(file.size)}</div>
+                  <div className="text-sm">{fmt.fileSize(file.size)}</div>
                 </div>
               </div>
 
@@ -593,7 +584,7 @@ export default function FileInfoPage() {
                 <Calendar className="w-5 h-5 text-muted-foreground mt-0.5" />
                 <div>
                   <div className="text-xs text-muted-foreground">Created</div>
-                  <div className="text-sm">{formatDate(file.createdAt)}</div>
+                  <div className="text-sm">{fmt.dateTime(file.createdAt)}</div>
                 </div>
               </div>
 
@@ -601,7 +592,7 @@ export default function FileInfoPage() {
                 <Clock className="w-5 h-5 text-muted-foreground mt-0.5" />
                 <div>
                   <div className="text-xs text-muted-foreground">Modified</div>
-                  <div className="text-sm">{formatDate(file.modifiedAt)}</div>
+                  <div className="text-sm">{fmt.dateTime(file.modifiedAt)}</div>
                 </div>
               </div>
             </div>

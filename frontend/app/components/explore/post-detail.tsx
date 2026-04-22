@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useFormatter } from "~/lib/i18n/use-formatter";
 import { fetchExplorePost } from "~/hooks/use-explore";
 import { ImageFullscreen } from "./image-fullscreen";
 import type { ExplorePostWithComments } from "~/types/explore";
@@ -10,6 +11,7 @@ interface PostDetailProps {
 }
 
 export function PostDetail({ postId, onClose }: PostDetailProps) {
+  const fmt = useFormatter();
   const [post, setPost] = useState<ExplorePostWithComments | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -213,7 +215,7 @@ export function PostDetail({ postId, onClose }: PostDetailProps) {
       <h2 className="text-lg font-semibold">{post!.title}</h2>
       <div className="flex items-center gap-2 mt-1">
         <span className="text-sm font-medium text-foreground/80">{post!.author}</span>
-        <span className="text-sm text-muted-foreground">{new Date(post!.createdAt).toLocaleDateString()}</span>
+        <span className="text-sm text-muted-foreground">{fmt.date(post!.createdAt)}</span>
       </div>
       {post!.content && <p className="mt-3 text-sm whitespace-pre-wrap">{post!.content}</p>}
       {post!.tags && post!.tags.length > 0 && (
@@ -231,7 +233,7 @@ export function PostDetail({ postId, onClose }: PostDetailProps) {
               <div key={comment.id}>
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-medium">{comment.author}</span>
-                  <span className="text-xs text-muted-foreground">{new Date(comment.createdAt).toLocaleDateString()}</span>
+                  <span className="text-xs text-muted-foreground">{fmt.date(comment.createdAt)}</span>
                 </div>
                 <p className="text-sm mt-0.5">{comment.content}</p>
               </div>
