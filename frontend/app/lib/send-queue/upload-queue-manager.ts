@@ -28,6 +28,7 @@ import {
 } from './db';
 import { generateTextFilename, deduplicateFilename } from './filename';
 import { api } from '~/lib/api';
+import { parseApiError, formatApiError } from '~/lib/errors';
 
 const {
   MAX_CONCURRENT_UPLOADS,
@@ -574,8 +575,8 @@ export class UploadQueueManager {
     });
 
     if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(data.error || `HTTP ${response.status}`);
+      const apiErr = await parseApiError(response);
+      throw new Error(formatApiError(apiErr));
     }
 
     const result = await response.json();
@@ -674,8 +675,8 @@ export class UploadQueueManager {
             const response = await api.post('/api/upload/finalize', requestBody);
 
             if (!response.ok) {
-              const data = await response.json().catch(() => ({}));
-              throw new Error(data.error || `HTTP ${response.status}`);
+              const apiErr = await parseApiError(response);
+              throw new Error(formatApiError(apiErr));
             }
 
             const result = await response.json();

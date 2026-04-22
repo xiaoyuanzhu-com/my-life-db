@@ -12,6 +12,7 @@ import { cn } from '~/lib/utils';
 import type { FileWithDigests, DigestSummary } from '~/types/file-card';
 import { getDigestRenderer } from './digest-renderers';
 import { api } from '~/lib/api';
+import { parseApiError, formatApiError } from '~/lib/errors';
 
 type DigestStageStatus = 'to-do' | 'in-progress' | 'success' | 'failed' | 'skipped';
 
@@ -164,8 +165,8 @@ export function DigestsPanel({ file, className, audioSync }: DigestsPanelProps) 
       const response = await api.post(`/api/digest/file/${file.path}?digester=${encodeURIComponent(digester)}`);
 
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || `Failed to reset ${digester}`);
+        const apiErr = await parseApiError(response);
+        throw new Error(formatApiError(apiErr));
       }
 
       // Refresh digests after reset

@@ -18,6 +18,7 @@ import {
 import type { FileRecord, Digest } from "~/types";
 import { TranscriptViewer } from "~/components/transcript-viewer";
 import { api } from "~/lib/api";
+import { parseApiError, formatApiError } from "~/lib/errors";
 
 interface FileInfoData extends FileRecord {
   digests: Digest[];
@@ -425,8 +426,8 @@ export default function FileInfoPage() {
       const response = await api.post(`/api/digest/file/${filePath}`);
 
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to trigger digest");
+        const apiErr = await parseApiError(response);
+        throw new Error(formatApiError(apiErr));
       }
 
       const data = await response.json();
@@ -449,8 +450,8 @@ export default function FileInfoPage() {
       const response = await api.post(`/api/digest/file/${filePath}?digester=${encodeURIComponent(digester)}`);
 
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || `Failed to reset ${digester}`);
+        const apiErr = await parseApiError(response);
+        throw new Error(formatApiError(apiErr));
       }
 
       const data = await response.json();

@@ -4,6 +4,8 @@ import { FolderPlus } from 'lucide-react';
 import { api } from '~/lib/api';
 import { useLibraryNotifications } from '~/hooks/use-notifications';
 import type { PendingInboxItem } from '~/lib/send-queue/types';
+import { parseApiError } from '~/lib/errors';
+import { useErrorMessage } from '~/hooks/use-error-message';
 import { Input } from '~/components/ui/input';
 import {
   type FileNode,
@@ -53,6 +55,7 @@ export function FileGrid({
   const targetFileInputRef = useRef<HTMLInputElement>(null);
   const targetFolderInputRef = useRef<HTMLInputElement>(null);
   const uploadTargetPathRef = useRef<string>('');
+  const tErr = useErrorMessage();
 
   // Reference to upload manager for cleanup
   const uploadManagerRef = useRef<Awaited<ReturnType<typeof import('~/lib/send-queue/upload-queue-manager').getUploadQueueManager>> | null>(null);
@@ -170,8 +173,8 @@ export function FileGrid({
     try {
       const response = await api.post('/api/library/folder', { path: currentPath, name: newFolderName.trim() });
       if (!response.ok) {
-        const error = await response.json();
-        alert(error.error || 'Failed to create folder');
+        const apiErr = await parseApiError(response);
+        alert(tErr(apiErr));
         return;
       }
       loadChildren(false);
@@ -268,8 +271,8 @@ export function FileGrid({
     try {
       const response = await api.post('/api/library/folder', { path: parentPath, name: folderName.trim() });
       if (!response.ok) {
-        const error = await response.json();
-        alert(error.error || 'Failed to create folder');
+        const apiErr = await parseApiError(response);
+        alert(tErr(apiErr));
         return;
       }
       loadChildren(false);
@@ -277,7 +280,7 @@ export function FileGrid({
       console.error('Failed to create folder:', error);
       alert('Failed to create folder');
     }
-  }, [loadChildren]);
+  }, [loadChildren, tErr]);
 
   const navigateTo = controlledNavigate ?? setInternalPath;
 

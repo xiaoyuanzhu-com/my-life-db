@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from "react
 import type { UserSettings } from "~/lib/config/settings";
 import { api } from "~/lib/api";
 import i18n from "~/lib/i18n/config";
+import { parseApiError, formatApiError } from "~/lib/errors";
 
 interface SettingsContextType {
   settings: Partial<UserSettings> | null;
@@ -89,8 +90,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         // Reload settings to sync with server
         await loadSettings();
       } else {
-        const error = await response.json();
-        setSaveMessage(`Error: ${error.error || i18n.t('settings:toast.saveFailure', 'Failed to save settings')}`);
+        const apiErr = await parseApiError(response);
+        setSaveMessage(formatApiError(apiErr));
       }
     } catch (error) {
       console.error("Failed to save settings:", error);

@@ -6,6 +6,8 @@ import type { PendingInboxItem } from '~/lib/send-queue/types';
 import { api } from '~/lib/api';
 import { useLibraryNotifications } from '~/hooks/use-notifications';
 import { downloadFile, downloadFolder } from '~/components/FileCard/utils';
+import { parseApiError } from '~/lib/errors';
+import { useErrorMessage } from '~/hooks/use-error-message';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -111,6 +113,7 @@ function TreeNode({
   const [isCreatingSubfolder, setIsCreatingSubfolder] = useState(false);
   const [subfolderName, setSubfolderName] = useState('');
   const subfolderInputRef = useRef<HTMLInputElement>(null);
+  const tErr = useErrorMessage();
 
   // Compute full path from parent path and node name
   const fullPath = parentPath ? `${parentPath}/${node.path}` : node.path;
@@ -214,8 +217,8 @@ function TreeNode({
       const response = await api.post('/api/library/rename', { path: fullPath, newName: renameValue.trim() });
 
       if (!response.ok) {
-        const error = await response.json();
-        alert(error.error || 'Failed to rename');
+        const apiErr = await parseApiError(response);
+        alert(tErr(apiErr));
         return;
       }
 
@@ -245,8 +248,8 @@ function TreeNode({
       const response = await api.delete(`/api/library/file?path=${encodeURIComponent(fullPath)}`);
 
       if (!response.ok) {
-        const error = await response.json();
-        alert(error.error || 'Failed to delete');
+        const apiErr = await parseApiError(response);
+        alert(tErr(apiErr));
         return;
       }
 
@@ -323,8 +326,8 @@ function TreeNode({
     try {
       const response = await api.post('/api/library/folder', { path: fullPath, name: subfolderName.trim() });
       if (!response.ok) {
-        const error = await response.json();
-        alert(error.error || 'Failed to create folder');
+        const apiErr = await parseApiError(response);
+        alert(tErr(apiErr));
         return;
       }
       onRefresh();
@@ -434,8 +437,8 @@ function TreeNode({
       const response = await api.post('/api/library/move', { path: draggedItem.path, targetPath: fullPath });
 
       if (!response.ok) {
-        const error = await response.json();
-        alert(error.error || 'Failed to move');
+        const apiErr = await parseApiError(response);
+        alert(tErr(apiErr));
         return;
       }
 

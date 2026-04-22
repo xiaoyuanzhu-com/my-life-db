@@ -3,6 +3,7 @@ import { FileCard } from './FileCard';
 import type { SearchResponse, SearchResultItem } from '~/types/api';
 import { ModalNavigationProvider } from '~/contexts/modal-navigation-context';
 import { api } from '~/lib/api';
+import { parseApiError, formatApiError } from '~/lib/errors';
 
 interface SearchResultsProps {
   keywordResults: SearchResponse | null;
@@ -216,8 +217,8 @@ export function SearchResults({
       api.get(`/api/search?${params.toString()}`, { signal: keywordController.signal })
         .then(async (response) => {
           if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || `HTTP ${response.status}`);
+            const apiErr = await parseApiError(response);
+            throw new Error(formatApiError(apiErr));
           }
           return response.json();
         })
