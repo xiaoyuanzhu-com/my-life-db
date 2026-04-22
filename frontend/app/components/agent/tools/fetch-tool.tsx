@@ -13,6 +13,7 @@ import { useState, useRef } from "react"
 import type { ToolCallMessagePartProps } from "@assistant-ui/react"
 import { MessageDot, toolStatusToDotType, computeToolEffectiveStatus } from "../message-dot"
 import { MarkdownContent } from "../markdown-content"
+import { formatFileSize } from "~/lib/i18n/format"
 
 interface FetchArgs {
   kind?: string
@@ -21,12 +22,6 @@ interface FetchArgs {
   [key: string]: unknown
 }
 
-/** Format bytes to human-readable */
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes}B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
-}
 
 /** Extract HTTP status and size from result */
 function extractFetchInfo(result: unknown): { status?: number; statusText?: string; size?: string; duration?: string } {
@@ -39,9 +34,9 @@ function extractFetchInfo(result: unknown): { status?: number; statusText?: stri
     if (typeof r.statusCode === "number") info.status = r.statusCode
     if (typeof r.code === "number") info.status = r.code
     if (typeof r.codeText === "string") info.statusText = r.codeText
-    if (typeof r.size === "number") info.size = formatSize(r.size)
-    else if (typeof r.contentLength === "number") info.size = formatSize(r.contentLength)
-    else if (typeof r.bytes === "number") info.size = formatSize(r.bytes)
+    if (typeof r.size === "number") info.size = formatFileSize(r.size)
+    else if (typeof r.contentLength === "number") info.size = formatFileSize(r.contentLength)
+    else if (typeof r.bytes === "number") info.size = formatFileSize(r.bytes)
     if (typeof r.durationMs === "number") {
       info.duration = r.durationMs < 1000
         ? `${Math.round(r.durationMs)}ms`
@@ -51,7 +46,7 @@ function extractFetchInfo(result: unknown): { status?: number; statusText?: stri
   }
 
   if (typeof result === "string") {
-    return { size: formatSize(result.length) }
+    return { size: formatFileSize(result.length) }
   }
 
   return {}

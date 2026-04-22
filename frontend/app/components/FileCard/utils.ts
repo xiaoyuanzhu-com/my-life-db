@@ -1,6 +1,7 @@
 import type { FileWithDigests } from '~/types/file-card';
 import type { FileContentType } from './types';
 import { api } from '~/lib/api';
+export { formatFileSize } from '~/lib/i18n/format';
 
 // =============================================================================
 // Content Type Detection
@@ -124,22 +125,6 @@ export function getFileContentType(file: FileWithDigests): FileContentType {
 // Formatting Utilities
 // =============================================================================
 
-/**
- * Format file size in human-readable format
- * Examples: 5KB, 14.3MB, 20GB, 20.4GB (max 1 decimal precision)
- */
-export function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0B';
-
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const k = 1024;
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  const value = bytes / Math.pow(k, i);
-
-  // Use 1 decimal place only if needed (not a whole number)
-  const formatted = value % 1 === 0 ? value.toString() : value.toFixed(1);
-  return `${formatted}${units[i]}`;
-}
 
 /**
  * Get visual weight of a character

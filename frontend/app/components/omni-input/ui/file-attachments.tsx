@@ -2,19 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 import { Upload, X, Loader2, Check } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import type { PendingInboxItem } from '~/lib/send-queue';
+import { formatFileSize } from '~/lib/i18n/format';
 
 interface FileAttachmentsProps {
   files: File[];
   onRemove: (index: number) => void;
   uploadingItems?: PendingInboxItem[];
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1000;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return (bytes / Math.pow(k, i)).toFixed(1) + ' ' + sizes[i];
 }
 
 function UploadingFileItem({ item }: { item: PendingInboxItem }) {
