@@ -62,6 +62,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       const data = await response.json();
       setSettings(data);
       setOriginalSettings(data);
+      const lang = data?.preferences?.language;
+      if (lang && lang !== i18n.language) {
+        void i18n.changeLanguage(lang);
+      }
     } catch (error) {
       console.error("Failed to load settings:", error);
     } finally {

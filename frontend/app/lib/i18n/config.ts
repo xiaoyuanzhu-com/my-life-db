@@ -1,49 +1,71 @@
 // frontend/app/lib/i18n/config.ts
 import i18n from 'i18next';
-import HttpBackend from 'i18next-http-backend';
 import { initReactI18next } from 'react-i18next';
 import { DEFAULT_UI_LOCALE, isSupportedLocale } from './metadata';
-import fallbackEn from './fallback/en.json';
 
-// Read active locale from the <html lang> attribute that the Go backend
-// injects on every HTML response. If absent or unsupported, fall back to
-// the default. This is the ONE place locale is sourced.
-function readActiveLocale(): string {
-  if (typeof document === 'undefined') return DEFAULT_UI_LOCALE;
-  const lang = document.documentElement.lang?.trim();
-  if (lang && isSupportedLocale(lang)) return lang;
+import enCommon from '~/locales/en/common.json';
+import enSettings from '~/locales/en/settings.json';
+import enData from '~/locales/en/data.json';
+import enAgent from '~/locales/en/agent.json';
+import enErrors from '~/locales/en/errors.json';
+import zhHansCommon from '~/locales/zh-Hans/common.json';
+import zhHansSettings from '~/locales/zh-Hans/settings.json';
+import zhHansData from '~/locales/zh-Hans/data.json';
+import zhHansAgent from '~/locales/zh-Hans/agent.json';
+import zhHansErrors from '~/locales/zh-Hans/errors.json';
+
+// Pick the initial locale from the browser. User preference from the server
+// (preferences_language) is applied later by SettingsProvider via changeLanguage.
+function readInitialLocale(): string {
+  if (typeof navigator === 'undefined') return DEFAULT_UI_LOCALE;
+  const candidates = navigator.languages?.length ? navigator.languages : [navigator.language];
+  for (const raw of candidates) {
+    if (!raw) continue;
+    if (isSupportedLocale(raw)) return raw;
+    // Map bare zh / zh-CN / zh-SG → zh-Hans (simplified).
+    if (/^zh(-|$)/i.test(raw) && !/Hant|TW|HK|MO/i.test(raw)) return 'zh-Hans';
+  }
   return DEFAULT_UI_LOCALE;
 }
 
-void i18n
-  .use(HttpBackend)
-  .use(initReactI18next)
-  .init({
-    lng: readActiveLocale(),
-    fallbackLng: 'en',
-    // Namespaces MUST be listed here so i18next knows which to load on boot.
-    // Add more namespaces over time; not all need to be preloaded.
-    ns: ['common', 'settings', 'data', 'agent', 'errors'],
-    defaultNS: 'common',
-    supportedLngs: ['en', 'zh-Hans'],
-    // Bundle English inline so the app renders instantly even if the network
-    // fetch for the active locale is slow or fails.
-    resources: {
-      en: fallbackEn,
+void i18n.use(initReactI18next).init({
+  lng: readInitialLocale(),
+  fallbackLng: 'en',
+  ns: ['common', 'settings', 'data', 'agent', 'errors'],
+  defaultNS: 'common',
+  supportedLngs: ['en', 'zh-Hans'],
+  resources: {
+    en: {
+      common: enCommon,
+      settings: enSettings,
+      data: enData,
+      agent: enAgent,
+      errors: enErrors,
     },
-    // Only non-English locales go through the HTTP backend.
-    // partialBundledLanguages lets us mix inline + fetched.
-    partialBundledLanguages: true,
-    backend: {
-      loadPath: '/locales/{{lng}}/{{ns}}.json',
+    'zh-Hans': {
+      common: zhHansCommon,
+      settings: zhHansSettings,
+      data: zhHansData,
+      agent: zhHansAgent,
+      errors: zhHansErrors,
     },
-    interpolation: {
-      escapeValue: false, // React already escapes
-    },
-    react: {
-      useSuspense: false, // don't wrap the whole app in Suspense for i18n
-    },
-    returnNull: false,
+  },
+  interpolation: {
+    escapeValue: false,
+  },
+  react: {
+    useSuspense: false,
+  },
+  returnNull: false,
+});
+
+// Keep the <html lang> attribute in sync so CSS :lang() selectors and
+// assistive tech see the right value.
+if (typeof document !== 'undefined') {
+  document.documentElement.lang = i18n.language;
+  i18n.on('languageChanged', (lng) => {
+    document.documentElement.lang = lng;
   });
+}
 
 export default i18n;

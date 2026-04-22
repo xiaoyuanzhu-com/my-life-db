@@ -98,7 +98,7 @@ func main() {
 	})
 
 	// Setup static file serving and SPA fallback
-	setupStaticRoutes(srv.Router(), handlers)
+	setupStaticRoutes(srv.Router())
 
 	// Start server in background
 	go func() {
@@ -133,7 +133,7 @@ func main() {
 }
 
 // setupStaticRoutes configures static file serving
-func setupStaticRoutes(r *gin.Engine, handlers *api.Handlers) {
+func setupStaticRoutes(r *gin.Engine) {
 	// Assets with content hash (immutable, cache for 1 year)
 	r.GET("/assets/*filepath", serveImmutableAssets("frontend/dist/assets"))
 
@@ -148,15 +148,18 @@ func setupStaticRoutes(r *gin.Engine, handlers *api.Handlers) {
 	r.GET("/robots.txt", serveRobotsTxt())
 	r.GET("/sitemap.xml", serveSitemapXml())
 
-	// SPA fallback - serve index.html for non-API routes
-	// HTML should not be cached (or very short cache)
+	// SPA fallback - serve index.html for non-API routes.
+	// HTML is per-user (auth state) so don't cache it.
 	r.NoRoute(func(c *gin.Context) {
 		path := c.Request.URL.Path
 		if strings.HasPrefix(path, "/api/") {
 			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 			return
 		}
-		handlers.ServeSPAIndex(c)
+		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+		c.Header("Pragma", "no-cache")
+		c.Header("Expires", "0")
+		c.File("frontend/dist/index.html")
 	})
 
 	// Note: /raw/*, /sqlar/* routes are registered in api.SetupRoutes()
