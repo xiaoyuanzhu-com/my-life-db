@@ -75,7 +75,7 @@ export function AppImportDialog({ app, onOpenChange }: Props) {
           <>
             {/* Header: icon + name + category + optional CTA */}
             <div className="flex items-center gap-4 px-6 pt-6 pb-4 shrink-0">
-              <AppIconTile app={app} size="lg" />
+              <AppIconTile app={app} />
               <div className="min-w-0 flex-1">
                 <DialogTitle className="text-xl font-semibold truncate">
                   {app.name}

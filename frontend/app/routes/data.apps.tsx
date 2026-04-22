@@ -72,7 +72,7 @@ export default function DataAppsPage() {
                 className="flex flex-col items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-2xl"
                 title={app.description}
               >
-                <AppIconTile app={app} size="lg" />
+                <AppIconTile app={app} />
                 <span className="text-xs font-medium text-foreground truncate max-w-full">
                   {app.name}
                 </span>
