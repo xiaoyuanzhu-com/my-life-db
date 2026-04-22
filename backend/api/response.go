@@ -182,6 +182,14 @@ func RespondServiceUnavailable(c *gin.Context, message string) {
 	respondError(c, http.StatusServiceUnavailable, ErrCodeServiceUnavailable, message, nil)
 }
 
+// RespondCoded sends an error response with an explicit semantic code.
+// Use this for user-facing errors where the frontend will translate the code
+// to a localized message via the `errors` i18n namespace.
+// The `message` field is kept as a human-readable English fallback.
+func RespondCoded(c *gin.Context, status int, code ErrorCode, message string) {
+	respondError(c, status, code, message, nil)
+}
+
 // -----------------------------------------------------------------------------
 // Migration Helpers (for gradual adoption)
 // -----------------------------------------------------------------------------
