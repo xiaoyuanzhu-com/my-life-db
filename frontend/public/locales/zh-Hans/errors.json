@@ -1,0 +1,37 @@
+{
+  "AUTH_INVALID_PASSWORD": "密码错误",
+  "AUTH_SESSION_FAILED": "认证失败",
+  "AUTH_REQUEST_INVALID": "请求格式错误",
+  "AUTH_INVALID_TOKEN": "会话已失效，请重新登录。",
+  "AUTH_INVALID_SESSION": "会话已失效，请重新登录。",
+
+  "SETTINGS_LOAD_FAILED": "加载设置失败",
+  "SETTINGS_SAVE_FAILED": "保存设置失败",
+  "SETTINGS_REQUEST_INVALID": "请求格式错误",
+  "SETTINGS_INVALID_ACTION": "无效操作",
+
+  "LIBRARY_NOT_FOUND": "未找到文件",
+  "LIBRARY_INVALID_PATH": "路径无效",
+  "LIBRARY_PATH_REQUIRED": "路径不能为空",
+  "LIBRARY_FILE_CONFLICT": "已存在同名文件",
+  "LIBRARY_FOLDER_CONFLICT": "已存在同名文件夹",
+  "LIBRARY_RENAME_FAILED": "重命名失败",
+  "LIBRARY_MOVE_FAILED": "移动失败",
+  "LIBRARY_DELETE_FAILED": "删除失败",
+  "LIBRARY_CREATE_FOLDER_FAILED": "创建文件夹失败",
+
+  "UPLOAD_NO_FILES": "没有可上传的文件",
+  "UPLOAD_PATH_REQUIRED": "路径不能为空",
+  "UPLOAD_FILENAME_REQUIRED": "文件名不能为空",
+  "UPLOAD_WRITE_FAILED": "写入文件失败",
+
+  "DIGEST_NAME_REQUIRED": "消化器名称不能为空",
+  "DIGEST_RESET_FAILED": "重置消化器失败",
+  "DIGEST_PATH_REQUIRED": "路径不能为空",
+  "DIGEST_FILE_NOT_FOUND": "未找到文件",
+  "DIGEST_TRIGGER_FAILED": "触发消化失败",
+
+  "SEARCH_QUERY_REQUIRED": "请输入搜索内容",
+  "SEARCH_QUERY_TOO_SHORT": "搜索内容至少需要 2 个字符",
+  "SEARCH_INVALID_TYPES": "搜索筛选无效"
+}

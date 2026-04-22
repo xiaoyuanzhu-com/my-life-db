@@ -1,0 +1,37 @@
+{
+  "AUTH_INVALID_PASSWORD": "Invalid password",
+  "AUTH_SESSION_FAILED": "Authentication error",
+  "AUTH_REQUEST_INVALID": "Invalid request body",
+  "AUTH_INVALID_TOKEN": "Your session is no longer valid. Please sign in again.",
+  "AUTH_INVALID_SESSION": "Your session is no longer valid. Please sign in again.",
+
+  "SETTINGS_LOAD_FAILED": "Failed to load settings",
+  "SETTINGS_SAVE_FAILED": "Failed to save settings",
+  "SETTINGS_REQUEST_INVALID": "Invalid request body",
+  "SETTINGS_INVALID_ACTION": "Invalid action",
+
+  "LIBRARY_NOT_FOUND": "File not found",
+  "LIBRARY_INVALID_PATH": "Invalid path",
+  "LIBRARY_PATH_REQUIRED": "Path is required",
+  "LIBRARY_FILE_CONFLICT": "A file with this name already exists",
+  "LIBRARY_FOLDER_CONFLICT": "A folder with this name already exists",
+  "LIBRARY_RENAME_FAILED": "Failed to rename file",
+  "LIBRARY_MOVE_FAILED": "Failed to move file",
+  "LIBRARY_DELETE_FAILED": "Failed to delete file",
+  "LIBRARY_CREATE_FOLDER_FAILED": "Failed to create folder",
+
+  "UPLOAD_NO_FILES": "No valid files to upload",
+  "UPLOAD_PATH_REQUIRED": "Path is required",
+  "UPLOAD_FILENAME_REQUIRED": "Filename is required",
+  "UPLOAD_WRITE_FAILED": "Failed to write file",
+
+  "DIGEST_NAME_REQUIRED": "Digester name is required",
+  "DIGEST_RESET_FAILED": "Failed to reset digester",
+  "DIGEST_PATH_REQUIRED": "Path is required",
+  "DIGEST_FILE_NOT_FOUND": "File not found",
+  "DIGEST_TRIGGER_FAILED": "Failed to trigger digest",
+
+  "SEARCH_QUERY_REQUIRED": "Please enter a search query",
+  "SEARCH_QUERY_TOO_SHORT": "Query must be at least 2 characters",
+  "SEARCH_INVALID_TYPES": "Invalid search filter"
+}
