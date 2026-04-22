@@ -113,7 +113,7 @@ func (h *Handlers) FinalizeUpload(c *gin.Context) {
 		Destination *string `json:"destination,omitempty"` // Pointer to distinguish nil (not provided) vs "" (empty string)
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		RespondCoded(c, http.StatusBadRequest, "UPLOAD_PATH_REQUIRED", "Invalid request body")
 		return
 	}
 
@@ -138,7 +138,7 @@ func (h *Handlers) FinalizeUpload(c *gin.Context) {
 	// Ensure destination directory exists
 	destDir := filepath.Join(cfg.UserDataDir, destination)
 	if err := os.MkdirAll(destDir, 0755); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create destination directory"})
+		RespondCoded(c, http.StatusInternalServerError, "UPLOAD_WRITE_FAILED", "Failed to create destination directory")
 		return
 	}
 
@@ -244,7 +244,7 @@ func (h *Handlers) FinalizeUpload(c *gin.Context) {
 	}
 
 	if len(paths) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "No valid files to finalize"})
+		RespondCoded(c, http.StatusBadRequest, "UPLOAD_NO_FILES", "No valid files to finalize")
 		return
 	}
 
@@ -272,7 +272,7 @@ func (h *Handlers) SimpleUpload(c *gin.Context) {
 	// Extract path from URL param (Gin wildcard includes leading slash)
 	rawPath := strings.TrimPrefix(c.Param("path"), "/")
 	if rawPath == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Path is required"})
+		RespondCoded(c, http.StatusBadRequest, "UPLOAD_PATH_REQUIRED", "Path is required")
 		return
 	}
 
@@ -280,7 +280,7 @@ func (h *Handlers) SimpleUpload(c *gin.Context) {
 	dir := filepath.Dir(rawPath)
 	filename := filepath.Base(rawPath)
 	if filename == "" || filename == "." {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Filename is required in path"})
+		RespondCoded(c, http.StatusBadRequest, "UPLOAD_FILENAME_REQUIRED", "Filename is required")
 		return
 	}
 
@@ -292,7 +292,7 @@ func (h *Handlers) SimpleUpload(c *gin.Context) {
 	destDir := filepath.Join(cfg.UserDataDir, dir)
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		log.Error().Err(err).Str("dir", destDir).Msg("simple upload: failed to create destination directory")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create destination directory"})
+		RespondCoded(c, http.StatusInternalServerError, "UPLOAD_WRITE_FAILED", "Failed to create destination directory")
 		return
 	}
 
@@ -302,7 +302,7 @@ func (h *Handlers) SimpleUpload(c *gin.Context) {
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		log.Error().Err(err).Msg("simple upload: failed to read request body")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
+		RespondCoded(c, http.StatusBadRequest, "UPLOAD_WRITE_FAILED", "Failed to read request body")
 		return
 	}
 
@@ -339,7 +339,7 @@ func (h *Handlers) SimpleUpload(c *gin.Context) {
 		})
 		if err != nil {
 			log.Error().Err(err).Str("path", destPath).Msg("simple upload: failed to write file")
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to write file"})
+			RespondCoded(c, http.StatusInternalServerError, "UPLOAD_WRITE_FAILED", "Failed to write file")
 			return
 		}
 

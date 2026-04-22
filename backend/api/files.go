@@ -45,7 +45,7 @@ func (h *Handlers) ServeRawFile(c *gin.Context) {
 	// Check if file exists
 	info, err := os.Stat(fullPath)
 	if os.IsNotExist(err) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		RespondCoded(c, http.StatusNotFound, "LIBRARY_NOT_FOUND", "File not found")
 		return
 	}
 	if err != nil {
@@ -54,7 +54,7 @@ func (h *Handlers) ServeRawFile(c *gin.Context) {
 	}
 
 	if info.IsDir() {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot serve directory"})
+		RespondCoded(c, http.StatusBadRequest, "LIBRARY_INVALID_PATH", "Cannot serve directory")
 		return
 	}
 
@@ -190,13 +190,13 @@ func (h *Handlers) ServeSqlarFile(c *gin.Context) {
 func (h *Handlers) DeleteLibraryFile(c *gin.Context) {
 	path := c.Query("path")
 	if path == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Path is required"})
+		RespondCoded(c, http.StatusBadRequest, "LIBRARY_PATH_REQUIRED", "Path is required")
 		return
 	}
 
 	// Security: prevent directory traversal
 	if strings.Contains(path, "..") {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid path"})
+		RespondCoded(c, http.StatusBadRequest, "LIBRARY_INVALID_PATH", "Invalid path")
 		return
 	}
 
@@ -206,7 +206,7 @@ func (h *Handlers) DeleteLibraryFile(c *gin.Context) {
 	// Check if file exists
 	info, err := os.Stat(fullPath)
 	if os.IsNotExist(err) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		RespondCoded(c, http.StatusNotFound, "LIBRARY_NOT_FOUND", "File not found")
 		return
 	}
 
@@ -214,13 +214,13 @@ func (h *Handlers) DeleteLibraryFile(c *gin.Context) {
 	if info.IsDir() {
 		if err := h.server.FS().DeleteFolder(c.Request.Context(), path); err != nil {
 			log.Error().Err(err).Str("path", path).Msg("failed to delete folder")
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete folder"})
+			RespondCoded(c, http.StatusInternalServerError, "LIBRARY_DELETE_FAILED", "Failed to delete file")
 			return
 		}
 	} else {
 		if err := h.server.FS().DeleteFile(c.Request.Context(), path); err != nil {
 			log.Error().Err(err).Str("path", path).Msg("failed to delete file")
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete file"})
+			RespondCoded(c, http.StatusInternalServerError, "LIBRARY_DELETE_FAILED", "Failed to delete file")
 			return
 		}
 	}
@@ -772,13 +772,13 @@ func (h *Handlers) RenameLibraryFile(c *gin.Context) {
 	}
 
 	if body.Path == "" || body.NewName == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Path and newName are required"})
+		RespondCoded(c, http.StatusBadRequest, "LIBRARY_PATH_REQUIRED", "Path and newName are required")
 		return
 	}
 
 	// Security: prevent directory traversal
 	if strings.Contains(body.Path, "..") || strings.Contains(body.NewName, "..") || strings.Contains(body.NewName, "/") {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid path or name"})
+		RespondCoded(c, http.StatusBadRequest, "LIBRARY_INVALID_PATH", "Invalid path or name")
 		return
 	}
 
@@ -796,14 +796,14 @@ func (h *Handlers) RenameLibraryFile(c *gin.Context) {
 
 	// Check if destination already exists
 	if _, err := os.Stat(newFullPath); !os.IsNotExist(err) {
-		c.JSON(http.StatusConflict, gin.H{"error": "A file with this name already exists"})
+		RespondCoded(c, http.StatusConflict, "LIBRARY_FILE_CONFLICT", "A file with this name already exists")
 		return
 	}
 
 	// Rename via fs.Service (handles filesystem, DB, search sync, logging)
 	if err := h.server.FS().RenameOrMove(c.Request.Context(), body.Path, newPath); err != nil {
 		log.Error().Err(err).Str("path", body.Path).Str("newPath", newPath).Msg("failed to rename file")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to rename file"})
+		RespondCoded(c, http.StatusInternalServerError, "LIBRARY_RENAME_FAILED", "Failed to rename file")
 		return
 	}
 
@@ -825,13 +825,13 @@ func (h *Handlers) MoveLibraryFile(c *gin.Context) {
 	}
 
 	if body.Path == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Path is required"})
+		RespondCoded(c, http.StatusBadRequest, "LIBRARY_PATH_REQUIRED", "Path is required")
 		return
 	}
 
 	// Security: prevent directory traversal
 	if strings.Contains(body.Path, "..") || strings.Contains(body.TargetPath, "..") {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid path"})
+		RespondCoded(c, http.StatusBadRequest, "LIBRARY_INVALID_PATH", "Invalid path")
 		return
 	}
 
@@ -851,14 +851,14 @@ func (h *Handlers) MoveLibraryFile(c *gin.Context) {
 
 	// Check if destination already exists
 	if _, err := os.Stat(newFullPath); !os.IsNotExist(err) {
-		c.JSON(http.StatusConflict, gin.H{"error": "A file with this name already exists in the target location"})
+		RespondCoded(c, http.StatusConflict, "LIBRARY_FILE_CONFLICT", "A file with this name already exists in the target location")
 		return
 	}
 
 	// Move via fs.Service (handles filesystem, DB, search sync, logging, parent dir creation)
 	if err := h.server.FS().RenameOrMove(c.Request.Context(), body.Path, newPath); err != nil {
 		log.Error().Err(err).Str("path", body.Path).Str("newPath", newPath).Msg("failed to move file")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to move file"})
+		RespondCoded(c, http.StatusInternalServerError, "LIBRARY_MOVE_FAILED", "Failed to move file")
 		return
 	}
 
@@ -880,13 +880,13 @@ func (h *Handlers) CreateLibraryFolder(c *gin.Context) {
 	}
 
 	if body.Name == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Folder name is required"})
+		RespondCoded(c, http.StatusBadRequest, "LIBRARY_PATH_REQUIRED", "Folder name is required")
 		return
 	}
 
 	// Security: prevent directory traversal
 	if strings.Contains(body.Path, "..") || strings.Contains(body.Name, "..") || strings.Contains(body.Name, "/") {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid path or name"})
+		RespondCoded(c, http.StatusBadRequest, "LIBRARY_INVALID_PATH", "Invalid path or name")
 		return
 	}
 
@@ -903,14 +903,14 @@ func (h *Handlers) CreateLibraryFolder(c *gin.Context) {
 
 	// Check if already exists
 	if _, err := os.Stat(fullPath); !os.IsNotExist(err) {
-		c.JSON(http.StatusConflict, gin.H{"error": "A folder with this name already exists"})
+		RespondCoded(c, http.StatusConflict, "LIBRARY_FOLDER_CONFLICT", "A folder with this name already exists")
 		return
 	}
 
 	// Create folder via fs.Service (handles filesystem + DB + logging)
 	if err := h.server.FS().CreateFolder(c.Request.Context(), folderPath); err != nil {
 		log.Error().Err(err).Str("path", folderPath).Msg("failed to create folder")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create folder"})
+		RespondCoded(c, http.StatusInternalServerError, "LIBRARY_CREATE_FOLDER_FAILED", "Failed to create folder")
 		return
 	}
 

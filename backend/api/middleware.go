@@ -24,18 +24,14 @@ func AuthMiddleware() gin.HandlerFunc {
 		// Check authentication based on mode
 		if auth.IsOAuthEnabled() {
 			if !validateOAuthToken(c) {
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-					"error": "Unauthorized",
-					"code":  "INVALID_TOKEN",
-				})
+				RespondCoded(c, http.StatusUnauthorized, "AUTH_INVALID_TOKEN", "Unauthorized")
+				c.Abort()
 				return
 			}
 		} else if auth.IsPasswordAuthEnabled() {
 			if ValidatePasswordSession(c) == nil {
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-					"error": "Unauthorized",
-					"code":  "INVALID_SESSION",
-				})
+				RespondCoded(c, http.StatusUnauthorized, "AUTH_INVALID_SESSION", "Unauthorized")
+				c.Abort()
 				return
 			}
 		}

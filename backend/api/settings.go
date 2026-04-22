@@ -14,7 +14,7 @@ func (h *Handlers) GetSettings(c *gin.Context) {
 	settings, err := db.LoadUserSettings()
 	if err != nil {
 		log.Error().Err(err).Msg("failed to load settings")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load settings"})
+		RespondCoded(c, http.StatusInternalServerError, "SETTINGS_LOAD_FAILED", "Failed to load settings")
 		return
 	}
 
@@ -28,7 +28,7 @@ func (h *Handlers) UpdateSettings(c *gin.Context) {
 	var updates models.UserSettings
 	if err := c.ShouldBindJSON(&updates); err != nil {
 		log.Error().Err(err).Msg("failed to parse settings update")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		RespondCoded(c, http.StatusBadRequest, "SETTINGS_REQUEST_INVALID", "Invalid request body")
 		return
 	}
 
@@ -36,7 +36,7 @@ func (h *Handlers) UpdateSettings(c *gin.Context) {
 	current, err := db.LoadUserSettings()
 	if err != nil {
 		log.Error().Err(err).Msg("failed to load current settings")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load current settings"})
+		RespondCoded(c, http.StatusInternalServerError, "SETTINGS_LOAD_FAILED", "Failed to load current settings")
 		return
 	}
 
@@ -46,7 +46,7 @@ func (h *Handlers) UpdateSettings(c *gin.Context) {
 	// Save merged settings
 	if err := db.SaveUserSettings(merged); err != nil {
 		log.Error().Err(err).Msg("failed to save settings")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save settings"})
+		RespondCoded(c, http.StatusInternalServerError, "SETTINGS_SAVE_FAILED", "Failed to save settings")
 		return
 	}
 
@@ -201,12 +201,12 @@ func (h *Handlers) ResetSettings(c *gin.Context) {
 	// Parse request body to check for action
 	var body map[string]string
 	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		RespondCoded(c, http.StatusBadRequest, "SETTINGS_REQUEST_INVALID", "Invalid request body")
 		return
 	}
 
 	if body["action"] != "reset" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid action"})
+		RespondCoded(c, http.StatusBadRequest, "SETTINGS_INVALID_ACTION", "Invalid action")
 		return
 	}
 

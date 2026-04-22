@@ -59,14 +59,14 @@ func (h *Handlers) GetDigestStats(c *gin.Context) {
 func (h *Handlers) ResetDigester(c *gin.Context) {
 	digester := c.Param("digester")
 	if digester == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Digester name is required"})
+		RespondCoded(c, http.StatusBadRequest, "DIGEST_NAME_REQUIRED", "Digester name is required")
 		return
 	}
 
 	affected, err := db.ResetDigesterAll(digester)
 	if err != nil {
 		log.Error().Err(err).Str("digester", digester).Msg("failed to reset digester")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reset digester"})
+		RespondCoded(c, http.StatusInternalServerError, "DIGEST_RESET_FAILED", "Failed to reset digester")
 		return
 	}
 
@@ -118,14 +118,14 @@ func (h *Handlers) TriggerDigest(c *gin.Context) {
 	path := c.Param("path")
 	path = strings.TrimPrefix(path, "/")
 	if path == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Path is required"})
+		RespondCoded(c, http.StatusBadRequest, "DIGEST_PATH_REQUIRED", "Path is required")
 		return
 	}
 
 	// Check if file exists
 	file, err := db.GetFileByPath(path)
 	if err != nil || file == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		RespondCoded(c, http.StatusNotFound, "DIGEST_FILE_NOT_FOUND", "File not found")
 		return
 	}
 
@@ -152,7 +152,7 @@ func (h *Handlers) TriggerDigest(c *gin.Context) {
 		// Reset specific digester
 		digest, err := db.GetDigestByFileAndDigester(path, digester)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get digest"})
+			RespondCoded(c, http.StatusInternalServerError, "DIGEST_TRIGGER_FAILED", "Failed to trigger digest")
 			return
 		}
 
@@ -166,7 +166,7 @@ func (h *Handlers) TriggerDigest(c *gin.Context) {
 				UpdatedAt: db.NowMs(),
 			}
 			if err := db.CreateDigest(digest); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create digest"})
+				RespondCoded(c, http.StatusInternalServerError, "DIGEST_TRIGGER_FAILED", "Failed to trigger digest")
 				return
 			}
 		} else if force {
@@ -175,14 +175,14 @@ func (h *Handlers) TriggerDigest(c *gin.Context) {
 			digest.Error = nil
 			digest.Attempts = 0
 			if err := db.UpdateDigest(digest); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reset digest"})
+				RespondCoded(c, http.StatusInternalServerError, "DIGEST_TRIGGER_FAILED", "Failed to trigger digest")
 				return
 			}
 		}
 	} else {
 		// Reset all digests for this file
 		if err := db.DeleteDigestsForFile(path); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reset digests"})
+			RespondCoded(c, http.StatusInternalServerError, "DIGEST_TRIGGER_FAILED", "Failed to trigger digest")
 			return
 		}
 	}

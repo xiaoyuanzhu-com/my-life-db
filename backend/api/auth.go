@@ -25,7 +25,7 @@ func (h *Handlers) Login(c *gin.Context) {
 		Password string `json:"password"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		RespondCoded(c, http.StatusBadRequest, "AUTH_REQUEST_INVALID", "Invalid request body")
 		return
 	}
 
@@ -33,7 +33,7 @@ func (h *Handlers) Login(c *gin.Context) {
 	storedHash, err := db.GetSetting("auth_password_hash")
 	if err != nil {
 		log.Error().Err(err).Msg("failed to get password hash")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Authentication error"})
+		RespondCoded(c, http.StatusInternalServerError, "AUTH_SESSION_FAILED", "Authentication error")
 		return
 	}
 
@@ -52,10 +52,7 @@ func (h *Handlers) Login(c *gin.Context) {
 	// Verify password
 	if hashPassword(body.Password) != storedHash {
 		log.Warn().Msg("login attempt with invalid password")
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"error":   "Invalid password",
-		})
+		RespondCoded(c, http.StatusUnauthorized, "AUTH_INVALID_PASSWORD", "Invalid password")
 		return
 	}
 
@@ -64,7 +61,7 @@ func (h *Handlers) Login(c *gin.Context) {
 	session, err := db.CreateSession(sessionToken)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to create session")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
+		RespondCoded(c, http.StatusInternalServerError, "AUTH_SESSION_FAILED", "Failed to create session")
 		return
 	}
 

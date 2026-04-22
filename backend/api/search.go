@@ -86,18 +86,12 @@ type Timing struct {
 func (h *Handlers) Search(c *gin.Context) {
 	query := strings.TrimSpace(c.Query("q"))
 	if query == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Query parameter 'q' is required",
-			"code":  "QUERY_REQUIRED",
-		})
+		RespondCoded(c, http.StatusBadRequest, "SEARCH_QUERY_REQUIRED", "Query parameter 'q' is required")
 		return
 	}
 
 	if len(query) < 2 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Query must be at least 2 characters",
-			"code":  "QUERY_TOO_SHORT",
-		})
+		RespondCoded(c, http.StatusBadRequest, "SEARCH_QUERY_TOO_SHORT", "Query must be at least 2 characters")
 		return
 	}
 
@@ -123,10 +117,7 @@ func (h *Handlers) Search(c *gin.Context) {
 	useKeyword := contains(searchTypes, "keyword")
 
 	if !useKeyword {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid types parameter. Use 'keyword'",
-			"code":  "INVALID_TYPES",
-		})
+		RespondCoded(c, http.StatusBadRequest, "SEARCH_INVALID_TYPES", "Invalid types parameter")
 		return
 	}
 
