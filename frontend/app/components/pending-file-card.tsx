@@ -6,8 +6,8 @@
  */
 
 import { useState, useEffect } from 'react';
-import { formatDistanceToNow } from 'date-fns';
 import { X, CircleAlert, Loader2 } from 'lucide-react';
+import { useFormatter } from '~/lib/i18n/use-formatter';
 import { cn } from '~/lib/utils';
 import { FileCard } from './FileCard';
 import { Spinner } from './ui/spinner';
@@ -39,6 +39,7 @@ interface PendingFileCardProps {
 }
 
 export function PendingFileCard({ item, onCancel }: PendingFileCardProps) {
+  const fmt = useFormatter();
   const [isCanceling, setIsCanceling] = useState(false);
   const [, setTick] = useState(0); // Force re-render for countdown updates
 
@@ -94,7 +95,7 @@ export function PendingFileCard({ item, onCancel }: PendingFileCardProps) {
     <div className="w-full flex flex-col items-end">
       {/* Custom timestamp row with status and cancel button */}
       <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2 mr-5 select-none">
-        <span>{formatDistanceToNow(item.createdAt, { addSuffix: true })}</span>
+        <span>{fmt.relative(item.createdAt)}</span>
         {renderStatusIndicator()}
         <button
           onClick={handleCancel}
