@@ -19,6 +19,7 @@ type Preferences struct {
 	LogLevel      string   `json:"logLevel,omitempty"`
 	UserEmail     string   `json:"userEmail,omitempty"`
 	Languages     []string `json:"languages,omitempty"`
+	Language      string   `json:"language,omitempty"` // UI language (BCP-47): "", "en", "zh-Hans"
 }
 
 type Vendors struct {

@@ -218,6 +218,11 @@ func LoadUserSettings() (*models.UserSettings, error) {
 		}
 	}
 
+	// Parse UI language (singular)
+	if uiLang := pickFromMap("preferences_language", "", ""); uiLang != "" {
+		preferences.Language = uiLang
+	}
+
 	// Build vendors
 	vendors := &models.Vendors{
 		OpenAI: &models.OpenAI{
@@ -312,6 +317,9 @@ func SaveUserSettings(settings *models.UserSettings) error {
 		if langJSON, err := json.Marshal(settings.Preferences.Languages); err == nil {
 			updates["preferences_languages"] = string(langJSON)
 		}
+	}
+	if settings.Preferences.Language != "" {
+		updates["preferences_language"] = settings.Preferences.Language
 	}
 
 	// Vendors
