@@ -43,6 +43,11 @@
       "label": "语言",
       "hint": "你使用的语言，按偏好排序。可拖动重排。",
       "searchPlaceholder": "搜索语言…"
+    },
+    "uiLanguage": {
+      "label": "界面语言",
+      "hint": "MyLifeDB 界面使用的语言。留空则跟随浏览器/系统。",
+      "systemDefault": "跟随系统"
     }
   },
   "vendors": {

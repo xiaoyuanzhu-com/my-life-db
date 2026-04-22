@@ -43,6 +43,11 @@
       "label": "Languages",
       "hint": "Languages you use, in order of preference. Drag to reorder.",
       "searchPlaceholder": "Search languages..."
+    },
+    "uiLanguage": {
+      "label": "Display language",
+      "hint": "The language used for MyLifeDB's interface. Empty follows your browser/system.",
+      "systemDefault": "System default"
     }
   },
   "vendors": {

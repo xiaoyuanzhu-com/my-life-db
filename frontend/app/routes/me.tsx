@@ -7,6 +7,7 @@ import { Input } from "~/components/ui/input";
 import { Sparkles, Save, Check, Loader2, RotateCcw } from "lucide-react";
 import { SettingsProvider, useSettingsContext } from "~/components/settings/settings-context";
 import { LanguageSelector } from "~/components/settings/language-selector";
+import { UiLanguageSelector } from "~/components/settings/ui-language-selector";
 import { useAuth } from "~/contexts/auth-context";
 import type { UserSettings } from "~/lib/config/settings";
 import { api } from "~/lib/api";
@@ -285,6 +286,29 @@ function SettingsContent() {
                   }
                 />
                 <p className="text-xs text-muted-foreground">{t('general.userEmail.hint', 'Used for displaying your Gravatar avatar in the header.')}</p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">{t('general.uiLanguage.label', 'Display language')}</label>
+                <UiLanguageSelector
+                  value={settings.preferences?.language}
+                  onChange={(lang) =>
+                    setSettings({
+                      ...settings,
+                      preferences: {
+                        ...(settings.preferences || {
+                          theme: "auto",
+                          defaultView: "home",
+                          weeklyDigest: false,
+                          digestDay: 0,
+                        }),
+                        language: lang,
+                      } as UserSettings["preferences"],
+                    })
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t('general.uiLanguage.hint', "The language used for MyLifeDB's interface. Empty follows your browser/system.")}
+                </p>
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">{t('general.logLevel.label', 'Log Level')}</label>
