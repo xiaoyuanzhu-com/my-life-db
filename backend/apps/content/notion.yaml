@@ -3,3 +3,5 @@ name: Notion
 category: notes
 website: https://www.notion.so
 description: All-in-one workspace for notes, docs, and databases.
+import_prompt: |
+  Help me import my Notion workspace into MyLifeDB using the Notion API. First walk me through creating an internal integration and getting the API token, then sharing the pages I want to import with the integration. Once that's done, fetch the pages and convert them to markdown into a sensible folder layout under my data root.

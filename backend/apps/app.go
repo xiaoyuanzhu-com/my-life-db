@@ -3,13 +3,19 @@ package apps
 
 // App is the public registry entry for a supported external app.
 // Registry is pure app metadata; all import-specific knowledge lives in the doc.
+//
+// ImportPrompt, when non-empty, signals that this app supports agent-driven
+// import (e.g. via a public API). The frontend surfaces a "Start import"
+// button that seeds a new agent session with this prompt. Apps without an
+// ImportPrompt are manual-export only.
 type App struct {
-	ID          string `yaml:"id" json:"id"`
-	Name        string `yaml:"name" json:"name"`
-	Category    string `yaml:"category" json:"category"`
-	Website     string `yaml:"website,omitempty" json:"website,omitempty"`
-	Description string `yaml:"description,omitempty" json:"description,omitempty"`
-	Icon        string `yaml:"icon,omitempty" json:"icon,omitempty"`
+	ID           string `yaml:"id" json:"id"`
+	Name         string `yaml:"name" json:"name"`
+	Category     string `yaml:"category" json:"category"`
+	Website      string `yaml:"website,omitempty" json:"website,omitempty"`
+	Description  string `yaml:"description,omitempty" json:"description,omitempty"`
+	Icon         string `yaml:"icon,omitempty" json:"icon,omitempty"`
+	ImportPrompt string `yaml:"import_prompt,omitempty" json:"importPrompt,omitempty"`
 }
 
 // AppDetail extends App with the rendered doc markdown (if present).

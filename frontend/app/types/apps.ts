@@ -4,7 +4,11 @@ export interface App {
   category: "social" | "chat" | "cloud" | "notes" | "health" | "media" | "finance" | "other";
   website?: string;
   description?: string;
-  icon?: string; // simple-icons slug; falls back to id when absent
+  icon?: string;
+  // Optional. Seed prompt for the "Start import" button in the import dialog.
+  // Set in YAML for apps that support agent-driven import (e.g. via a public
+  // API). Apps without it are manual-export only.
+  importPrompt?: string;
 }
 
 export interface AppDetail extends App {

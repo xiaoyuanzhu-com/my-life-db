@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router';
-import { siGithub, siDiscord } from 'simple-icons';
+import github from 'thesvg/github';
+import discord from 'thesvg/discord';
 import { Settings } from 'lucide-react';
 import { ThemeToggle } from './theme-toggle';
 
@@ -33,9 +34,10 @@ export function Footer() {
             className="flex items-center hover:text-foreground transition-colors"
             title="GitHub Repository"
           >
-            <svg className="h-3.5 w-3.5" role="img" viewBox="0 0 24 24" fill="currentColor">
-              <path d={siGithub.path} />
-            </svg>
+            <span
+              className="block h-3.5 w-3.5 [&_svg]:h-full [&_svg]:w-full [&_svg]:fill-current"
+              dangerouslySetInnerHTML={{ __html: github.variants.mono }}
+            />
           </a>
 
           <a
@@ -45,9 +47,10 @@ export function Footer() {
             className="flex items-center hover:text-foreground transition-colors"
             title="Join Discord"
           >
-            <svg className="h-3.5 w-3.5" role="img" viewBox="0 0 24 24" fill="currentColor">
-              <path d={siDiscord.path} />
-            </svg>
+            <span
+              className="block h-3.5 w-3.5 [&_svg]:h-full [&_svg]:w-full [&_svg]:fill-current"
+              dangerouslySetInnerHTML={{ __html: discord.variants.mono }}
+            />
           </a>
 
           <ThemeToggle />

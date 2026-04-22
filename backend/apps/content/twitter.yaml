@@ -4,3 +4,5 @@ category: social
 website: https://twitter.com
 description: Microblogging social network.
 icon: x
+import_prompt: |
+  Help me import my Twitter / X archive into MyLifeDB. Walk me through requesting a data export from twitter.com (Settings → Your account → Download an archive of your data), then once I have the .zip, help me extract the tweets, likes, and media into a sensible folder layout under my data root.

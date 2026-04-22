@@ -4,3 +4,5 @@ category: cloud
 website: https://drive.google.com
 description: Google's file storage and synchronization service.
 icon: googledrive
+import_prompt: |
+  Help me import files from my Google Drive into MyLifeDB. Walk me through setting up OAuth access (or a service account if simpler), then list what's in my Drive and propose a folder layout for mirroring it under my data root. Once approved, download the files into that layout.

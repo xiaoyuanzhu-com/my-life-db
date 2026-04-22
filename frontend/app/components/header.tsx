@@ -36,7 +36,7 @@ export function Header() {
           <nav className="hidden md:flex gap-6 items-center">
             {isAuthenticated && navLinks.map((link) => {
               const isActive = link.href === '/'
-                ? pathname === '/' || pathname.startsWith('/file/')
+                ? pathname === '/' || pathname.startsWith('/file/') || pathname.startsWith('/data/')
                 : pathname.startsWith(link.href);
               return (
                 <Link

@@ -10,6 +10,7 @@ import Root from "./root";
 
 // Route components
 import Data from "./routes/data";
+import DataApps from "./routes/data.apps";
 import FileView from "./routes/file.$";
 import Explore from "./routes/explore";
 import Agent from "./routes/agent";
@@ -23,6 +24,10 @@ export const routes: RouteObject[] = [
       {
         index: true,
         Component: Data,
+      },
+      {
+        path: "data/apps",
+        Component: DataApps,
       },
       {
         path: "file/*",
