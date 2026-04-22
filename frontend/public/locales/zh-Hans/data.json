@@ -1,0 +1,23 @@
+{
+  "page": {
+    "title": "数据",
+    "description": "浏览和管理你的个人数据文件。",
+    "signInHint": "请登录以开始。"
+  },
+  "search": {
+    "placeholder": "搜索文件…",
+    "searching": "搜索中…",
+    "failed": "搜索失败：{{error}}",
+    "noResults": "未找到结果"
+  },
+  "actions": {
+    "uploadFile": "上传文件",
+    "uploadFolder": "上传文件夹",
+    "newFolder": "新建文件夹",
+    "importFromApp": "从应用导入…"
+  },
+  "dropzone": {
+    "prompt": "拖放文件以上传",
+    "destination": "到 {{path}}"
+  }
+}
