@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -31,6 +32,14 @@ func (a *attachmentsHandler) UploadAttachment(c *gin.Context) {
 
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
+		// MaxBytesReader tripping mid-parse surfaces here — surface it as 413
+		// instead of a generic 400 so the client can distinguish "too big" from
+		// "bad request".
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "file exceeds 1 GiB limit"})
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing or invalid 'file' field: " + err.Error()})
 		return
 	}

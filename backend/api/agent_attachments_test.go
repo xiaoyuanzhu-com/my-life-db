@@ -147,6 +147,47 @@ func TestUploadAttachment_FilenameSanitized(t *testing.T) {
 	}
 }
 
+// TestUploadAttachment_TooLarge — when the request body exceeds the
+// MaxBytesReader cap, the error unwraps to *http.MaxBytesError and the
+// handler must return 413, not a generic 400.
+func TestUploadAttachment_TooLarge(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tmpDir := t.TempDir()
+	h := newAttachmentsHandler(tmpDir)
+
+	// Override the cap via a wrapped route that installs a tiny MaxBytesReader.
+	// We do this by calling UploadAttachment through a route that sets the
+	// reader to a small size before invocation. To avoid changing the handler
+	// API, we exercise the real path: send a body just under and just over
+	// using the default cap. But 1 GiB is impractical in a unit test, so
+	// instead we use httptest.NewRequest with ContentLength > cap and a body
+	// that streams through MaxBytesReader, which trips on the first read.
+	//
+	// Use ~2 MiB payload but install a short MaxBytesReader via a wrapper.
+	const testCap = 1024 // 1 KiB — tiny for test
+	body := &bytes.Buffer{}
+	mw := multipart.NewWriter(body)
+	fw, _ := mw.CreateFormFile("file", "big.bin")
+	fw.Write(bytes.Repeat([]byte("A"), testCap*4)) // 4 KiB -> exceeds testCap
+	mw.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/agent/attachments", body)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	w := httptest.NewRecorder()
+
+	r := gin.New()
+	r.POST("/api/agent/attachments", func(c *gin.Context) {
+		// Wrap with a tiny limit so we don't need a 1 GiB test body.
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, testCap)
+		h.UploadAttachment(c)
+	})
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413, body=%s", w.Code, w.Body.String())
+	}
+}
+
 func TestDeleteAttachment_Happy(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	tmpDir := t.TempDir()

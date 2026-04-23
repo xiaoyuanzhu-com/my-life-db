@@ -118,9 +118,14 @@ export function useAgentAttachments() {
   // staged-but-not-sent attachments so we don't leak tmp files when the
   // user navigates away with chips still in the strip.
   useEffect(() => {
+    // Capture ref objects into locals (the lint rule warns that `.current`
+    // can drift between mount and unmount — not an issue here since we
+    // only instantiate these refs once, but capturing makes intent explicit).
+    const aborters = abortersRef
+    const itemsR = itemsRef
     return () => {
-      abortersRef.current.forEach((ac) => ac.abort())
-      for (const it of itemsRef.current) {
+      aborters.current.forEach((ac) => ac.abort())
+      for (const it of itemsR.current) {
         if (it.state.status === "ready") {
           deleteAgentAttachment(it.state.attachment.uploadID).catch(() => {})
         }
