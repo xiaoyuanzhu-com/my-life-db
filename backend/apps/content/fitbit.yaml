@@ -1,0 +1,7 @@
+id: fitbit
+name: "Fitbit"
+category: health
+website: https://www.fitbit.com
+description: "Activity, sleep, heart rate, and weight tracking wearable."
+import_prompt: |
+  Help me import my Fitbit data. Walk me through requesting an export at https://www.fitbit.com/settings/data/export, wait for the email, then unpack the zip (JSON files per day) into imports/fitbit/.

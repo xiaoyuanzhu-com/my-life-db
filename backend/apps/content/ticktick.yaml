@@ -1,0 +1,7 @@
+id: ticktick
+name: "TickTick (滴答清单)"
+category: other
+website: https://ticktick.com
+description: "Task and habit manager."
+import_prompt: |
+  Help me export my TickTick data. Walk me through Settings → Import & Export → Export (CSV of tasks), and land it in imports/ticktick/.

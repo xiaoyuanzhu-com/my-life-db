@@ -1,0 +1,7 @@
+id: bilibili
+name: "Bilibili"
+category: social
+website: https://bilibili.com
+description: "Chinese video-sharing and culture community platform."
+import_prompt: |
+  Help me export my Bilibili account data — uploaded videos, watch history, favorites (收藏夹), and coins. Bilibili has no bulk export UI, so walk me through using the account API or a scraper script with my login cookies, saving everything into imports/bilibili/.

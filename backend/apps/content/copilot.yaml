@@ -1,0 +1,7 @@
+id: copilot
+name: "Microsoft Copilot"
+category: chat
+website: https://copilot.microsoft.com
+description: "Microsoft's conversational AI (formerly Bing Chat)."
+import_prompt: |
+  Help me export my Microsoft Copilot chat history. Walk me through the Microsoft privacy dashboard at account.microsoft.com/privacy → Download your data, and place the results in imports/copilot/.

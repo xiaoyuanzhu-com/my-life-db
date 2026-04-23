@@ -1,0 +1,7 @@
+id: whoop
+name: "Whoop"
+category: health
+website: https://www.whoop.com
+description: "Strain, recovery, sleep, and HRV-focused wearable."
+import_prompt: |
+  Help me import my Whoop data. Walk me through requesting a CSV export from join.whoop.com settings, then place the files under imports/whoop/.

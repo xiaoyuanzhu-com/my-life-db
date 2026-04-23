@@ -1,0 +1,7 @@
+id: evernote
+name: "Evernote"
+category: notes
+website: https://evernote.com
+description: "Long-running notebook/notes application."
+import_prompt: |
+  Help me import my Evernote notebooks. Walk me through exporting each notebook as .enex via Evernote's desktop app (File → Export), then drop the .enex files into imports/evernote/.

@@ -1,0 +1,7 @@
+id: reddit
+name: "Reddit"
+category: social
+website: https://reddit.com
+description: "Topic-based community discussion platform."
+import_prompt: |
+  Help me import my Reddit archive. Walk me through requesting a data export at https://www.reddit.com/settings/data-request, wait for the email, then unpack the CSVs (posts, comments, saved, upvoted) into imports/reddit/.

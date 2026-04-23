@@ -1,0 +1,7 @@
+id: apple-music
+name: "Apple Music"
+category: media
+website: https://music.apple.com
+description: "Apple's music + streaming service."
+import_prompt: |
+  Help me import my Apple Music data. Walk me through Apple's privacy request at privacy.apple.com — request 'Apple Media Services information' — wait up to 7 days, then unpack the zip into imports/apple-music/.

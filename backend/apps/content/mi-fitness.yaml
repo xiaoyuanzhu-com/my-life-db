@@ -1,0 +1,7 @@
+id: mi-fitness
+name: "Mi Fitness (Xiaomi)"
+category: health
+website: https://www.mi.com/global/mifitness
+description: "Data hub for Xiaomi Mi Bands, Amazfit watches, and Mijia scales."
+import_prompt: |
+  Help me import my Mi Fitness / Zepp Life data. Walk me through requesting an export from Mi Account (account.xiaomi.com) or pulling the Zepp Life backup, then unpack activity, heart-rate, and sleep data into imports/mi-fitness/.

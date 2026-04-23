@@ -1,0 +1,7 @@
+id: feishu
+name: "Feishu (飞书) / Lark"
+category: chat
+website: https://feishu.cn
+description: "ByteDance's workplace collaboration suite (Feishu in China, Lark outside)."
+import_prompt: |
+  Help me export my Feishu/Lark data. Workspace admins can use the Admin Console → Data export; for personal use, walk me through per-chat export and docs download, landing everything in imports/feishu/.

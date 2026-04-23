@@ -1,0 +1,7 @@
+id: bluesky
+name: "Bluesky"
+category: social
+website: https://bsky.app
+description: "Decentralized social network (AT Protocol)."
+import_prompt: |
+  Help me import my Bluesky data. Walk me through exporting my repo CAR file from bsky.app Settings → Advanced → Export my data, then drop the .car file in imports/bluesky/ and explain how to parse it.

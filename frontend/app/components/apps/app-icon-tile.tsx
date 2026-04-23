@@ -1,5 +1,6 @@
 import { HeartPulse } from "lucide-react";
 
+// Existing icons.
 import notion from "thesvg/notion";
 import obsidian from "thesvg/obsidian";
 import telegram from "thesvg/telegram";
@@ -7,15 +8,169 @@ import googleDrive from "thesvg/google-drive";
 import wechat from "thesvg/wechat";
 import x from "thesvg/x";
 
+// Health & fitness.
+import garmin from "thesvg/garmin";
+import strava from "thesvg/strava";
+import fitbit from "thesvg/fitbit";
+import peloton from "thesvg/peloton";
+import xiaomi from "thesvg/xiaomi";
+
+// Social.
+import instagram from "thesvg/instagram";
+import facebook from "thesvg/facebook";
+import linkedin from "thesvg/linkedin";
+import tiktok from "thesvg/tiktok";
+import xiaohongshu from "thesvg/xiaohongshu";
+import bilibili from "thesvg/bilibili";
+import douban from "thesvg/douban";
+import zhihu from "thesvg/zhihu";
+import reddit from "thesvg/reddit";
+import mastodon from "thesvg/mastodon";
+import bluesky from "thesvg/bluesky";
+
+// Chat.
+import whatsapp from "thesvg/whatsapp";
+import discord from "thesvg/discord";
+import slack from "thesvg/slack";
+import signal from "thesvg/signal";
+import imessage from "thesvg/imessage";
+import line from "thesvg/line";
+import qq from "thesvg/qq";
+
+// AI chats.
+import openai from "thesvg/openai";
+import claudeAi from "thesvg/claude-ai";
+import anthropic from "thesvg/anthropic";
+import gemini from "thesvg/gemini";
+import microsoftCopilot from "thesvg/microsoft-copilot";
+import perplexity from "thesvg/perplexity";
+import grok from "thesvg/grok";
+import deepseek from "thesvg/deepseek";
+import kimi from "thesvg/kimi";
+import doubao from "thesvg/doubao";
+
+// Notes.
+import googleKeep from "thesvg/google-keep";
+import evernote from "thesvg/evernote";
+import logseq from "thesvg/logseq";
+
+// Cloud.
+import dropbox from "thesvg/dropbox";
+import icloud from "thesvg/icloud";
+import microsoftOnedrive from "thesvg/microsoft-onedrive";
+import baidu from "thesvg/baidu";
+
+// Media.
+import spotify from "thesvg/spotify";
+import appleMusic from "thesvg/apple-music";
+import youtube from "thesvg/youtube";
+import netflix from "thesvg/netflix";
+import amazonKindle from "thesvg/amazon-kindle";
+import goodreads from "thesvg/goodreads";
+import letterboxd from "thesvg/letterboxd";
+
+// Productivity / other.
+import googleCalendar from "thesvg/google-calendar";
+import todoist from "thesvg/todoist";
+import ticktick from "thesvg/ticktick";
+import github from "thesvg/github";
+import gmail from "thesvg/gmail";
+import googlePhotos from "thesvg/google-photos";
+import googleMaps from "thesvg/google-maps";
+
+// Finance.
+import alipay from "thesvg/alipay";
+import venmo from "thesvg/venmo";
+import paypal from "thesvg/paypal";
+
 import type { App } from "~/types/apps";
 
 const SVG_BY_ID: Record<string, string> = {
+  // Existing.
   notion: notion.variants.default,
   obsidian: obsidian.variants.default,
   telegram: telegram.variants.default,
   "google-drive": googleDrive.variants.default,
   wechat: wechat.variants.default,
   twitter: x.variants.default,
+
+  // Health.
+  garmin: garmin.variants.default,
+  strava: strava.variants.default,
+  fitbit: fitbit.variants.default,
+  peloton: peloton.variants.default,
+  "mi-fitness": xiaomi.variants.default,
+
+  // Social.
+  instagram: instagram.variants.default,
+  facebook: facebook.variants.default,
+  linkedin: linkedin.variants.default,
+  tiktok: tiktok.variants.default,
+  xiaohongshu: xiaohongshu.variants.default,
+  bilibili: bilibili.variants.default,
+  douban: douban.variants.default,
+  zhihu: zhihu.variants.default,
+  reddit: reddit.variants.default,
+  mastodon: mastodon.variants.default,
+  bluesky: bluesky.variants.default,
+
+  // Chat.
+  whatsapp: whatsapp.variants.default,
+  discord: discord.variants.default,
+  slack: slack.variants.default,
+  signal: signal.variants.default,
+  imessage: imessage.variants.default,
+  line: line.variants.default,
+  qq: qq.variants.default,
+
+  // AI chats.
+  chatgpt: openai.variants.default,
+  claude: claudeAi.variants.default,
+  "claude-code": anthropic.variants.default,
+  gemini: gemini.variants.default,
+  copilot: microsoftCopilot.variants.default,
+  perplexity: perplexity.variants.default,
+  grok: grok.variants.default,
+  deepseek: deepseek.variants.default,
+  kimi: kimi.variants.default,
+  doubao: doubao.variants.default,
+
+  // Notes.
+  "google-keep": googleKeep.variants.default,
+  evernote: evernote.variants.default,
+  logseq: logseq.variants.default,
+
+  // Cloud.
+  dropbox: dropbox.variants.default,
+  "icloud-drive": icloud.variants.default,
+  onedrive: microsoftOnedrive.variants.default,
+  "baidu-netdisk": baidu.variants.default,
+  "google-takeout": googleDrive.variants.default,
+
+  // Media.
+  spotify: spotify.variants.default,
+  "apple-music": appleMusic.variants.default,
+  youtube: youtube.variants.default,
+  netflix: netflix.variants.default,
+  kindle: amazonKindle.variants.default,
+  goodreads: goodreads.variants.default,
+  letterboxd: letterboxd.variants.default,
+
+  // Productivity / other.
+  "google-calendar": googleCalendar.variants.default,
+  todoist: todoist.variants.default,
+  ticktick: ticktick.variants.default,
+  github: github.variants.default,
+  gmail: gmail.variants.default,
+  "google-photos": googlePhotos.variants.default,
+  "google-maps-timeline": googleMaps.variants.default,
+
+  // Finance.
+  alipay: alipay.variants.default,
+  venmo: venmo.variants.default,
+  paypal: paypal.variants.default,
+  // wechat-pay: reuse the WeChat logo.
+  "wechat-pay": wechat.variants.default,
 };
 
 // Prefix `id="x"` / `url(#x)` so multiple inlined SVGs with overlapping

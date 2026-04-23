@@ -1,0 +1,7 @@
+id: facebook
+name: "Facebook"
+category: social
+website: https://facebook.com
+description: "Social network owned by Meta."
+import_prompt: |
+  Help me import my Facebook archive. Walk me through requesting a data export at https://accountscenter.facebook.com/info_and_permissions/dyi/ (JSON format), then unpack the zip into imports/facebook/.

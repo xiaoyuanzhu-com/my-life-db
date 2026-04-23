@@ -1,0 +1,7 @@
+id: github
+name: "GitHub"
+category: other
+website: https://github.com
+description: "Code hosting + collaboration platform."
+import_prompt: |
+  Help me export my GitHub data. Walk me through Settings → Account → Export account data → Start export — includes repos, issues, gists. Additionally, use 'gh' CLI to mirror-clone each repo into imports/github/.

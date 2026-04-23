@@ -1,0 +1,7 @@
+id: signal
+name: "Signal"
+category: chat
+website: https://signal.org
+description: "End-to-end encrypted messenger."
+import_prompt: |
+  Help me back up my Signal chats. On Android: Settings → Chats → Chat backups → Create backup (saves an encrypted file to device). On iOS: there's no direct export — walk me through options like signal-cli or Transfer account. Land the backup file in imports/signal/.

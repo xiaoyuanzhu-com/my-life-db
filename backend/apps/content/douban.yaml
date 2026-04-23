@@ -1,0 +1,7 @@
+id: douban
+name: "Douban (豆瓣)"
+category: social
+website: https://douban.com
+description: "Chinese film, book, music, and social reviewing community."
+import_prompt: |
+  Help me scrape my Douban profile for movies watched, books read, and music liked (as well as my reviews). Douban has no export button, so use a scraper (with my login cookies) against book.douban.com, movie.douban.com, and music.douban.com, saving entries as JSON under imports/douban/.

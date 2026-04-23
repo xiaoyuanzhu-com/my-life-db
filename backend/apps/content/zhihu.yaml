@@ -1,0 +1,7 @@
+id: zhihu
+name: "Zhihu (知乎)"
+category: social
+website: https://zhihu.com
+description: "Chinese Q&A community (like Quora)."
+import_prompt: |
+  Help me export my Zhihu answers, articles, and saved collections. Zhihu has limited export; walk me through using the mobile API or scraping my profile with my login cookies, saving posts and metadata into imports/zhihu/.

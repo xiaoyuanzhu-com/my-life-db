@@ -1,0 +1,7 @@
+id: discord
+name: "Discord"
+category: chat
+website: https://discord.com
+description: "Chat platform for communities, gamers, and friend groups."
+import_prompt: |
+  Help me import my Discord archive. Walk me through requesting my data at User Settings → Privacy & Safety → Request all of my data, wait for the email (up to 30 days), then unpack the zip into imports/discord/.

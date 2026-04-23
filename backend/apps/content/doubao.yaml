@@ -1,0 +1,7 @@
+id: doubao
+name: "Doubao (豆包)"
+category: chat
+website: https://www.doubao.com
+description: "ByteDance's conversational AI assistant."
+import_prompt: |
+  Help me export my Doubao chat history. No official export — scrape doubao.com with my login cookies, saving conversations into imports/doubao/.

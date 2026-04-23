@@ -1,0 +1,7 @@
+id: qq
+name: "QQ (腾讯QQ)"
+category: chat
+website: https://im.qq.com
+description: "Long-running Chinese chat/IM platform by Tencent."
+import_prompt: |
+  Help me export my QQ chat history. On desktop QQ, messages are in a local file at %APPDATA%\\Tencent\\QQ\\Msg2.0.db (encrypted). Walk me through exporting per-chat .txt files via QQ → Message Manager, and land them in imports/qq/.

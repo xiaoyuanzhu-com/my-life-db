@@ -1,0 +1,7 @@
+id: kimi
+name: "Kimi (月之暗面)"
+category: chat
+website: https://kimi.moonshot.cn
+description: "Moonshot AI's long-context conversational assistant."
+import_prompt: |
+  Help me export my Kimi chat history. No official export — scrape kimi.moonshot.cn with my login cookies, saving conversations into imports/kimi/.

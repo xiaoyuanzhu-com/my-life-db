@@ -1,0 +1,7 @@
+id: todoist
+name: "Todoist"
+category: other
+website: https://todoist.com
+description: "Task management app."
+import_prompt: |
+  Help me back up my Todoist tasks. Walk me through Settings → Backups → download the latest ZIP (JSON snapshots), and land them in imports/todoist/.

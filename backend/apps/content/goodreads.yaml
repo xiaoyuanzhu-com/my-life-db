@@ -1,0 +1,7 @@
+id: goodreads
+name: "Goodreads"
+category: media
+website: https://goodreads.com
+description: "Social reading and book-tracking platform."
+import_prompt: |
+  Help me export my Goodreads library. Walk me through goodreads.com/review/import → Export Library (CSV). Place the CSV in imports/goodreads/.

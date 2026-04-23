@@ -1,0 +1,7 @@
+id: slack
+name: "Slack"
+category: chat
+website: https://slack.com
+description: "Workplace team chat."
+import_prompt: |
+  Help me import a Slack workspace export. Walk me through Workspace Admin → Import/Export Data → Export (admin-only), then unpack the zip into imports/slack/<workspace-name>/.

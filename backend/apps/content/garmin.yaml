@@ -1,0 +1,7 @@
+id: garmin
+name: "Garmin Connect"
+category: health
+website: https://connect.garmin.com
+description: "GPS watch data: activities, daily steps, heart rate, sleep, stress."
+import_prompt: |
+  Help me import my Garmin Connect archive. Walk me through requesting my data at https://www.garmin.com/account/datamanagement/exportdata, wait for the email, then once I have the zip, unpack activities (FIT/TCX/GPX), daily wellness summaries, and sleep data into imports/garmin/ preserving the original folder layout.

@@ -1,0 +1,7 @@
+id: apple-notes
+name: "Apple Notes"
+category: notes
+website: https://apple.com/notes
+description: "Apple's native notes app."
+import_prompt: |
+  Help me export Apple Notes. Options: (1) Apple Shortcuts with a 'Get all Notes' shortcut saving to disk, (2) open each folder → File → Export as PDF (per note), or (3) the on-disk SQLite database. Walk me through the cleanest option and land files in imports/apple-notes/.

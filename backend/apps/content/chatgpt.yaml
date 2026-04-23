@@ -1,0 +1,7 @@
+id: chatgpt
+name: "ChatGPT"
+category: chat
+website: https://chat.openai.com
+description: "OpenAI's conversational AI assistant."
+import_prompt: |
+  Help me import my ChatGPT history. Walk me through Settings → Data Controls → Export Data at chat.openai.com — you'll get an email with a zip (conversations.json + HTML). Unpack into imports/chatgpt/.

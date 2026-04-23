@@ -1,0 +1,7 @@
+id: dropbox
+name: "Dropbox"
+category: cloud
+website: https://dropbox.com
+description: "Cloud file storage and sync."
+import_prompt: |
+  Help me import my Dropbox files. The simplest path is to install the Dropbox desktop app and symlink the local Dropbox folder into imports/dropbox/; alternatively, walk me through a bulk download via dropbox.com or the API.

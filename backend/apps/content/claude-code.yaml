@@ -1,0 +1,7 @@
+id: claude-code
+name: "Claude Code"
+category: chat
+website: https://claude.ai/code
+description: "Anthropic's agentic CLI for coding — sessions live on your local filesystem."
+import_prompt: |
+  Help me import my Claude Code session history. Sessions are already on disk at ~/.claude/projects/. Walk me through symlinking or copying that folder into imports/claude-code/ so MyLifeDB can index it, and explain the JSONL format.

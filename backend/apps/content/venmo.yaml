@@ -1,0 +1,7 @@
+id: venmo
+name: "Venmo"
+category: finance
+website: https://venmo.com
+description: "US peer-to-peer payments app (PayPal-owned)."
+import_prompt: |
+  Help me export my Venmo history. Walk me through venmo.com/account/statement → download CSV per month/year, and land them in imports/venmo/.

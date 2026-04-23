@@ -1,0 +1,7 @@
+id: line
+name: "LINE"
+category: chat
+website: https://line.me
+description: "Japanese/Taiwanese/Thai messaging app."
+import_prompt: |
+  Help me back up LINE chats. LINE has no bulk export — each chat must be exported via the chat → Settings → Export chat history (emails as a .txt). Walk me through batching this and landing the results in imports/line/<contact>/.

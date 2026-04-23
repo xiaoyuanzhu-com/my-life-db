@@ -1,0 +1,7 @@
+id: whatsapp
+name: "WhatsApp"
+category: chat
+website: https://whatsapp.com
+description: "End-to-end encrypted messaging app."
+import_prompt: |
+  Help me import a WhatsApp chat. WhatsApp has no bulk export — you export one chat at a time from the chat's menu → More → Export chat (with or without media). Walk me through doing this on iOS/Android and landing the zip in imports/whatsapp/<contact>/.

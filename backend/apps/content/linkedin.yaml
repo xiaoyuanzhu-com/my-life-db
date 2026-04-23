@@ -1,0 +1,7 @@
+id: linkedin
+name: "LinkedIn"
+category: social
+website: https://linkedin.com
+description: "Professional network."
+import_prompt: |
+  Help me import my LinkedIn archive. Walk me through requesting a data download at https://linkedin.com/mypreferences/d/download-my-data, wait for both parts to arrive by email, then unpack the CSVs into imports/linkedin/.

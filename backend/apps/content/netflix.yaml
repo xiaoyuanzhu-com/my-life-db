@@ -1,0 +1,7 @@
+id: netflix
+name: "Netflix"
+category: media
+website: https://netflix.com
+description: "Streaming video platform."
+import_prompt: |
+  Help me import my Netflix history. Walk me through netflix.com/account/getmyinfo → 'Download your personal information', wait a few days for the email, then unpack the zip into imports/netflix/.

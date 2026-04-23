@@ -1,0 +1,7 @@
+id: kindle
+name: "Kindle"
+category: media
+website: https://amazon.com/kindle
+description: "Amazon's e-book reader and library."
+import_prompt: |
+  Help me import my Kindle highlights + reading history. Best path: connect Readwise (readwise.io) to auto-pull highlights, then export from Readwise. Alternative: manual export from read.amazon.com/notebook per book. Land files in imports/kindle/.

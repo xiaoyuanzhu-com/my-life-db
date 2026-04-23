@@ -1,0 +1,7 @@
+id: tiktok
+name: "TikTok"
+category: social
+website: https://tiktok.com
+description: "Short-form video platform."
+import_prompt: |
+  Help me import my TikTok archive. Walk me through requesting my data at https://www.tiktok.com/setting/download-your-data (pick JSON), wait for it to be ready, then unpack the zip into imports/tiktok/.

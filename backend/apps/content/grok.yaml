@@ -1,0 +1,7 @@
+id: grok
+name: "Grok"
+category: chat
+website: https://grok.com
+description: "xAI's conversational AI, integrated with X."
+import_prompt: |
+  Help me export my Grok conversations. Walk me through X's data export (Settings → Your account → Download an archive) which now includes Grok chats, and unpack into imports/grok/.

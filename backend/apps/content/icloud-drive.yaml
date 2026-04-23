@@ -1,0 +1,7 @@
+id: icloud-drive
+name: "iCloud Drive"
+category: cloud
+website: https://icloud.com
+description: "Apple's cloud file storage."
+import_prompt: |
+  Help me import my iCloud Drive files. On macOS, iCloud Drive lives at ~/Library/Mobile Documents/com~apple~CloudDocs/ — walk me through symlinking that into imports/icloud-drive/, or doing a bulk selective download from icloud.com.

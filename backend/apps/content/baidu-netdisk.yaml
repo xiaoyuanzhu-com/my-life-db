@@ -1,0 +1,7 @@
+id: baidu-netdisk
+name: "Baidu Netdisk (百度网盘)"
+category: cloud
+website: https://pan.baidu.com
+description: "Chinese cloud storage service."
+import_prompt: |
+  Help me import my Baidu Netdisk files. Baidu throttles free downloads heavily — walk me through using the desktop client for selective sync into imports/baidu-netdisk/, or discuss whether to pay for premium for a faster bulk pull.

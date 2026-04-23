@@ -1,0 +1,7 @@
+id: youtube
+name: "YouTube"
+category: media
+website: https://youtube.com
+description: "Google's video platform."
+import_prompt: |
+  Help me import my YouTube data (watch history, subscriptions, liked videos, playlists, uploaded videos). Walk me through Google Takeout at takeout.google.com → select YouTube → choose JSON + media options. Unpack into imports/youtube/.

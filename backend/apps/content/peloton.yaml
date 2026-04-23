@@ -1,0 +1,7 @@
+id: peloton
+name: "Peloton"
+category: health
+website: https://www.onepeloton.com
+description: "Connected bike / tread workout platform."
+import_prompt: |
+  Help me import my Peloton workout history. Walk me through downloading the CSV from members.onepeloton.com/preferences/workouts (if available) or using the API via a personal script, then place files under imports/peloton/.

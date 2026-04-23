@@ -1,0 +1,7 @@
+id: claude
+name: "Claude"
+category: chat
+website: https://claude.ai
+description: "Anthropic's conversational AI assistant."
+import_prompt: |
+  Help me import my Claude.ai conversation history. Walk me through Settings → Privacy → Export Data at claude.ai — you'll get an email with JSON. Unpack into imports/claude/.

@@ -1,0 +1,7 @@
+id: strava
+name: "Strava"
+category: health
+website: https://www.strava.com
+description: "Social running/cycling platform with GPS activity tracking."
+import_prompt: |
+  Help me import my Strava archive. Walk me through requesting a bulk export at https://www.strava.com/athlete/delete_your_account (click 'Get Started' under 'Download Request') — the export arrives by email as a zip. Once downloaded, unpack activities (GPX/FIT/TCX) and the activities.csv index into imports/strava/.

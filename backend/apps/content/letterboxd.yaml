@@ -1,0 +1,7 @@
+id: letterboxd
+name: "Letterboxd"
+category: media
+website: https://letterboxd.com
+description: "Social movie-tracking platform."
+import_prompt: |
+  Help me export my Letterboxd diary. Walk me through Settings → Data → Export your data (CSV), then drop the zip into imports/letterboxd/.

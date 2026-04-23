@@ -1,0 +1,7 @@
+id: mastodon
+name: "Mastodon"
+category: social
+website: https://joinmastodon.org
+description: "Decentralized social network (ActivityPub)."
+import_prompt: |
+  Help me import my Mastodon archive. Walk me through Settings → Import and export → Request your archive on my home instance, wait for it to generate, then unpack the tarball into imports/mastodon/.

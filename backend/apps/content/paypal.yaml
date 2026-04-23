@@ -1,0 +1,7 @@
+id: paypal
+name: "PayPal"
+category: finance
+website: https://paypal.com
+description: "Online payments service."
+import_prompt: |
+  Help me export my PayPal activity. Walk me through paypal.com/activity → Download (CSV for a chosen date range), landing files in imports/paypal/.

@@ -1,0 +1,7 @@
+id: gemini
+name: "Gemini"
+category: chat
+website: https://gemini.google.com
+description: "Google's conversational AI."
+import_prompt: |
+  Help me import my Gemini conversations. Walk me through Google Takeout at takeout.google.com → select 'Gemini Apps', generate and download the export, then unpack into imports/gemini/.

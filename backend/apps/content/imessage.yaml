@@ -1,0 +1,7 @@
+id: imessage
+name: "iMessage"
+category: chat
+website: https://support.apple.com/messages
+description: "Apple's native messaging platform."
+import_prompt: |
+  Help me import my iMessage history from macOS. On Mac, messages live at ~/Library/Messages/chat.db (SQLite). Walk me through copying this file (and Attachments/) into imports/imessage/ and explain what the schema looks like.

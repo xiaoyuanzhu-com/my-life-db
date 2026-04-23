@@ -1,0 +1,7 @@
+id: spotify
+name: "Spotify"
+category: media
+website: https://spotify.com
+description: "Music + podcast streaming platform."
+import_prompt: |
+  Help me import my Spotify listening history. Walk me through requesting my data at spotify.com/account/privacy (choose 'Extended streaming history' for full history — takes up to 30 days). Unpack the resulting zip into imports/spotify/.

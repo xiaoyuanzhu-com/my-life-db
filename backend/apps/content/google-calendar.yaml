@@ -1,0 +1,7 @@
+id: google-calendar
+name: "Google Calendar"
+category: other
+website: https://calendar.google.com
+description: "Google's calendar service."
+import_prompt: |
+  Help me export my Google Calendar events. Walk me through Google Takeout at takeout.google.com → select Calendar → export ICS. Place the .ics files into imports/google-calendar/.

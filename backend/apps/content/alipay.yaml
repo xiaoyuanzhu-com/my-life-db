@@ -1,0 +1,7 @@
+id: alipay
+name: "Alipay (支付宝)"
+category: finance
+website: https://alipay.com
+description: "Dominant mobile payment + finance app in China."
+import_prompt: |
+  Help me export my Alipay yearly bill. On the Alipay mobile app: 我的 → 账单 → right menu → 开具交易流水证明 → CSV/Excel for a chosen range (yearly is typical). Email the CSV to myself and land it in imports/alipay/.

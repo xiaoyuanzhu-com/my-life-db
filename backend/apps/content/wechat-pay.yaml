@@ -1,0 +1,7 @@
+id: wechat-pay
+name: "WeChat Pay (微信支付)"
+category: finance
+website: https://pay.weixin.qq.com
+description: "Tencent's mobile payment system built into WeChat."
+import_prompt: |
+  Help me export my WeChat Pay transaction history. On WeChat mobile: Me → Services → Wallet → Bill → top-right → 下载账单 → pick range, get the CSV by email. Land it in imports/wechat-pay/.

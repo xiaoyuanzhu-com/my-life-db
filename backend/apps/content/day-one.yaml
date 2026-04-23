@@ -1,0 +1,7 @@
+id: day-one
+name: "Day One"
+category: notes
+website: https://dayoneapp.com
+description: "Journaling app for Apple/Android with rich metadata."
+import_prompt: |
+  Help me import my Day One journals. Walk me through the app: Settings → Import & Export → Export → choose JSON (keeps metadata and media), then unpack into imports/day-one/.

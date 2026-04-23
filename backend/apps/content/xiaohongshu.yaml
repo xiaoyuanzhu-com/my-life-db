@@ -1,0 +1,7 @@
+id: xiaohongshu
+name: "Xiaohongshu (小红书)"
+category: social
+website: https://www.xiaohongshu.com
+description: "Chinese lifestyle content + social shopping network (a.k.a. RED / REDnote)."
+import_prompt: |
+  Help me import my Xiaohongshu (小红书) posts and saves. Xiaohongshu has no official data export — walk me through scraping my own profile with an agent script (Playwright or the mobile API), and save notes, images, and liked/saved posts into imports/xiaohongshu/.

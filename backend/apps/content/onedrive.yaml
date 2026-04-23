@@ -1,0 +1,7 @@
+id: onedrive
+name: "OneDrive"
+category: cloud
+website: https://onedrive.live.com
+description: "Microsoft's cloud file storage."
+import_prompt: |
+  Help me import my OneDrive files. The simplest path is to install the OneDrive desktop app and symlink the local folder into imports/onedrive/; otherwise walk me through bulk selective download.

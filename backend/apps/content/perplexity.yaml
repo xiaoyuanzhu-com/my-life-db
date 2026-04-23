@@ -1,0 +1,7 @@
+id: perplexity
+name: "Perplexity"
+category: chat
+website: https://perplexity.ai
+description: "AI-powered search engine with conversational answers."
+import_prompt: |
+  Help me export my Perplexity history. Perplexity has no official bulk export — walk me through scraping my Library (perplexity.ai/library) with an agent using my login cookies, saving threads as JSON into imports/perplexity/.

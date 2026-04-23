@@ -1,0 +1,7 @@
+id: myfitnesspal
+name: "MyFitnessPal"
+category: health
+website: https://www.myfitnesspal.com
+description: "Food and nutrition logging app."
+import_prompt: |
+  Help me import my MyFitnessPal food logs. Walk me through requesting a data export from myfitnesspal.com/account/privacy-center, then unpack the zip into imports/myfitnesspal/.

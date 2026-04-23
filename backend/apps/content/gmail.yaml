@@ -1,0 +1,7 @@
+id: gmail
+name: "Gmail"
+category: other
+website: https://mail.google.com
+description: "Google's email service."
+import_prompt: |
+  Help me export my Gmail. Walk me through Google Takeout at takeout.google.com → select Mail → MBOX format. Place the resulting .mbox file(s) into imports/gmail/.

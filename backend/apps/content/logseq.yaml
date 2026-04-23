@@ -1,0 +1,7 @@
+id: logseq
+name: "Logseq"
+category: notes
+website: https://logseq.com
+description: "Local-first outliner and knowledge base."
+import_prompt: |
+  Help me import my Logseq graph. The graph is already markdown on disk. Walk me through copying or symlinking the graph folder into imports/logseq/.

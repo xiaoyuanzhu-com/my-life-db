@@ -1,0 +1,7 @@
+id: instagram
+name: "Instagram"
+category: social
+website: https://instagram.com
+description: "Photo and video social network owned by Meta."
+import_prompt: |
+  Help me import my Instagram archive. Walk me through requesting a data export at https://accountscenter.instagram.com/info_and_permissions/dyi/ (choose JSON format for easiest parsing), wait for the email, then unpack the zip into imports/instagram/ preserving Meta's folder layout.

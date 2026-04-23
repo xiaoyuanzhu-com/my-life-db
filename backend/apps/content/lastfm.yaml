@@ -1,0 +1,7 @@
+id: lastfm
+name: "Last.fm"
+category: media
+website: https://last.fm
+description: "Music-scrobbling and listening-history service."
+import_prompt: |
+  Help me export my Last.fm scrobbles. Walk me through using the Last.fm API with my username (or a third-party tool like lastfm-to-csv) to pull every scrobble as CSV/JSON into imports/lastfm/.

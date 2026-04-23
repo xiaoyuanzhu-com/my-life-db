@@ -1,0 +1,7 @@
+id: google-photos
+name: "Google Photos"
+category: other
+website: https://photos.google.com
+description: "Google's photo + video storage."
+import_prompt: |
+  Help me export my Google Photos. Walk me through Google Takeout at takeout.google.com → Photos → choose one album or all. Unpack (may be multiple zips) into imports/google-photos/ and note the JSON sidecars for metadata.

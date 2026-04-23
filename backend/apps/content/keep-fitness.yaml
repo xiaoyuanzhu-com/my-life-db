@@ -1,0 +1,7 @@
+id: keep-fitness
+name: "Keep 健身"
+category: health
+website: https://keep.com
+description: "Chinese fitness and workout-tracking app."
+import_prompt: |
+  Help me import my Keep (keep.com) workout history. Keep has no official export — walk me through scraping my profile with an agent script (e.g. via the app's internal API or mobile web), and save runs, workouts, and body data as JSON under imports/keep-fitness/.

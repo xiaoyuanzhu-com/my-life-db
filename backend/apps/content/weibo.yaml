@@ -1,0 +1,7 @@
+id: weibo
+name: "Weibo (微博)"
+category: social
+website: https://weibo.com
+description: "Chinese microblogging network."
+import_prompt: |
+  Help me export my Weibo content. Weibo allows exporting via account settings in some clients; otherwise walk me through scraping my own timeline via weibo.com with an agent script, saving posts and media into imports/weibo/.
