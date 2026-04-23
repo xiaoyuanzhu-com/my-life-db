@@ -28,6 +28,7 @@ import zhihu from "thesvg/zhihu";
 import reddit from "thesvg/reddit";
 import mastodon from "thesvg/mastodon";
 import bluesky from "thesvg/bluesky";
+import sinaWeibo from "thesvg/sina-weibo";
 
 // Chat.
 import whatsapp from "thesvg/whatsapp";
@@ -37,6 +38,7 @@ import signal from "thesvg/signal";
 import imessage from "thesvg/imessage";
 import line from "thesvg/line";
 import qq from "thesvg/qq";
+import bytedance from "thesvg/bytedance";
 
 // AI chats.
 import openaiChatgpt from "thesvg/openai-chatgpt";
@@ -45,7 +47,7 @@ import claudeCode from "thesvg/claude-code";
 import gemini from "thesvg/gemini";
 import microsoftCopilot from "thesvg/microsoft-copilot";
 import perplexity from "thesvg/perplexity";
-import grok from "thesvg/grok";
+import grokXai from "thesvg/grok-xai";
 import deepseek from "thesvg/deepseek";
 import kimi from "thesvg/kimi";
 import doubao from "thesvg/doubao";
@@ -110,6 +112,7 @@ const SVG_BY_ID: Record<string, string> = {
   reddit: reddit.variants.default,
   mastodon: mastodon.variants.default,
   bluesky: bluesky.variants.default,
+  weibo: sinaWeibo.variants.default,
 
   // Chat.
   whatsapp: whatsapp.variants.default,
@@ -119,6 +122,7 @@ const SVG_BY_ID: Record<string, string> = {
   imessage: imessage.variants.default,
   line: line.variants.default,
   qq: qq.variants.default,
+  feishu: bytedance.variants.default,
 
   // AI chats.
   chatgpt: openaiChatgpt.variants.default,
@@ -127,7 +131,7 @@ const SVG_BY_ID: Record<string, string> = {
   gemini: gemini.variants.default,
   copilot: microsoftCopilot.variants.default,
   perplexity: perplexity.variants.default,
-  grok: grok.variants.default,
+  grok: grokXai.variants.default,
   deepseek: deepseek.variants.default,
   kimi: kimi.variants.default,
   doubao: doubao.variants.default,
