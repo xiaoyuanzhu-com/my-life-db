@@ -41,7 +41,7 @@ import qq from "thesvg/qq";
 // AI chats.
 import openaiChatgpt from "thesvg/openai-chatgpt";
 import claudeAi from "thesvg/claude-ai";
-import anthropic from "thesvg/anthropic";
+import claudeCode from "thesvg/claude-code";
 import gemini from "thesvg/gemini";
 import microsoftCopilot from "thesvg/microsoft-copilot";
 import perplexity from "thesvg/perplexity";
@@ -123,7 +123,7 @@ const SVG_BY_ID: Record<string, string> = {
   // AI chats.
   chatgpt: openaiChatgpt.variants.default,
   claude: claudeAi.variants.default,
-  "claude-code": anthropic.variants.default,
+  "claude-code": claudeCode.variants.default,
   gemini: gemini.variants.default,
   copilot: microsoftCopilot.variants.default,
   perplexity: perplexity.variants.default,
@@ -154,7 +154,7 @@ const SVG_BY_ID: Record<string, string> = {
   // Productivity / other.
   todoist: todoist.variants.default,
   ticktick: ticktick.variants.default,
-  github: github.variants.default,
+  github: github.variants.mono,
 
   // Finance.
   alipay: alipay.variants.default,
@@ -164,12 +164,17 @@ const SVG_BY_ID: Record<string, string> = {
   "wechat-pay": wechat.variants.default,
 };
 
-// Prefix `id="x"` / `url(#x)` so multiple inlined SVGs with overlapping
-// gradient ids don't collide (telegram and obsidian both ship `id="a"`).
+// Prefix `id="x"` / `url(#x)` / `href="#x"` / `xlink:href="#x"` so multiple
+// inlined SVGs with overlapping gradient ids don't collide (telegram and
+// obsidian both ship `id="a"`; google and netflix chain gradients via
+// xlink:href). Handle href and xlink:href in a single pass so we don't
+// double-scope (an earlier two-pass version rewrote `xlink:href="#a"` into
+// `xlink:href="#scope-scope-a"` via word-boundary overlap).
 function scopeSvgIds(svg: string, scope: string): string {
   return svg
     .replace(/id="([^"]+)"/g, `id="${scope}-$1"`)
-    .replace(/url\(#([^)]+)\)/g, `url(#${scope}-$1)`);
+    .replace(/url\(#([^)]+)\)/g, `url(#${scope}-$1)`)
+    .replace(/\b(xlink:href|href)="#([^"]+)"/g, `$1="#${scope}-$2"`);
 }
 
 export function AppIconTile({ app }: { app: App }) {
