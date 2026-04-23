@@ -41,6 +41,9 @@ import { SlashCommandPopover } from "~/components/agent/slash-command-popover";
 import { FileTagPopover } from "~/components/agent/file-tag-popover";
 import { ChangedFilesPopover } from "~/components/agent/changed-files-popover";
 import { useAgentContext } from "~/components/agent/agent-context";
+import { AttachmentStrip } from "~/components/agent/attachment-strip";
+import { useAgentAttachments } from "~/hooks/use-agent-attachments";
+import { Paperclip } from "lucide-react";
 
 // Create the AssistantMessage with our ACP tool renderers baked in
 const AcpAssistantMessage = createAssistantMessage(acpToolsConfig);
@@ -224,6 +227,37 @@ const StopButton: FC = () => {
     >
       <SquareIcon className="aui-composer-cancel-icon size-3 fill-current" />
     </Button>
+  );
+};
+
+/**
+ * SendButton — composer send button used in place of ComposerPrimitive.Send
+ * so that we can intercept clicks to append staged attachment @-paths before
+ * calling composerRuntime.send(). Also disables/re-enables based on the
+ * normal "empty composer" rule and the "uploads still pending" gate.
+ */
+const SendButton: FC<{
+  disabled: boolean;
+  hasAttachments: boolean;
+  tooltip: string;
+  onSend: () => void;
+}> = ({ disabled, hasAttachments, tooltip, onSend }) => {
+  const composerIsEmpty = useAuiState((s) => s.composer.isEmpty);
+  const canSend = (!composerIsEmpty || hasAttachments) && !disabled;
+  return (
+    <TooltipIconButton
+      tooltip={tooltip}
+      side="bottom"
+      type="button"
+      variant="default"
+      size="icon"
+      className="aui-composer-send size-8 rounded-full"
+      aria-label="Send message"
+      disabled={!canSend}
+      onClick={onSend}
+    >
+      <ArrowUpIcon className="aui-composer-send-icon size-4" />
+    </TooltipIconButton>
   );
 };
 
@@ -435,8 +469,10 @@ const ComposerOptionsMenu: FC = () => {
 
 const Composer: FC = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const hasTouch = useHasTouch();
   const [filesPopoverOpen, setFilesPopoverOpen] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
   const {
     connected,
     workingDir, onWorkingDirChange,
@@ -449,6 +485,28 @@ const Composer: FC = () => {
   const hasSession = useAuiState((s) => !s.thread.isEmpty);
   const threadIsRunning = useAuiState((s) => s.thread.isRunning);
   const composerIsEmpty = useAuiState((s) => s.composer.isEmpty);
+  const composerRuntime = useComposerRuntime();
+  const attachments = useAgentAttachments();
+
+  const handleFilesPicked = (files: FileList | File[] | null) => {
+    if (!files) return;
+    const arr = Array.from(files);
+    if (arr.length === 0) return;
+    attachments.addFiles(arr);
+  };
+
+  const handleSend = () => {
+    if (attachments.hasPending) return;
+    const ready = attachments.readyAttachments;
+    if (ready.length > 0) {
+      const current = composerRuntime.getState().text ?? "";
+      const refs = ready.map((a) => `@${a.absolutePath}`).join(" ");
+      const sep = current.length === 0 || current.endsWith("\n") ? "" : "\n\n";
+      composerRuntime.setText(current + sep + refs);
+    }
+    composerRuntime.send();
+    if (ready.length > 0) attachments.clear();
+  };
   const lastMsgStatus = useAuiState((s) => {
     const msgs = s.thread.messages;
     const last = msgs[msgs.length - 1];
@@ -467,13 +525,46 @@ const Composer: FC = () => {
   }, [threadIsRunning, composerIsEmpty, connected, sessionId, lastMsgStatus]);
 
   return (
-    <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
+    <ComposerPrimitive.Root
+      className="aui-composer-root relative flex w-full flex-col"
+      onDragOver={(e) => {
+        if (e.dataTransfer?.types?.includes("Files")) {
+          e.preventDefault();
+          setIsDragOver(true);
+        }
+      }}
+      onDragLeave={(e) => {
+        // Only clear when leaving the root container, not child elements
+        if (e.currentTarget === e.target) setIsDragOver(false);
+      }}
+      onDrop={(e) => {
+        if (e.dataTransfer?.files?.length) {
+          e.preventDefault();
+          setIsDragOver(false);
+          handleFilesPicked(e.dataTransfer.files);
+        }
+      }}
+    >
       <DraftPersistenceSync />
       <SlashCommandPopover commands={sessionCommands} textareaRef={textareaRef} />
       <FileTagPopover textareaRef={textareaRef} workingDir={workingDir} />
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="sr-only"
+        onChange={(e) => {
+          handleFilesPicked(e.target.files);
+          // Reset so selecting the same file again still fires onChange
+          e.target.value = "";
+        }}
+      />
       <div
         data-slot="composer-shell"
-        className="flex w-full flex-col rounded-(--composer-radius) border bg-background overflow-hidden"
+        className={
+          "flex w-full flex-col rounded-(--composer-radius) border bg-background overflow-hidden " +
+          (isDragOver ? "ring-2 ring-primary/60" : "")
+        }
       >
         {pendingPermissions.size > 0 && (
           <div>
@@ -490,6 +581,7 @@ const Composer: FC = () => {
           </div>
         )}
         <ConnectionStatusBanner connected={connected} hasSession={hasSession} />
+        <AttachmentStrip items={attachments.items} onRemove={attachments.remove} />
         <div className="flex flex-col gap-2 p-(--composer-padding)">
           <ComposerPrimitive.Input
             ref={textareaRef}
@@ -502,6 +594,18 @@ const Composer: FC = () => {
           <div className="aui-composer-action-wrapper relative flex items-center justify-between">
             <div className="flex items-center gap-1">
               <ComposerOptionsMenu />
+              <TooltipIconButton
+                tooltip="Attach files"
+                side="bottom"
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                aria-label="Attach files"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Paperclip className="size-4" />
+              </TooltipIconButton>
               {workingDir !== undefined && (
                 <>
                   <FolderPicker
@@ -523,19 +627,16 @@ const Composer: FC = () => {
             </div>
             <div className="flex items-center gap-1">
               <AuiIf condition={(s) => !s.thread.isRunning}>
-                <ComposerPrimitive.Send asChild>
-                  <TooltipIconButton
-                    tooltip="Send message"
-                    side="bottom"
-                    type="button"
-                    variant="default"
-                    size="icon"
-                    className="aui-composer-send size-8 rounded-full"
-                    aria-label="Send message"
-                  >
-                    <ArrowUpIcon className="aui-composer-send-icon size-4" />
-                  </TooltipIconButton>
-                </ComposerPrimitive.Send>
+                <SendButton
+                  disabled={attachments.hasPending}
+                  hasAttachments={attachments.readyAttachments.length > 0}
+                  tooltip={
+                    attachments.hasPending
+                      ? "Waiting for uploads"
+                      : "Send message"
+                  }
+                  onSend={handleSend}
+                />
               </AuiIf>
               <AuiIf condition={(s) => s.thread.isRunning}>
                 <StopButton />
