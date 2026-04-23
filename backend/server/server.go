@@ -643,6 +643,9 @@ func (s *Server) Start() error {
 		log.Error().Err(err).Msg("failed to start agent runner")
 	}
 
+	// Start background sweep of stale agent-attachment staging dirs.
+	go s.runAttachmentsJanitor()
+
 	// Create HTTP server
 	s.http = &http.Server{
 		Addr:     fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port),
@@ -717,6 +720,33 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 	log.Info().Msg("server shutdown complete")
 	return nil
+}
+
+// runAttachmentsJanitor runs hourly while the server is up, sweeping
+// APP_DATA_DIR/tmp/agent-uploads/ for entries older than 30 days.
+func (s *Server) runAttachmentsJanitor() {
+	const (
+		interval = 1 * time.Hour
+		maxAge   = 30 * 24 * time.Hour
+	)
+
+	// Run once at startup so a long-stopped server still cleans up.
+	if _, err := SweepAgentAttachments(s.cfg.AppDataDir, maxAge); err != nil {
+		log.Error().Err(err).Msg("agent-attachments: initial sweep failed")
+	}
+
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-s.shutdownCtx.Done():
+			return
+		case <-t.C:
+			if _, err := SweepAgentAttachments(s.cfg.AppDataDir, maxAge); err != nil {
+				log.Error().Err(err).Msg("agent-attachments: sweep failed")
+			}
+		}
+	}
 }
 
 // Component accessors for API handlers
