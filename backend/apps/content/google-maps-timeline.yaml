@@ -1,7 +1,0 @@
-id: google-maps-timeline
-name: "Google Maps Timeline"
-category: other
-website: https://maps.google.com
-description: "Google's personal location history."
-import_prompt: |
-  Help me export my Google Maps Timeline. Walk me through Google Takeout → 'Location History (Timeline)' → JSON format. Note that timeline data moved on-device in 2024 — walk me through the iOS/Android export option as well. Land files in imports/google-maps-timeline/.

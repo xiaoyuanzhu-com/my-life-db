@@ -1,0 +1,7 @@
+id: google
+name: Google
+category: cloud
+website: https://takeout.google.com
+description: "All Google services — Drive, Gmail, Photos, Calendar, YouTube, Maps, Keep, and more — exported via Google Takeout."
+import_prompt: |
+  Help me export my Google account via Takeout at takeout.google.com. Walk me through selecting which services to include (Drive, Gmail, Photos, Calendar, YouTube, Maps, Keep, etc.), then placing the resulting zips under imports/google/ (I can split into per-service folders later).

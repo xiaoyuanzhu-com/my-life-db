@@ -1,7 +1,0 @@
-id: google-keep
-name: "Google Keep"
-category: notes
-website: https://keep.google.com
-description: "Google's lightweight notes + checklists app."
-import_prompt: |
-  Help me import my Google Keep notes. Walk me through Google Takeout at takeout.google.com → select only 'Keep' → Export. Unpack the zip (HTML + JSON per note) into imports/google-keep/.

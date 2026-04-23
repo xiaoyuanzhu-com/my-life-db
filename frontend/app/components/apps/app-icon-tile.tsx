@@ -1,10 +1,11 @@
-import { HeartPulse } from "lucide-react";
+// Raw SVG assets (bundled via Vite ?raw).
+import appleHealthSvg from "~/assets/apple-health.svg?raw";
 
 // Existing icons.
 import notion from "thesvg/notion";
 import obsidian from "thesvg/obsidian";
 import telegram from "thesvg/telegram";
-import googleDrive from "thesvg/google-drive";
+import google from "thesvg/google";
 import wechat from "thesvg/wechat";
 import x from "thesvg/x";
 
@@ -38,7 +39,7 @@ import line from "thesvg/line";
 import qq from "thesvg/qq";
 
 // AI chats.
-import openai from "thesvg/openai";
+import openaiChatgpt from "thesvg/openai-chatgpt";
 import claudeAi from "thesvg/claude-ai";
 import anthropic from "thesvg/anthropic";
 import gemini from "thesvg/gemini";
@@ -50,7 +51,6 @@ import kimi from "thesvg/kimi";
 import doubao from "thesvg/doubao";
 
 // Notes.
-import googleKeep from "thesvg/google-keep";
 import evernote from "thesvg/evernote";
 import logseq from "thesvg/logseq";
 
@@ -70,13 +70,9 @@ import goodreads from "thesvg/goodreads";
 import letterboxd from "thesvg/letterboxd";
 
 // Productivity / other.
-import googleCalendar from "thesvg/google-calendar";
 import todoist from "thesvg/todoist";
 import ticktick from "thesvg/ticktick";
 import github from "thesvg/github";
-import gmail from "thesvg/gmail";
-import googlePhotos from "thesvg/google-photos";
-import googleMaps from "thesvg/google-maps";
 
 // Finance.
 import alipay from "thesvg/alipay";
@@ -90,11 +86,12 @@ const SVG_BY_ID: Record<string, string> = {
   notion: notion.variants.default,
   obsidian: obsidian.variants.default,
   telegram: telegram.variants.default,
-  "google-drive": googleDrive.variants.default,
+  google: google.variants.default,
   wechat: wechat.variants.default,
   twitter: x.variants.default,
 
   // Health.
+  "apple-health": appleHealthSvg,
   garmin: garmin.variants.default,
   strava: strava.variants.default,
   fitbit: fitbit.variants.default,
@@ -124,7 +121,7 @@ const SVG_BY_ID: Record<string, string> = {
   qq: qq.variants.default,
 
   // AI chats.
-  chatgpt: openai.variants.default,
+  chatgpt: openaiChatgpt.variants.default,
   claude: claudeAi.variants.default,
   "claude-code": anthropic.variants.default,
   gemini: gemini.variants.default,
@@ -136,7 +133,6 @@ const SVG_BY_ID: Record<string, string> = {
   doubao: doubao.variants.default,
 
   // Notes.
-  "google-keep": googleKeep.variants.default,
   evernote: evernote.variants.default,
   logseq: logseq.variants.default,
 
@@ -145,7 +141,6 @@ const SVG_BY_ID: Record<string, string> = {
   "icloud-drive": icloud.variants.default,
   onedrive: microsoftOnedrive.variants.default,
   "baidu-netdisk": baidu.variants.default,
-  "google-takeout": googleDrive.variants.default,
 
   // Media.
   spotify: spotify.variants.default,
@@ -157,13 +152,9 @@ const SVG_BY_ID: Record<string, string> = {
   letterboxd: letterboxd.variants.default,
 
   // Productivity / other.
-  "google-calendar": googleCalendar.variants.default,
   todoist: todoist.variants.default,
   ticktick: ticktick.variants.default,
   github: github.variants.default,
-  gmail: gmail.variants.default,
-  "google-photos": googlePhotos.variants.default,
-  "google-maps-timeline": googleMaps.variants.default,
 
   // Finance.
   alipay: alipay.variants.default,
@@ -189,13 +180,6 @@ export function AppIconTile({ app }: { app: App }) {
         <div
           className="h-[65%] w-[65%] [&_svg]:w-full [&_svg]:h-full"
           dangerouslySetInnerHTML={{ __html: scopeSvgIds(svg, app.id) }}
-        />
-      ) : app.id === "apple-health" ? (
-        <HeartPulse
-          className="h-[65%] w-[65%]"
-          color="#FA114F"
-          fill="#FA114F"
-          strokeWidth={2.4}
         />
       ) : (
         <span className="text-sm font-semibold text-gray-400">

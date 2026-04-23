@@ -1,7 +1,0 @@
-id: google-takeout
-name: "Google Takeout"
-category: cloud
-website: https://takeout.google.com
-description: "Google's umbrella data export tool — covers Drive, Gmail, Photos, Calendar, YouTube, Maps, Keep, and more."
-import_prompt: |
-  Help me export my entire Google account via Takeout at takeout.google.com. Walk me through selecting which services to include (I may want many), then placing the resulting zips under imports/google-takeout/ (I can then split into per-service folders later).

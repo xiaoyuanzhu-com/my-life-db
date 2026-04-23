@@ -25,20 +25,23 @@ export const SECTION_ORDER: SectionKey[] = [
   "productivity",
 ];
 
-const FEATURED_IDS = new Set<string>([
+// Order here is the order shown in the Featured section.
+const FEATURED_ORDER: string[] = [
   "apple-health",
-  "apple-notes",
-  "obsidian",
-  "notion",
-  "gmail",
-  "google-photos",
-  "whatsapp",
-  "wechat",
+  "garmin",
+  "strava",
+  "google",
   "chatgpt",
   "claude",
-  "strava",
-  "icloud-drive",
-]);
+  "notion",
+  "obsidian",
+  "telegram",
+  "slack",
+  "wechat",
+  "twitter",
+  "xiaohongshu",
+];
+const FEATURED_IDS = new Set<string>(FEATURED_ORDER);
 
 const AI_IDS = new Set<string>([
   "chatgpt",
@@ -56,9 +59,7 @@ const AI_IDS = new Set<string>([
 const PRODUCTIVITY_IDS = new Set<string>([
   "ticktick",
   "todoist",
-  "google-calendar",
   "github",
-  "google-maps-timeline",
 ]);
 
 // Maps a backend category to a section key. AI and productivity override by id.
@@ -103,9 +104,17 @@ export function groupAppsIntoSections(apps: App[]): AppSection[] {
     productivity: [],
   };
 
+  const byId = new Map<string, App>();
   for (const app of apps) {
-    if (FEATURED_IDS.has(app.id)) buckets.featured.push(app);
-    buckets[primarySection(app)].push(app);
+    if (FEATURED_IDS.has(app.id)) {
+      byId.set(app.id, app);
+    } else {
+      buckets[primarySection(app)].push(app);
+    }
+  }
+  for (const id of FEATURED_ORDER) {
+    const app = byId.get(id);
+    if (app) buckets.featured.push(app);
   }
 
   return SECTION_ORDER
