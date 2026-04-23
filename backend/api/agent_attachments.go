@@ -99,3 +99,31 @@ func (h *Handlers) UploadAgentAttachment(c *gin.Context) {
 	inner := &attachmentsHandler{appDataDir: h.server.Cfg().AppDataDir}
 	inner.UploadAttachment(c)
 }
+
+// DeleteAttachment handles DELETE /api/agent/attachments/:uploadID.
+// Removes the staged directory. Idempotent — returns 204 whether or not
+// the dir existed. Rejects uploadIDs that contain path separators.
+func (a *attachmentsHandler) DeleteAttachment(c *gin.Context) {
+	uploadID := c.Param("uploadID")
+	if uploadID == "" || uploadID == "." || uploadID == ".." ||
+		filepath.Base(uploadID) != uploadID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid uploadID"})
+		return
+	}
+
+	dir := filepath.Join(a.appDataDir, "tmp", "agent-uploads", uploadID)
+	if err := os.RemoveAll(dir); err != nil {
+		log.Error().Err(err).Str("uploadID", uploadID).Msg("agent-attachments: delete failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete"})
+		return
+	}
+
+	log.Info().Str("uploadID", uploadID).Msg("agent-attachments: upload deleted")
+	c.Status(http.StatusNoContent)
+}
+
+// DeleteAgentAttachment is the production shim used by the real router.
+func (h *Handlers) DeleteAgentAttachment(c *gin.Context) {
+	inner := &attachmentsHandler{appDataDir: h.server.Cfg().AppDataDir}
+	inner.DeleteAttachment(c)
+}

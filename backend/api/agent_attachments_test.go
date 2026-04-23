@@ -146,3 +146,75 @@ func TestUploadAttachment_FilenameSanitized(t *testing.T) {
 		t.Fatalf("absolutePath escaped root: %q", resp.AbsolutePath)
 	}
 }
+
+func TestDeleteAttachment_Happy(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tmpDir := t.TempDir()
+	h := newAttachmentsHandler(tmpDir)
+
+	// Seed a fake upload dir
+	uploadID := "deadbeef-1111-2222-3333-444455556666"
+	dir := filepath.Join(tmpDir, "tmp", "agent-uploads", uploadID)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "foo.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/agent/attachments/"+uploadID, nil)
+	w := httptest.NewRecorder()
+	r := gin.New()
+	r.DELETE("/api/agent/attachments/:uploadID", h.DeleteAttachment)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("dir still exists: err=%v", err)
+	}
+}
+
+func TestDeleteAttachment_Missing_IsIdempotent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tmpDir := t.TempDir()
+	h := newAttachmentsHandler(tmpDir)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/agent/attachments/does-not-exist", nil)
+	w := httptest.NewRecorder()
+	r := gin.New()
+	r.DELETE("/api/agent/attachments/:uploadID", h.DeleteAttachment)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d", w.Code)
+	}
+}
+
+func TestDeleteAttachment_TraversalRejected(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tmpDir := t.TempDir()
+	h := newAttachmentsHandler(tmpDir)
+
+	r := gin.New()
+	r.DELETE("/api/agent/attachments/:uploadID", h.DeleteAttachment)
+
+	// ".." as uploadID must be rejected by the handler itself.
+	req := httptest.NewRequest(http.MethodDelete, "/api/agent/attachments/..", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("uploadID='..' status = %d, want 400", w.Code)
+	}
+
+	// A URL-encoded slash is decoded by Gin's router before routing, so
+	// the path no longer matches :uploadID — router returns 404. Either
+	// 400 (handler) or 404 (router) is an acceptable rejection.
+	req = httptest.NewRequest(http.MethodDelete, "/api/agent/attachments/..%2F..", nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest && w.Code != http.StatusNotFound {
+		t.Fatalf("uploadID='..%%2F..' status = %d, want 400 or 404", w.Code)
+	}
+}
