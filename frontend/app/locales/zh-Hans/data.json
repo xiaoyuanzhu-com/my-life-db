@@ -14,10 +14,26 @@
     "uploadFile": "上传文件",
     "uploadFolder": "上传文件夹",
     "newFolder": "新建文件夹",
-    "importFromApp": "从应用导入…"
+    "importFromApps": "从应用导入"
   },
   "dropzone": {
     "prompt": "拖放文件以上传",
     "destination": "到 {{path}}"
+  },
+  "apps": {
+    "title": "从应用导入",
+    "back": "数据",
+    "sections": {
+      "featured": "精选",
+      "fitness": "运动健康",
+      "notes": "笔记",
+      "ai": "AI 助手",
+      "chat": "即时通讯",
+      "social": "社交",
+      "media": "娱乐",
+      "cloud": "云盘",
+      "finance": "财务",
+      "productivity": "效率"
+    }
   }
 }

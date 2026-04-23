@@ -14,10 +14,26 @@
     "uploadFile": "Upload File",
     "uploadFolder": "Upload Folder",
     "newFolder": "New Folder",
-    "importFromApp": "Import from app\u2026"
+    "importFromApps": "Import from apps"
   },
   "dropzone": {
     "prompt": "Drop files to upload",
     "destination": "to {{path}}"
+  },
+  "apps": {
+    "title": "Import from apps",
+    "back": "Data",
+    "sections": {
+      "featured": "Featured",
+      "fitness": "Fitness",
+      "notes": "Notes",
+      "ai": "AI",
+      "chat": "Chat",
+      "social": "Social",
+      "media": "Media",
+      "cloud": "Cloud",
+      "finance": "Finance",
+      "productivity": "Productivity"
+    }
   }
 }

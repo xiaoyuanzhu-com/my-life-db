@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Search, Upload, FolderUp, FolderPlus, RefreshCw, Plus, Boxes } from "lucide-react";
+import { Search, Upload, FolderUp, FolderPlus, RefreshCw, Plus, Import } from "lucide-react";
 import { FileGrid } from "~/components/library/file-grid";
 import { BreadcrumbNav } from "~/components/library/breadcrumb-nav";
 import { useSearch } from "~/components/omni-input/modules/use-search";
@@ -414,8 +414,8 @@ function DataContent() {
               {t('actions.newFolder', 'New Folder')}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => navigate('/data/apps')}>
-              <Boxes className="h-4 w-4 mr-2" />
-              {t('actions.importFromApp', 'Import from app')}
+              <Import className="h-4 w-4 mr-2" />
+              {t('actions.importFromApps', 'Import from apps')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

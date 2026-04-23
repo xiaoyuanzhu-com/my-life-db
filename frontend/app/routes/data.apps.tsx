@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import { ChevronLeft } from "lucide-react";
@@ -8,6 +8,7 @@ import { useAuth } from "~/contexts/auth-context";
 import type { App } from "~/types/apps";
 import { AppIconTile } from "~/components/apps/app-icon-tile";
 import { AppImportDialog } from "~/components/apps/app-import-dialog";
+import { groupAppsIntoSections } from "~/lib/app-sections";
 
 export default function DataAppsPage() {
   const { t } = useTranslation("data");
@@ -15,13 +16,15 @@ export default function DataAppsPage() {
   const { data: apps, isLoading: appsLoading, error } = useApps();
   const [selected, setSelected] = useState<App | null>(null);
 
+  const sections = useMemo(() => (apps ? groupAppsIntoSections(apps) : []), [apps]);
+
   if (isLoading) return null;
 
   if (!isAuthenticated) {
     return (
       <div className="flex items-center justify-center h-screen p-8 text-center">
         <div>
-          <h1 className="text-3xl font-bold mb-4">{t("apps.title", "Apps")}</h1>
+          <h1 className="text-3xl font-bold mb-4">{t("apps.title", "Import from apps")}</h1>
           <p className="text-muted-foreground">
             {t("page.signInHint", "Please sign in to get started.")}
           </p>
@@ -43,7 +46,7 @@ export default function DataAppsPage() {
         </Link>
         <span className="text-muted-foreground">/</span>
         <span className="text-sm font-medium">
-          {t("apps.title", "Apps")}
+          {t("apps.title", "Import from apps")}
         </span>
       </div>
 
@@ -63,20 +66,29 @@ export default function DataAppsPage() {
           </div>
         )}
         {apps && apps.length > 0 && (
-          <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-4 sm:gap-6 p-6">
-            {apps.map((app) => (
-              <button
-                key={app.id}
-                type="button"
-                onClick={() => setSelected(app)}
-                className="flex flex-col items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-2xl"
-                title={app.description}
-              >
-                <AppIconTile app={app} />
-                <span className="text-xs font-medium text-foreground truncate max-w-full">
-                  {app.name}
-                </span>
-              </button>
+          <div className="p-6 flex flex-col gap-8">
+            {sections.map((section) => (
+              <section key={section.key} className="flex flex-col gap-3">
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                  {t(`apps.sections.${section.key}`, section.key)}
+                </h2>
+                <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-4 sm:gap-6">
+                  {section.apps.map((app) => (
+                    <button
+                      key={`${section.key}-${app.id}`}
+                      type="button"
+                      onClick={() => setSelected(app)}
+                      className="flex flex-col items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-2xl"
+                      title={app.description}
+                    >
+                      <AppIconTile app={app} />
+                      <span className="text-xs font-medium text-foreground truncate max-w-full">
+                        {app.name}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </section>
             ))}
           </div>
         )}
