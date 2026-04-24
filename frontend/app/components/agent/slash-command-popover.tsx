@@ -12,16 +12,8 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { useComposerRuntime, useComposer } from "@assistant-ui/react"
 import { cn } from "~/lib/utils"
 
-// Default slash commands (can be extended with sessionMeta.commands)
-const DEFAULT_COMMANDS = [
-  { name: "/help", description: "Show available commands" },
-  { name: "/clear", description: "Clear conversation" },
-  { name: "/compact", description: "Compact conversation history" },
-  { name: "/init", description: "Initialize from CLAUDE.md" },
-]
-
 interface SlashCommandPopoverProps {
-  /** Additional commands from session metadata */
+  /** Commands advertised by the ACP agent (available_commands_update frame). */
   commands?: Array<{ name: string; description?: string }>
   /** Reference to the textarea element for positioning */
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
@@ -35,13 +27,10 @@ export function SlashCommandPopover({ commands, textareaRef }: SlashCommandPopov
   const [selectedIndex, setSelectedIndex] = useState(0)
   const popoverRef = useRef<HTMLDivElement>(null)
 
-  const allCommands = [
-    ...DEFAULT_COMMANDS,
-    ...(commands ?? []).map((c) => ({
-      name: typeof c.name === "string" ? (c.name.startsWith("/") ? c.name : `/${c.name}`) : `/${c}`,
-      description: c.description,
-    })),
-  ]
+  const allCommands = (commands ?? []).map((c) => ({
+    name: typeof c.name === "string" ? (c.name.startsWith("/") ? c.name : `/${c.name}`) : `/${c}`,
+    description: c.description,
+  }))
 
   // Determine if we should show the popover
   useEffect(() => {
