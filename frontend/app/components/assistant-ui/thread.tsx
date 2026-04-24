@@ -21,6 +21,7 @@ import {
 import {
   ArrowDownIcon,
   ArrowUpIcon,
+  AtSign,
   Plus,
   SquareIcon,
 } from "lucide-react";
@@ -415,7 +416,10 @@ const DraftPersistenceSync: FC = () => {
   return null;
 };
 
-const ComposerOptionsMenu: FC<{ onAttachFiles: () => void }> = ({ onAttachFiles }) => {
+const ComposerOptionsMenu: FC<{
+  onAttachFiles: () => void
+  onAddContext: () => void
+}> = ({ onAttachFiles, onAddContext }) => {
   const {
     agentType, onAgentTypeChange,
     configOptions, onConfigOptionChange,
@@ -446,11 +450,6 @@ const ComposerOptionsMenu: FC<{ onAttachFiles: () => void }> = ({ onAttachFiles 
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="bottom" sideOffset={4}>
-        <DropdownMenuItem onSelect={onAttachFiles}>
-          <Paperclip className="size-4" />
-          <span>Attach files</span>
-        </DropdownMenuItem>
-        {hasSelectors && <DropdownMenuSeparator />}
         {agentType !== undefined && (
           <div className="flex items-center justify-between px-2 py-1.5 gap-4">
             <span className="text-xs text-muted-foreground shrink-0">Agent</span>
@@ -471,6 +470,21 @@ const ComposerOptionsMenu: FC<{ onAttachFiles: () => void }> = ({ onAttachFiles 
             />
           </div>
         ))}
+        {hasSelectors && <DropdownMenuSeparator className="mx-2" />}
+        <DropdownMenuItem
+          onSelect={onAttachFiles}
+          className="px-2 py-1.5 gap-2 text-xs text-muted-foreground focus:text-foreground"
+        >
+          <Paperclip className="size-3.5 shrink-0" />
+          <span>Upload</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={onAddContext}
+          className="px-2 py-1.5 gap-2 text-xs text-muted-foreground focus:text-foreground"
+        >
+          <AtSign className="size-3.5 shrink-0" />
+          <span>Add context</span>
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -503,6 +517,19 @@ const Composer: FC = () => {
     const arr = Array.from(files);
     if (arr.length === 0) return;
     attachments.addFiles(arr);
+  };
+
+  const handleAddContext = () => {
+    const current = composerRuntime.getState().text ?? "";
+    const needsSpace = current.length > 0 && !/\s$/.test(current);
+    composerRuntime.setText(current + (needsSpace ? " @" : "@"));
+    // Defer focus so it lands after the dropdown finishes closing.
+    setTimeout(() => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+    }, 0);
   };
 
   const handleSend = () => {
@@ -619,7 +646,10 @@ const Composer: FC = () => {
           />
           <div className="aui-composer-action-wrapper relative flex items-center justify-between">
             <div className="flex items-center gap-1">
-              <ComposerOptionsMenu onAttachFiles={() => fileInputRef.current?.click()} />
+              <ComposerOptionsMenu
+                onAttachFiles={() => fileInputRef.current?.click()}
+                onAddContext={handleAddContext}
+              />
               {workingDir !== undefined && (
                 <>
                   <FolderPicker
