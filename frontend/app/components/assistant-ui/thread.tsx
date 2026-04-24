@@ -3,6 +3,8 @@ import { Button } from "~/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
 import { Popover, PopoverContent } from "~/components/ui/popover";
@@ -413,7 +415,7 @@ const DraftPersistenceSync: FC = () => {
   return null;
 };
 
-const ComposerOptionsMenu: FC = () => {
+const ComposerOptionsMenu: FC<{ onAttachFiles: () => void }> = ({ onAttachFiles }) => {
   const {
     agentType, onAgentTypeChange,
     configOptions, onConfigOptionChange,
@@ -430,6 +432,8 @@ const ComposerOptionsMenu: FC = () => {
     )
   }, [configOptions])
 
+  const hasSelectors = agentType !== undefined || sortedOptions.length > 0
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -442,6 +446,11 @@ const ComposerOptionsMenu: FC = () => {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="bottom" sideOffset={4}>
+        <DropdownMenuItem onSelect={onAttachFiles}>
+          <Paperclip className="size-4" />
+          <span>Attach files</span>
+        </DropdownMenuItem>
+        {hasSelectors && <DropdownMenuSeparator />}
         {agentType !== undefined && (
           <div className="flex items-center justify-between px-2 py-1.5 gap-4">
             <span className="text-xs text-muted-foreground shrink-0">Agent</span>
@@ -486,6 +495,7 @@ const Composer: FC = () => {
   const threadIsRunning = useAuiState((s) => s.thread.isRunning);
   const composerIsEmpty = useAuiState((s) => s.composer.isEmpty);
   const composerRuntime = useComposerRuntime();
+  const aui = useAui();
   const attachments = useAgentAttachments();
 
   const handleFilesPicked = (files: FileList | File[] | null) => {
@@ -498,14 +508,23 @@ const Composer: FC = () => {
   const handleSend = () => {
     if (attachments.hasPending) return;
     const ready = attachments.readyAttachments;
-    if (ready.length > 0) {
-      const current = composerRuntime.getState().text ?? "";
-      const refs = ready.map((a) => `@${a.absolutePath}`).join(" ");
-      const sep = current.length === 0 || current.endsWith("\n") ? "" : "\n\n";
-      composerRuntime.setText(current + sep + refs);
+    if (ready.length === 0) {
+      composerRuntime.send();
+      return;
     }
-    composerRuntime.send();
-    if (ready.length > 0) attachments.clear();
+    // Route attachment refs through thread.append so the @-paths are
+    // guaranteed to be in the outgoing message — the setText+send pattern
+    // dropped them in practice.
+    const current = composerRuntime.getState().text ?? "";
+    const refs = ready.map((a) => `@${a.absolutePath}`).join(" ");
+    const sep = current.length === 0 || current.endsWith("\n") ? "" : "\n\n";
+    const fullText = current + sep + refs;
+    aui.thread().append({
+      role: "user",
+      content: [{ type: "text", text: fullText }],
+    });
+    composerRuntime.reset();
+    attachments.clear();
   };
   const lastMsgStatus = useAuiState((s) => {
     const msgs = s.thread.messages;
@@ -527,6 +546,13 @@ const Composer: FC = () => {
   return (
     <ComposerPrimitive.Root
       className="aui-composer-root relative flex w-full flex-col"
+      onSubmit={(e) => {
+        // Intercept Enter-key form submit so it goes through handleSend
+        // (which appends @-paths for staged attachments). preventDefault
+        // also disables ComposerPrimitive.Root's built-in composer.send.
+        e.preventDefault();
+        handleSend();
+      }}
       onDragOver={(e) => {
         if (e.dataTransfer?.types?.includes("Files")) {
           e.preventDefault();
@@ -593,19 +619,7 @@ const Composer: FC = () => {
           />
           <div className="aui-composer-action-wrapper relative flex items-center justify-between">
             <div className="flex items-center gap-1">
-              <ComposerOptionsMenu />
-              <TooltipIconButton
-                tooltip="Attach files"
-                side="bottom"
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-8"
-                aria-label="Attach files"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Paperclip className="size-4" />
-              </TooltipIconButton>
+              <ComposerOptionsMenu onAttachFiles={() => fileInputRef.current?.click()} />
               {workingDir !== undefined && (
                 <>
                   <FolderPicker
