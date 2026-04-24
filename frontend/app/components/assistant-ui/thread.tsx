@@ -24,6 +24,7 @@ import {
   AtSign,
   Plus,
   SquareIcon,
+  SquareSlash,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import type { PlanEntry } from "~/hooks/use-agent-runtime";
@@ -419,7 +420,8 @@ const DraftPersistenceSync: FC = () => {
 const ComposerOptionsMenu: FC<{
   onAttachFiles: () => void
   onAddContext: () => void
-}> = ({ onAttachFiles, onAddContext }) => {
+  onShowCommands: () => void
+}> = ({ onAttachFiles, onAddContext, onShowCommands }) => {
   const {
     agentType, onAgentTypeChange,
     configOptions, onConfigOptionChange,
@@ -476,7 +478,7 @@ const ComposerOptionsMenu: FC<{
           className="px-2 py-1.5 gap-2 text-xs text-muted-foreground focus:text-foreground"
         >
           <Paperclip className="size-3.5 shrink-0" />
-          <span>Upload</span>
+          <span>Upload files</span>
         </DropdownMenuItem>
         <DropdownMenuItem
           onSelect={onAddContext}
@@ -484,6 +486,13 @@ const ComposerOptionsMenu: FC<{
         >
           <AtSign className="size-3.5 shrink-0" />
           <span>Add context</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={onShowCommands}
+          className="px-2 py-1.5 gap-2 text-xs text-muted-foreground focus:text-foreground"
+        >
+          <SquareSlash className="size-3.5 shrink-0" />
+          <span>Slash commands</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -524,6 +533,18 @@ const Composer: FC = () => {
     const needsSpace = current.length > 0 && !/\s$/.test(current);
     composerRuntime.setText(current + (needsSpace ? " @" : "@"));
     // Defer focus so it lands after the dropdown finishes closing.
+    setTimeout(() => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+    }, 0);
+  };
+
+  const handleShowCommands = () => {
+    // Slash popover only triggers when the whole composer starts with "/" and
+    // has no spaces, so replace existing text instead of appending.
+    composerRuntime.setText("/");
     setTimeout(() => {
       const ta = textareaRef.current;
       if (!ta) return;
@@ -649,6 +670,7 @@ const Composer: FC = () => {
               <ComposerOptionsMenu
                 onAttachFiles={() => fileInputRef.current?.click()}
                 onAddContext={handleAddContext}
+                onShowCommands={handleShowCommands}
               />
               {workingDir !== undefined && (
                 <>
