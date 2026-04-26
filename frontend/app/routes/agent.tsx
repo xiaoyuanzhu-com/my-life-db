@@ -803,14 +803,24 @@ export default function AgentPage() {
 
     setIsCreatingSession(true)
     try {
-      const defaults = newSessionDefaults[newSessionAgentType] ?? {}
+      // Mirror newSessionConfigOptions: user pref wins, otherwise fall back to
+      // the backend-supplied default. The dropdown displays the merged value,
+      // so the request must send the same value — otherwise the UI shows
+      // (e.g.) "Full Access" while the backend logs permissionMode= empty.
+      const opts = defaultConfigOptions[newSessionAgentType] ?? []
+      const prefs = newSessionDefaults[newSessionAgentType] ?? {}
+      const effectiveValue = (id: string) =>
+        prefs[id] || opts.find(o => o.id === id)?.currentValue
+      const effectiveMode = effectiveValue('mode')
+      const effectiveModel = effectiveValue('model')
+
       const response = await api.post('/api/agent/sessions', {
         title: message,
         message: message,
         workingDir: newSessionWorkingDir,
-        permissionMode: defaults.mode || undefined,
+        permissionMode: effectiveMode || undefined,
         agentType: newSessionAgentType,
-        model: defaults.model || undefined,
+        model: effectiveModel || undefined,
       })
 
       if (!response.ok) {
@@ -826,7 +836,7 @@ export default function AgentPage() {
         lastActivity: Date.now(),
         lastUserActivity: Date.now(),
         sessionState: 'idle',
-        permissionMode: defaults.mode || 'default',
+        permissionMode: effectiveMode || 'default',
         agentType: session.agentType ?? newSessionAgentType,
       }
 
