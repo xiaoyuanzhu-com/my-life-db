@@ -465,7 +465,7 @@ const MCPServersSubMenu: FC = () => {
   )
 }
 
-const SkillsSubMenu: FC = () => {
+const SkillsSubMenu: FC<{ onSelectSkill: (name: string) => void }> = ({ onSelectSkill }) => {
   const { data: skills } = useSkills()
   const list = skills ?? []
   return (
@@ -480,8 +480,12 @@ const SkillsSubMenu: FC = () => {
           </div>
         )}
         {list.map((s) => (
-          <div key={s.path} className="flex flex-col px-2 py-1.5 gap-0.5">
-            <div className="flex items-center justify-between gap-2">
+          <DropdownMenuItem
+            key={s.path}
+            onSelect={() => onSelectSkill(s.name)}
+            className="flex flex-col items-stretch px-2 py-1.5 gap-0.5 text-muted-foreground focus:text-foreground"
+          >
+            <div className="flex items-center justify-between gap-2 w-full">
               <span className="text-xs text-foreground truncate">{s.name}</span>
               <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70 shrink-0">
                 {s.source}
@@ -492,7 +496,7 @@ const SkillsSubMenu: FC = () => {
                 {s.description}
               </span>
             )}
-          </div>
+          </DropdownMenuItem>
         ))}
       </DropdownMenuSubContent>
     </DropdownMenuSub>
@@ -503,7 +507,8 @@ const ComposerOptionsMenu: FC<{
   onAttachFiles: () => void
   onAddContext: () => void
   onShowCommands: () => void
-}> = ({ onAttachFiles, onAddContext, onShowCommands }) => {
+  onUseSkill: (name: string) => void
+}> = ({ onAttachFiles, onAddContext, onShowCommands, onUseSkill }) => {
   const {
     agentType, onAgentTypeChange,
     configOptions, onConfigOptionChange,
@@ -556,7 +561,7 @@ const ComposerOptionsMenu: FC<{
         ))}
         {hasSelectors && <DropdownMenuSeparator className="mx-2" />}
         <MCPServersSubMenu />
-        <SkillsSubMenu />
+        <SkillsSubMenu onSelectSkill={onUseSkill} />
         <DropdownMenuSeparator className="mx-2" />
         <DropdownMenuItem
           onSelect={onAttachFiles}
@@ -618,6 +623,19 @@ const Composer: FC = () => {
     const needsSpace = current.length > 0 && !/\s$/.test(current);
     composerRuntime.setText(current + (needsSpace ? " @" : "@"));
     // Defer focus so it lands after the dropdown finishes closing.
+    setTimeout(() => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+    }, 0);
+  };
+
+  const handleUseSkill = (name: string) => {
+    const current = composerRuntime.getState().text ?? "";
+    const needsSpace = current.length > 0 && !/\s$/.test(current);
+    const snippet = `use the ${name} skill to `;
+    composerRuntime.setText(current + (needsSpace ? " " : "") + snippet);
     setTimeout(() => {
       const ta = textareaRef.current;
       if (!ta) return;
@@ -756,6 +774,7 @@ const Composer: FC = () => {
                 onAttachFiles={() => fileInputRef.current?.click()}
                 onAddContext={handleAddContext}
                 onShowCommands={handleShowCommands}
+                onUseSkill={handleUseSkill}
               />
               {workingDir !== undefined && (
                 <>
