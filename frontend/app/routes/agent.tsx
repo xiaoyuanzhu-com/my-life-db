@@ -367,6 +367,20 @@ export default function AgentPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Honor ?edit=<name> URL param on /agent/auto: open the editor for that
+  // agent and strip the param so the URL reflects steady state. Used by the
+  // native iOS shell to deep-link into a specific auto-agent editor.
+  useEffect(() => {
+    if (!isAutoRoute) return
+    const editName = searchParams.get('edit')
+    if (!editName) return
+    openAgentEditor(editName)
+    const next = new URLSearchParams(searchParams)
+    next.delete('edit')
+    setSearchParams(next, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAutoRoute, searchParams])
+
   const sidebarPanelRef = useRef<ImperativePanelHandle>(null)
 
   // New session state (for empty state)
@@ -1322,9 +1336,13 @@ export default function AgentPage() {
           </ResizablePanel>
         </ResizablePanelGroup>
       ) : (
-        /* No sidebar — just the chat area */
+        /* No sidebar — just the chat area (or auto-agents editor when active,
+           used by the native iOS shell to deep-link into the editor with
+           sessionSidebar=false). */
         <div className="flex-1 flex flex-col bg-background overflow-hidden min-w-0">
-          {activeSessionId ? (
+          {agentsPanelMode !== 'closed' ? (
+            agentsPanel
+          ) : activeSessionId ? (
             <AgentChat
               sessionId={activeSessionId}
               className="flex-1"
