@@ -182,6 +182,81 @@ func TestInstallClientConfig_Idempotent(t *testing.T) {
 	}
 }
 
+func TestInstall_WritesToAllUserHomeRoots(t *testing.T) {
+	// Install must land the skill in every user-home root so each agent CLI
+	// (Claude Code, Codex/Gemini/opencode via alias, Qwen) can discover it
+	// regardless of CWD.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	dataDir := t.TempDir()
+	Install(dataDir)
+
+	wantPaths := []string{
+		filepath.Join(home, ".claude/skills/create-auto-agent/SKILL.md"),
+		filepath.Join(home, ".agents/skills/create-auto-agent/SKILL.md"),
+		filepath.Join(home, ".qwen/skills/create-auto-agent/SKILL.md"),
+	}
+	for _, p := range wantPaths {
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("expected skill at %s, got error: %v", p, err)
+		}
+	}
+}
+
+func TestInstall_WipesLegacyDataDirRoot(t *testing.T) {
+	// Past installs wrote bundled skills to <dataDir>/.agents/skills/. Install
+	// must remove those (and renamed-name predecessors) so the move to
+	// user-home is sticky across restarts.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	dataDir := t.TempDir()
+	legacy := filepath.Join(dataDir, ".agents/skills")
+
+	// Seed both the current bundled name and the renamed predecessor.
+	for _, name := range []string{"create-auto-agent", "create-agent"} {
+		seedDir := filepath.Join(legacy, name)
+		if err := os.MkdirAll(seedDir, 0755); err != nil {
+			t.Fatalf("seed mkdir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(seedDir, "SKILL.md"), []byte("stale"), 0644); err != nil {
+			t.Fatalf("seed write: %v", err)
+		}
+	}
+
+	Install(dataDir)
+
+	for _, name := range []string{"create-auto-agent", "create-agent"} {
+		path := filepath.Join(legacy, name)
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("legacy skill folder %s should have been removed; stat err = %v", path, err)
+		}
+	}
+}
+
+func TestInstall_RemovesRenamedFolderInUserHome(t *testing.T) {
+	// Old user-home installs wrote ~/.claude/skills/create-agent/. After the
+	// rename, Install must remove that folder so Claude Code doesn't load both
+	// the old and new skill.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	stale := filepath.Join(home, ".claude/skills/create-agent")
+	if err := os.MkdirAll(stale, 0755); err != nil {
+		t.Fatalf("seed mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(stale, "SKILL.md"), []byte("stale"), 0644); err != nil {
+		t.Fatalf("seed write: %v", err)
+	}
+
+	Install(t.TempDir())
+
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Errorf("renamed skill folder %s should have been removed; stat err = %v", stale, err)
+	}
+}
+
 func TestInstallClientConfig_HandlesInvalidSettingsJSON(t *testing.T) {
 	// If settings.local.json is corrupted (not valid JSON), InstallClientConfig
 	// must still produce a valid file rather than aborting or panicking.

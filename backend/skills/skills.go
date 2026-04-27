@@ -27,26 +27,62 @@ func All() []BundledSkill {
 	}
 }
 
-// Install writes all bundled skills to discovery directories.
-// Skills are installed to:
-//   - <dataDir>/.agents/skills/ — cross-client Agent Skills standard (agentskills.io)
-//   - ~/.claude/skills/ — Claude Code CLI discovery
-//
-// Existing files are overwritten to ensure they stay up to date.
 // renamedSkillFolders are folders left by past installs under a previous skill
-// name. Removed on every install so the renamed skill doesn't linger and load
-// twice in Claude Code.
+// name. Removed from every active and legacy root on Install so renamed skills
+// don't linger and load twice.
 var renamedSkillFolders = []string{
 	"create-agent",
 }
 
-func Install(dataDir string) {
-	roots := []string{
+// legacyInstallRoots are directories MyLifeDB used to install skills into but
+// no longer does. Bundled skills (current and renamed names) are removed from
+// these roots on every Install so the move is sticky across restarts.
+//
+// Stale roots:
+//   - <dataDir>/.agents/skills — replaced by the user-home install set; the
+//     data dir varies per deployment, so workspace-level install never
+//     covered the user's interactive sessions.
+func legacyInstallRoots(dataDir string) []string {
+	return []string{
 		filepath.Join(dataDir, ".agents/skills"),
 	}
+}
 
-	if home, err := os.UserHomeDir(); err == nil {
-		roots = append(roots, filepath.Join(home, ".claude/skills"))
+// Install writes all bundled skills to user-home discovery directories so that
+// every supported agent CLI finds them regardless of CWD.
+//
+// Three roots cover all five agents MyLifeDB spawns:
+//   - ~/.claude/skills — Claude Code (no alias support)
+//   - ~/.agents/skills — Codex (native), Gemini (alias), opencode (alias)
+//   - ~/.qwen/skills   — Qwen Code (no alias support)
+//
+// Existing files are overwritten to keep skills up to date.
+func Install(dataDir string) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		log.Error().Err(err).Msg("cannot resolve user home; skipping skill install")
+		return
+	}
+	roots := []string{
+		filepath.Join(home, ".claude/skills"),
+		filepath.Join(home, ".agents/skills"),
+		filepath.Join(home, ".qwen/skills"),
+	}
+
+	// Wipe bundled skills from legacy roots so the move to user-home is sticky.
+	for _, root := range legacyInstallRoots(dataDir) {
+		for _, skill := range All() {
+			path := filepath.Join(root, filepath.Dir(skill.Path))
+			if err := os.RemoveAll(path); err != nil {
+				log.Warn().Err(err).Str("path", path).Msg("failed to remove legacy bundled skill")
+			}
+		}
+		for _, old := range renamedSkillFolders {
+			path := filepath.Join(root, old)
+			if err := os.RemoveAll(path); err != nil {
+				log.Warn().Err(err).Str("path", path).Msg("failed to remove renamed skill folder from legacy root")
+			}
+		}
 	}
 
 	for _, root := range roots {
