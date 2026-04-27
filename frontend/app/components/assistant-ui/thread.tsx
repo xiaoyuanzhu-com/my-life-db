@@ -426,15 +426,11 @@ const MCPServersSubMenu: FC = () => {
   const { data: servers } = useMCPServers()
   const toggle = useToggleMCPServer()
   const list = servers ?? []
-  const enabledCount = list.filter((s) => !s.disabled).length
 
   return (
     <DropdownMenuSub>
-      <DropdownMenuSubTrigger className="px-2 py-1.5 gap-4 text-xs text-muted-foreground focus:text-foreground">
+      <DropdownMenuSubTrigger className="px-2 py-1.5 text-xs text-muted-foreground focus:text-foreground">
         <span className="shrink-0">MCP</span>
-        <span className="ml-auto text-muted-foreground/70">
-          {list.length === 0 ? "none" : `${enabledCount}/${list.length}`}
-        </span>
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className="min-w-56 max-w-80">
         {list.length === 0 && (
@@ -474,11 +470,8 @@ const SkillsSubMenu: FC = () => {
   const list = skills ?? []
   return (
     <DropdownMenuSub>
-      <DropdownMenuSubTrigger className="px-2 py-1.5 gap-4 text-xs text-muted-foreground focus:text-foreground">
+      <DropdownMenuSubTrigger className="px-2 py-1.5 text-xs text-muted-foreground focus:text-foreground">
         <span className="shrink-0">Skills</span>
-        <span className="ml-auto text-muted-foreground/70">
-          {list.length === 0 ? "none" : list.length}
-        </span>
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className="min-w-64 max-w-96 max-h-80 overflow-y-auto">
         {list.length === 0 && (
