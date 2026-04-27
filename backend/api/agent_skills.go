@@ -16,8 +16,9 @@ import (
 type skillEntry struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
-	Source      string `json:"source"` // "bundled" | "user" | "project"
-	Path        string `json:"path"`   // absolute path to SKILL.md
+	Source      string `json:"source"`          // "bundled" | "user" | "project"
+	Agent       string `json:"agent,omitempty"` // "" (any) | "claude_code" | "codex" | "gemini" | "cursor"
+	Path        string `json:"path"`            // absolute path to SKILL.md
 }
 
 // skillFrontmatter is the subset of SKILL.md frontmatter we need.
@@ -28,28 +29,39 @@ type skillFrontmatter struct {
 	Description string `yaml:"description"`
 }
 
-// skillRoot pairs a skill directory with its source label.
+// skillRoot pairs a skill directory with its source label and agent affinity.
+// agent="" means vendor-neutral (e.g. .agents/skills) — the skill applies to
+// any agent.
 type skillRoot struct {
 	dir    string
 	source string
+	agent  string
 }
 
 // ListSkills walks the standard skill discovery directories, parses each
 // SKILL.md frontmatter, and returns a flat list of skills.
 //
+// The optional ?workingDir= query param adds project-level scanning for that
+// directory (matches what the agent runtime would actually load when launched
+// with that cwd).
+//
 // GET /api/agent/skills
 func (h *Handlers) ListSkills(c *gin.Context) {
 	dataDir := h.server.Cfg().UserDataDir
-	roots := skillRoots(dataDir)
+	workingDir := strings.TrimSpace(c.Query("workingDir"))
+	roots := skillRoots(dataDir, workingDir)
 
-	// Latest source wins on name collision, mirroring how Claude Code resolves
-	// skill precedence (project > user > bundled). We walk in ascending priority
-	// and let later entries overwrite earlier ones.
-	byName := map[string]skillEntry{}
+	// Dedup key is (name, agent) — a vendor-neutral "commit" and a
+	// claude_code-specific "commit" are distinct skills the runtime would treat
+	// independently. We walk in ascending precedence and let later entries
+	// (project > user > bundled, specific path within tier) overwrite earlier
+	// ones with the same key.
+	type key struct{ name, agent string }
+	byKey := map[key]skillEntry{}
 	for _, r := range roots {
 		entries, err := os.ReadDir(r.dir)
 		if err != nil {
-			// Missing directories are normal — skill dirs are optional.
+			// Missing directories are normal — most users won't have all of them.
 			continue
 		}
 		for _, ent := range entries {
@@ -70,40 +82,68 @@ func (h *Handlers) ListSkills(c *gin.Context) {
 			if name == "" {
 				name = ent.Name()
 			}
-			byName[name] = skillEntry{
+			byKey[key{name, r.agent}] = skillEntry{
 				Name:        name,
 				Description: fm.Description,
 				Source:      r.source,
+				Agent:       r.agent,
 				Path:        skillPath,
 			}
 		}
 	}
 
-	out := make([]skillEntry, 0, len(byName))
-	for _, s := range byName {
+	out := make([]skillEntry, 0, len(byKey))
+	for _, s := range byKey {
 		out = append(out, s)
 	}
 	sort.Slice(out, func(i, j int) bool {
-		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
+		if li, lj := strings.ToLower(out[i].Name), strings.ToLower(out[j].Name); li != lj {
+			return li < lj
+		}
+		// Within the same name, vendor-neutral first, then alphabetical agent.
+		return out[i].Agent < out[j].Agent
 	})
 
 	c.JSON(http.StatusOK, gin.H{"skills": out})
 }
 
 // skillRoots returns the skill directories to scan, in ascending precedence
-// order (later wins). Mirrors the install paths in backend/skills/skills.go.
-func skillRoots(dataDir string) []skillRoot {
+// order (later wins). Covers the conventions used by Claude Code, Codex,
+// Gemini CLI, and Cursor, plus the vendor-neutral .agents/skills convention.
+//
+// dataDir hosts MyLifeDB's bundled skills (installed by backend/skills).
+// workingDir is the composer's currently selected working directory; when set,
+// project-level scans are added so the UI reflects what the agent runtime
+// would actually load when launched with that cwd.
+func skillRoots(dataDir, workingDir string) []skillRoot {
 	roots := []skillRoot{
-		// Bundled skills are installed to .agents/skills along with the embedded
-		// create-agent skill. Treat this dir as "bundled" since the server owns it.
+		// Bundled — lowest precedence. Server-owned dir under USER_DATA_DIR.
 		{dir: filepath.Join(dataDir, ".agents", "skills"), source: "bundled"},
 	}
+
 	if home, err := os.UserHomeDir(); err == nil {
-		roots = append(roots, skillRoot{
-			dir:    filepath.Join(home, ".claude", "skills"),
-			source: "user",
-		})
+		// User-level. Vendor-neutral first, then specific tools — specific wins
+		// on (name, agent) collision, but since the vendor-neutral entries have
+		// agent="" they never collide with vendor-specific ones anyway.
+		roots = append(roots,
+			skillRoot{dir: filepath.Join(home, ".agents", "skills"), source: "user"},
+			skillRoot{dir: filepath.Join(home, ".codex", "skills"), source: "user", agent: "codex"},
+			skillRoot{dir: filepath.Join(home, ".gemini", "skills"), source: "user", agent: "gemini"},
+			skillRoot{dir: filepath.Join(home, ".cursor", "skills"), source: "user", agent: "cursor"},
+			skillRoot{dir: filepath.Join(home, ".claude", "skills"), source: "user", agent: "claude_code"},
+		)
 	}
+
+	// Project-level — highest precedence. Only scanned when the composer has
+	// a working directory selected.
+	if workingDir != "" {
+		roots = append(roots,
+			skillRoot{dir: filepath.Join(workingDir, ".agents", "skills"), source: "project"},
+			skillRoot{dir: filepath.Join(workingDir, ".gemini", "skills"), source: "project", agent: "gemini"},
+			skillRoot{dir: filepath.Join(workingDir, ".claude", "skills"), source: "project", agent: "claude_code"},
+		)
+	}
+
 	return roots
 }
 

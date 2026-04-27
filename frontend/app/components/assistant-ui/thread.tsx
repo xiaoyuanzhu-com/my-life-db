@@ -466,7 +466,11 @@ const MCPServersSubMenu: FC = () => {
 }
 
 const SkillsSubMenu: FC<{ onSelectSkill: (name: string) => void }> = ({ onSelectSkill }) => {
-  const { data: skills } = useSkills()
+  // Reading workingDir here (rather than prop-drilling) so the skills list
+  // updates when the composer's cwd changes, picking up project-level skills
+  // under .claude/skills, .agents/skills, .gemini/skills in that dir.
+  const { workingDir } = useAgentContext()
+  const { data: skills } = useSkills(workingDir)
   const list = skills ?? []
   return (
     <DropdownMenuSub>

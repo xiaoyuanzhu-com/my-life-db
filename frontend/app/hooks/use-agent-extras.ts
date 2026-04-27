@@ -12,6 +12,8 @@ export interface SkillEntry {
   name: string
   description?: string
   source: "bundled" | "user" | "project"
+  /** Agent affinity. Empty string means vendor-neutral (any agent). */
+  agent?: "" | "claude_code" | "codex" | "gemini" | "cursor"
   path: string
 }
 
@@ -23,11 +25,23 @@ export interface MCPServerEntry {
   disabled: boolean
 }
 
-export function useSkills() {
+/**
+ * List skills discoverable for the current composer state.
+ *
+ * Pass the composer's selected working directory so project-level skill dirs
+ * (.claude/skills, .agents/skills, .gemini/skills under workingDir) are
+ * included — matches what the agent runtime would actually load when launched
+ * with that cwd. Without workingDir, only bundled + user-level skills are
+ * returned.
+ */
+export function useSkills(workingDir?: string) {
   return useQuery({
-    queryKey: ["agent", "skills"],
+    queryKey: ["agent", "skills", workingDir ?? ""],
     queryFn: async (): Promise<SkillEntry[]> => {
-      const res = await api.get("/api/agent/skills")
+      const path = workingDir
+        ? `/api/agent/skills?workingDir=${encodeURIComponent(workingDir)}`
+        : "/api/agent/skills"
+      const res = await api.get(path)
       const body = await res.json()
       return body.skills ?? []
     },
