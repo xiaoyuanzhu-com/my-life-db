@@ -5,8 +5,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
+import { Switch } from "~/components/ui/switch";
 import { Popover, PopoverContent } from "~/components/ui/popover";
 import {
   AuiIf,
@@ -48,6 +52,7 @@ import { useAgentContext } from "~/components/agent/agent-context";
 import { AttachmentStrip } from "~/components/agent/attachment-strip";
 import { useAgentAttachments } from "~/hooks/use-agent-attachments";
 import { Paperclip } from "lucide-react";
+import { useSkills, useMCPServers, useToggleMCPServer } from "~/hooks/use-agent-extras";
 
 // Create the AssistantMessage with our ACP tool renderers baked in
 const AcpAssistantMessage = createAssistantMessage(acpToolsConfig);
@@ -417,6 +422,90 @@ const DraftPersistenceSync: FC = () => {
   return null;
 };
 
+const MCPServersSubMenu: FC = () => {
+  const { data: servers } = useMCPServers()
+  const toggle = useToggleMCPServer()
+  const list = servers ?? []
+  const enabledCount = list.filter((s) => !s.disabled).length
+
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger className="px-2 py-1.5 gap-4 text-xs text-muted-foreground focus:text-foreground">
+        <span className="shrink-0">MCP</span>
+        <span className="ml-auto text-muted-foreground/70">
+          {list.length === 0 ? "none" : `${enabledCount}/${list.length}`}
+        </span>
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="min-w-56 max-w-80">
+        {list.length === 0 && (
+          <div className="px-2 py-1.5 text-xs text-muted-foreground">
+            No MCP servers configured.
+          </div>
+        )}
+        {list.map((s) => (
+          <div
+            key={s.name}
+            className="flex items-center justify-between px-2 py-1.5 gap-3"
+          >
+            <div className="flex flex-col min-w-0">
+              <span className="text-xs text-foreground truncate">{s.name}</span>
+              {(s.url || s.command) && (
+                <span className="text-[10px] text-muted-foreground/70 truncate">
+                  {s.url ?? s.command}
+                </span>
+              )}
+            </div>
+            <Switch
+              size="sm"
+              checked={!s.disabled}
+              onCheckedChange={(checked) =>
+                toggle.mutate({ name: s.name, disabled: !checked })
+              }
+            />
+          </div>
+        ))}
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  )
+}
+
+const SkillsSubMenu: FC = () => {
+  const { data: skills } = useSkills()
+  const list = skills ?? []
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger className="px-2 py-1.5 gap-4 text-xs text-muted-foreground focus:text-foreground">
+        <span className="shrink-0">Skills</span>
+        <span className="ml-auto text-muted-foreground/70">
+          {list.length === 0 ? "none" : list.length}
+        </span>
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="min-w-64 max-w-96 max-h-80 overflow-y-auto">
+        {list.length === 0 && (
+          <div className="px-2 py-1.5 text-xs text-muted-foreground">
+            No skills installed.
+          </div>
+        )}
+        {list.map((s) => (
+          <div key={s.path} className="flex flex-col px-2 py-1.5 gap-0.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-foreground truncate">{s.name}</span>
+              <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70 shrink-0">
+                {s.source}
+              </span>
+            </div>
+            {s.description && (
+              <span className="text-[11px] text-muted-foreground line-clamp-2">
+                {s.description}
+              </span>
+            )}
+          </div>
+        ))}
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  )
+}
+
 const ComposerOptionsMenu: FC<{
   onAttachFiles: () => void
   onAddContext: () => void
@@ -472,6 +561,8 @@ const ComposerOptionsMenu: FC<{
             />
           </div>
         ))}
+        <MCPServersSubMenu />
+        <SkillsSubMenu />
         {hasSelectors && <DropdownMenuSeparator className="mx-2" />}
         <DropdownMenuItem
           onSelect={onAttachFiles}

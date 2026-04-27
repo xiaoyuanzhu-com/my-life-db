@@ -90,15 +90,35 @@ func InstallClientConfig(dataDir string, port int) {
 
 func installMCPJSON(dataDir string, port int) {
 	path := filepath.Join(dataDir, ".mcp.json")
-	config := map[string]any{
-		"mcpServers": map[string]any{
-			"mylifedb-agent": map[string]any{
-				"type": "http",
-				"url":  fmt.Sprintf("http://localhost:%d/api/agent/mcp", port),
-			},
-		},
+
+	// Merge rather than overwrite: preserve any user-added servers and any
+	// `disabled` flags toggled from the composer UI. Only the mylifedb-agent
+	// entry's `type` and `url` are server-owned (so changing PORT is reflected
+	// on next start without manual edits).
+	var doc map[string]any
+	if existing, err := os.ReadFile(path); err == nil {
+		if err := json.Unmarshal(existing, &doc); err != nil {
+			log.Warn().Err(err).Str("path", path).Msg("existing .mcp.json is invalid JSON, rewriting from scratch")
+			doc = nil
+		}
 	}
-	body, err := json.MarshalIndent(config, "", "  ")
+	if doc == nil {
+		doc = map[string]any{}
+	}
+	servers, _ := doc["mcpServers"].(map[string]any)
+	if servers == nil {
+		servers = map[string]any{}
+		doc["mcpServers"] = servers
+	}
+	mld, _ := servers["mylifedb-agent"].(map[string]any)
+	if mld == nil {
+		mld = map[string]any{}
+	}
+	mld["type"] = "http"
+	mld["url"] = fmt.Sprintf("http://localhost:%d/api/agent/mcp", port)
+	servers["mylifedb-agent"] = mld
+
+	body, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
 		log.Error().Err(err).Msg("failed to marshal .mcp.json")
 		return

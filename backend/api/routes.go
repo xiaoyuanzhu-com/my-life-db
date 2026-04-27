@@ -172,6 +172,11 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		agentRoutes.PUT("/defs/:name", h.SaveAutoAgent)
 		agentRoutes.DELETE("/defs/:name", h.DeleteAutoAgent)
 		agentRoutes.POST("/defs/:name/run", h.RunAutoAgent)
+
+		// Skills + MCP listing for the composer + menu.
+		agentRoutes.GET("/skills", h.ListSkills)
+		agentRoutes.GET("/mcp-servers", h.ListMCPServers)
+		agentRoutes.PATCH("/mcp-servers/:name", h.UpdateMCPServer)
 	}
 	r.GET("/api/agent/sessions/:id/subscribe", wsAuth, h.AgentSessionWebSocket)
 
