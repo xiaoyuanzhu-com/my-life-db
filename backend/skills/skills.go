@@ -10,12 +10,12 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
-//go:embed create-agent.md
-var createAgentSkill string
+//go:embed create-auto-agent.md
+var createAutoAgentSkill string
 
 // BundledSkill represents a skill shipped with MyLifeDB.
 type BundledSkill struct {
-	// Path relative to the skills root (e.g., "create-agent/SKILL.md")
+	// Path relative to the skills root (e.g., "create-auto-agent/SKILL.md")
 	Path    string
 	Content string
 }
@@ -23,7 +23,7 @@ type BundledSkill struct {
 // All returns all bundled skills.
 func All() []BundledSkill {
 	return []BundledSkill{
-		{Path: "create-agent/SKILL.md", Content: createAgentSkill},
+		{Path: "create-auto-agent/SKILL.md", Content: createAutoAgentSkill},
 	}
 }
 
@@ -33,6 +33,13 @@ func All() []BundledSkill {
 //   - ~/.claude/skills/ — Claude Code CLI discovery
 //
 // Existing files are overwritten to ensure they stay up to date.
+// renamedSkillFolders are folders left by past installs under a previous skill
+// name. Removed on every install so the renamed skill doesn't linger and load
+// twice in Claude Code.
+var renamedSkillFolders = []string{
+	"create-agent",
+}
+
 func Install(dataDir string) {
 	roots := []string{
 		filepath.Join(dataDir, ".agents/skills"),
@@ -43,6 +50,13 @@ func Install(dataDir string) {
 	}
 
 	for _, root := range roots {
+		for _, old := range renamedSkillFolders {
+			path := filepath.Join(root, old)
+			if err := os.RemoveAll(path); err != nil {
+				log.Warn().Err(err).Str("path", path).Msg("failed to remove renamed skill folder")
+			}
+		}
+
 		for _, skill := range All() {
 			dest := filepath.Join(root, skill.Path)
 			dir := filepath.Dir(dest)
@@ -66,7 +80,7 @@ func Install(dataDir string) {
 // started in the data directory should be pre-allowed to call. Kept in sync
 // with the tools actually exposed by the backend.
 var mcpToolAllowlist = []string{
-	"mcp__mylifedb-agent__validateAgent",
+	"mcp__mylifedb-builtin__validateAgent",
 	"mcp__explore__createPost",
 	"mcp__explore__listPosts",
 	"mcp__explore__addComment",
@@ -77,7 +91,7 @@ var mcpToolAllowlist = []string{
 // data directory so that CLI sessions started inside USER_DATA_DIR connect to
 // MyLifeDB's MCP servers without any manual setup. Two files are managed:
 //
-//   - <dataDir>/.mcp.json — registers the mylifedb-agent MCP server at the
+//   - <dataDir>/.mcp.json — registers the mylifedb-builtin MCP server at the
 //     configured port. Fully server-owned (overwritten each startup) so that
 //     changing PORT is reflected without manual edits.
 //   - <dataDir>/.claude/settings.local.json — adds MyLifeDB's MCP tools to the
@@ -92,7 +106,7 @@ func installMCPJSON(dataDir string, port int) {
 	path := filepath.Join(dataDir, ".mcp.json")
 
 	// Merge rather than overwrite: preserve any user-added servers and any
-	// `disabled` flags toggled from the composer UI. Only the mylifedb-agent
+	// `disabled` flags toggled from the composer UI. Only the mylifedb-builtin
 	// entry's `type` and `url` are server-owned (so changing PORT is reflected
 	// on next start without manual edits).
 	var doc map[string]any
@@ -110,13 +124,17 @@ func installMCPJSON(dataDir string, port int) {
 		servers = map[string]any{}
 		doc["mcpServers"] = servers
 	}
-	mld, _ := servers["mylifedb-agent"].(map[string]any)
+	mld, _ := servers["mylifedb-builtin"].(map[string]any)
 	if mld == nil {
 		mld = map[string]any{}
 	}
 	mld["type"] = "http"
 	mld["url"] = fmt.Sprintf("http://localhost:%d/api/agent/mcp", port)
-	servers["mylifedb-agent"] = mld
+	servers["mylifedb-builtin"] = mld
+
+	// Migrate from the old key name. Drop on next install if present so .mcp.json
+	// doesn't accumulate stale duplicate entries.
+	delete(servers, "mylifedb-agent")
 
 	body, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
@@ -152,15 +170,26 @@ func mergeAllowlist(dataDir string) {
 	}
 
 	// Normalize existing allow list into a set so we only append missing entries
-	// and keep the file diff-friendly across restarts.
+	// and keep the file diff-friendly across restarts. Drop renamed entries so
+	// the old mylifedb-agent allow doesn't linger after the rename to mylifedb-builtin.
+	renamed := map[string]bool{
+		"mcp__mylifedb-agent__validateAgent": true,
+	}
 	existing, _ := perms["allow"].([]any)
 	present := map[string]bool{}
+	filtered := existing[:0]
+	changed := false
 	for _, v := range existing {
+		if s, ok := v.(string); ok && renamed[s] {
+			changed = true
+			continue
+		}
+		filtered = append(filtered, v)
 		if s, ok := v.(string); ok {
 			present[s] = true
 		}
 	}
-	changed := false
+	existing = filtered
 	for _, tool := range mcpToolAllowlist {
 		if !present[tool] {
 			existing = append(existing, tool)

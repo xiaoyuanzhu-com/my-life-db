@@ -127,7 +127,7 @@ func TestValidateDef_RejectsBadName(t *testing.T) {
 	}
 }
 
-// MCP handler tests — exercises the JSON-RPC surface the create-agent skill
+// MCP handler tests — exercises the JSON-RPC surface the create-auto-agent skill
 // calls through.
 
 func newTestRouter(h *MCPHandler) *gin.Engine {
@@ -186,8 +186,8 @@ func TestMCP_Initialize(t *testing.T) {
 		t.Fatalf("no result in response: %v", resp)
 	}
 	serverInfo, _ := result["serverInfo"].(map[string]any)
-	if name, _ := serverInfo["name"].(string); name != "mylifedb-agent" {
-		t.Errorf("serverInfo.name = %q, want mylifedb-agent", name)
+	if name, _ := serverInfo["name"].(string); name != "mylifedb-builtin" {
+		t.Errorf("serverInfo.name = %q, want mylifedb-builtin", name)
 	}
 }
 

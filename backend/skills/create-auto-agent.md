@@ -1,5 +1,5 @@
 ---
-name: create-agent
+name: create-auto-agent
 description: Create or edit an auto-run agent definition for MyLifeDB. Use when the user wants to automate a task — organizing files, running backups, scheduled reports, processing new uploads, or any recurring workflow. Trigger on phrases like "create an agent", "automate this", "run this automatically", "set up a task", "I want this to happen whenever", "do this every day", "when a new file arrives", or when the user describes any workflow they want to happen without manual intervention. Also trigger when the user asks to edit, update, or modify an existing agent definition. If the user invokes the skill with no specific task in mind ("make me an agent", "I don't know, inspire me", or just opening the skill), run the cold-start inspire flow.
 ---
 
@@ -96,8 +96,8 @@ For `cron` triggers, the Path/Name/Folder lines are absent and a `Schedule:` lin
 
 This skill can call MCP tools provided by MyLifeDB. **Before you reference any tool in an agent's prompt, confirm it's actually connected in the current session** (tool names appear prefixed with `mcp__<server>__<tool>` in your tool list). The two MyLifeDB servers are:
 
-- **`mylifedb-agent`**
-  - `mcp__mylifedb-agent__validateAgent({ name, markdown })` → `{ valid, error?, parsed? }`. Parses the frontmatter without writing to disk. **Always call this before `Write`** so the user doesn't land a broken file that the runner silently ignores.
+- **`mylifedb-builtin`**
+  - `mcp__mylifedb-builtin__validateAgent({ name, markdown })` → `{ valid, error?, parsed? }`. Parses the frontmatter without writing to disk. **Always call this before `Write`** so the user doesn't land a broken file that the runner silently ignores.
 - **`explore`**
   - `mcp__explore__createPost({ author, title, content, media, tags })` — publishes a post to the explore feed.
   - `mcp__explore__listPosts`, `addComment`, `addTags`, `deletePost` — other feed operations.
@@ -137,7 +137,7 @@ The goal is to write the prompt from **experience**, not imagination. Walk throu
 ### Phase 3 — Save, validate, and trial-run
 
 1. Assemble the frontmatter + prompt. Include the correctness basics you learned in Phase 2; state skip cases explicitly (*"If the file is NOT in inbox/, respond 'Skipping' and do nothing."*).
-2. **Validate with the MCP tool before writing.** Call `mcp__mylifedb-agent__validateAgent` with the name and markdown. If `valid: false`, fix the error and re-validate. Do **not** call `Write` until validation passes.
+2. **Validate with the MCP tool before writing.** Call `mcp__mylifedb-builtin__validateAgent` with the name and markdown. If `valid: false`, fix the error and re-validate. Do **not** call `Write` until validation passes.
 3. Write the file with `Write` to `<USER_DATA_DIR>/agents/<kebab-name>/<kebab-name>.md`. The fs watcher picks it up within ~500ms; no restart needed.
 4. Trial run:
    - **File-triggered agent with non-destructive action**: drop a real test file into the trigger path. The runner fires the agent; watch the session page for output.

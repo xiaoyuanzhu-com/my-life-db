@@ -342,12 +342,12 @@ export default function AgentPage() {
   }, [navigate])
 
   const handleCreateAgentWithAI = useCallback(() => {
-    seedNewSession(`/create-agent`)
+    seedNewSession(`/create-auto-agent`)
   }, [seedNewSession])
 
   const handleEditAgentWithAI = useCallback((name: string, markdown: string) => {
     seedNewSession(
-      `/create-agent\n\n` +
+      `/create-auto-agent\n\n` +
       `Help me edit my existing auto agent at \`agents/${name}/${name}.md\`.\n\n` +
       `Current definition:\n\n\`\`\`markdown\n${markdown}\n\`\`\``
     )

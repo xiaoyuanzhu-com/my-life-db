@@ -11,7 +11,7 @@ import (
 // MCPHandler serves MCP (Model Context Protocol) over streamable HTTP for
 // the auto-run agent system. Currently exposes a single tool, validateAgent,
 // that parses an agent definition's frontmatter without touching disk so the
-// create-agent skill can pre-flight its output before calling the Write tool.
+// create-auto-agent skill can pre-flight its output before calling the Write tool.
 type MCPHandler struct {
 	runner *Runner
 	token  string // optional bearer token; empty disables auth
@@ -94,7 +94,7 @@ func (m *MCPHandler) handleRequest(req jsonrpcRequest) *jsonrpcResponse {
 				"protocolVersion": "2024-11-05",
 				"capabilities":    map[string]any{"tools": map[string]any{}},
 				"serverInfo": map[string]any{
-					"name":    "mylifedb-agent",
+					"name":    "mylifedb-builtin",
 					"version": "1.0.0",
 				},
 			},

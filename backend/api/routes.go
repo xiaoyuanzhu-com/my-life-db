@@ -35,7 +35,7 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 			c.Status(http.StatusMethodNotAllowed)
 		})
 
-		// Agent MCP endpoint — exposes validateAgent for the create-agent skill.
+		// Agent MCP endpoint — exposes validateAgent for the create-auto-agent skill.
 		// Accepts the server's MCP token when auto-run agents call in; accepts
 		// no-auth requests from Claude Code CLI on localhost.
 		agentMCP := agentrunner.NewMCPHandler(h.server.AgentRunner(), h.server.MCPToken())

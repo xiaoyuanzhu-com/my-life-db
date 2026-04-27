@@ -27,9 +27,9 @@ func TestInstallClientConfig_WritesMCPJSON(t *testing.T) {
 
 	mcp := readJSON(t, filepath.Join(dir, ".mcp.json"))
 	servers, _ := mcp["mcpServers"].(map[string]any)
-	agent, _ := servers["mylifedb-agent"].(map[string]any)
+	agent, _ := servers["mylifedb-builtin"].(map[string]any)
 	if agent == nil {
-		t.Fatalf("mylifedb-agent not registered, got: %v", mcp)
+		t.Fatalf("mylifedb-builtin not registered, got: %v", mcp)
 	}
 	if url, _ := agent["url"].(string); url != "http://localhost:12345/api/agent/mcp" {
 		t.Errorf("url = %q, want http://localhost:12345/api/agent/mcp", url)
@@ -45,7 +45,7 @@ func TestInstallClientConfig_MCPJSONReflectsPort(t *testing.T) {
 
 	mcp := readJSON(t, filepath.Join(dir, ".mcp.json"))
 	servers, _ := mcp["mcpServers"].(map[string]any)
-	agent, _ := servers["mylifedb-agent"].(map[string]any)
+	agent, _ := servers["mylifedb-builtin"].(map[string]any)
 	if url, _ := agent["url"].(string); url != "http://localhost:4321/api/agent/mcp" {
 		t.Errorf("url = %q, want port 4321 reflected", url)
 	}
@@ -56,7 +56,7 @@ func TestInstallClientConfig_MCPJSONOverwrites(t *testing.T) {
 	// file and must overwrite it on every startup so port changes propagate.
 	dir := t.TempDir()
 	stalePath := filepath.Join(dir, ".mcp.json")
-	if err := os.WriteFile(stalePath, []byte(`{"mcpServers":{"mylifedb-agent":{"type":"http","url":"http://localhost:9999/api/agent/mcp"}}}`), 0644); err != nil {
+	if err := os.WriteFile(stalePath, []byte(`{"mcpServers":{"mylifedb-builtin":{"type":"http","url":"http://localhost:9999/api/agent/mcp"}}}`), 0644); err != nil {
 		t.Fatalf("seed stale .mcp.json: %v", err)
 	}
 
@@ -64,7 +64,7 @@ func TestInstallClientConfig_MCPJSONOverwrites(t *testing.T) {
 
 	mcp := readJSON(t, stalePath)
 	servers, _ := mcp["mcpServers"].(map[string]any)
-	agent, _ := servers["mylifedb-agent"].(map[string]any)
+	agent, _ := servers["mylifedb-builtin"].(map[string]any)
 	if url, _ := agent["url"].(string); url != "http://localhost:12345/api/agent/mcp" {
 		t.Errorf("stale port not overwritten — url = %q", url)
 	}
@@ -138,8 +138,34 @@ func TestInstallClientConfig_PreservesUserEntries(t *testing.T) {
 		t.Errorf("mcp__explore__createPost appears %d times, want 1 — allow: %v", count, allow)
 	}
 	// MyLifeDB tools must be added.
-	if !got["mcp__mylifedb-agent__validateAgent"] {
-		t.Errorf("mcp__mylifedb-agent__validateAgent was not added")
+	if !got["mcp__mylifedb-builtin__validateAgent"] {
+		t.Errorf("mcp__mylifedb-builtin__validateAgent was not added")
+	}
+}
+
+func TestInstallClientConfig_DropsRenamedAllowEntries(t *testing.T) {
+	// Old installs put mcp__mylifedb-agent__validateAgent on the allow list.
+	// After the rename to mylifedb-builtin, the stale entry must be dropped.
+	dir := t.TempDir()
+	settingsDir := filepath.Join(dir, ".claude")
+	if err := os.MkdirAll(settingsDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	path := filepath.Join(settingsDir, "settings.local.json")
+	seed := `{"permissions":{"allow":["mcp__mylifedb-agent__validateAgent","Bash(npm run *)"]}}`
+	if err := os.WriteFile(path, []byte(seed), 0644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	InstallClientConfig(dir, 12345)
+
+	settings := readJSON(t, path)
+	perms, _ := settings["permissions"].(map[string]any)
+	allow, _ := perms["allow"].([]any)
+	for _, v := range allow {
+		if s, _ := v.(string); s == "mcp__mylifedb-agent__validateAgent" {
+			t.Errorf("renamed entry mcp__mylifedb-agent__validateAgent should have been dropped, got: %v", allow)
+		}
 	}
 }
 

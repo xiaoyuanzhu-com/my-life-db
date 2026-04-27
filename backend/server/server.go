@@ -351,7 +351,7 @@ http_headers = { "x-litellm-customer-id" = %q }
 		})
 		mcpServers = append(mcpServers, acp.McpServer{
 			Http: &acp.McpServerHttpInline{
-				Name: "mylifedb-agent",
+				Name: "mylifedb-builtin",
 				Type: "http",
 				Url:  fmt.Sprintf("http://localhost:%d/api/agent/mcp", cfg.Port),
 				Headers: []acp.HttpHeader{
