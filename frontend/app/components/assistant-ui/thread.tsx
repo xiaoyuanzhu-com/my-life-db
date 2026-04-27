@@ -31,6 +31,7 @@ import {
   SquareSlash,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FC } from "react";
+import { useNavigate } from "react-router";
 import type { PlanEntry } from "~/hooks/use-agent-runtime";
 import { useHasTouch } from "~/hooks/use-has-touch";
 
@@ -425,6 +426,7 @@ const DraftPersistenceSync: FC = () => {
 const MCPServersSubMenu: FC = () => {
   const { data: servers } = useMCPServers()
   const toggle = useToggleMCPServer()
+  const navigate = useNavigate()
   const list = servers ?? []
 
   return (
@@ -460,6 +462,16 @@ const MCPServersSubMenu: FC = () => {
             />
           </div>
         ))}
+        {list.length > 0 && <DropdownMenuSeparator className="mx-2" />}
+        <DropdownMenuItem
+          onSelect={() =>
+            navigate(`/agent?seed=${encodeURIComponent('please help install a new MCP server')}`)
+          }
+          className="px-2 py-1.5 gap-2 text-xs text-muted-foreground focus:text-foreground"
+        >
+          <Plus className="size-3.5 shrink-0" />
+          <span>Add new MCP</span>
+        </DropdownMenuItem>
       </DropdownMenuSubContent>
     </DropdownMenuSub>
   )
@@ -471,6 +483,7 @@ const SkillsSubMenu: FC<{ onSelectSkill: (name: string) => void }> = ({ onSelect
   // under .claude/skills, .agents/skills, .gemini/skills in that dir.
   const { workingDir } = useAgentContext()
   const { data: skills } = useSkills(workingDir)
+  const navigate = useNavigate()
   const list = skills ?? []
   return (
     <DropdownMenuSub>
@@ -502,6 +515,16 @@ const SkillsSubMenu: FC<{ onSelectSkill: (name: string) => void }> = ({ onSelect
             )}
           </DropdownMenuItem>
         ))}
+        {list.length > 0 && <DropdownMenuSeparator className="mx-2" />}
+        <DropdownMenuItem
+          onSelect={() =>
+            navigate(`/agent?seed=${encodeURIComponent('please help install a new skill')}`)
+          }
+          className="px-2 py-1.5 gap-2 text-xs text-muted-foreground focus:text-foreground"
+        >
+          <Plus className="size-3.5 shrink-0" />
+          <span>Add new skill</span>
+        </DropdownMenuItem>
       </DropdownMenuSubContent>
     </DropdownMenuSub>
   )

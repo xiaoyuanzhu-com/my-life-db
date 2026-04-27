@@ -353,8 +353,10 @@ export default function AgentPage() {
     )
   }, [seedNewSession])
 
-  // Honor ?seed=<prompt> URL param: prefill the new-session composer on mount,
-  // then strip the param so a refresh doesn't re-seed.
+  // Honor ?seed=<prompt> URL param: prefill the new-session composer whenever
+  // the param appears, then strip it so a refresh doesn't re-seed. Reacting to
+  // searchParams (not just mount) lets in-app links from /agent/:id trigger
+  // seeding without a full route remount.
   const [searchParams, setSearchParams] = useSearchParams()
   useEffect(() => {
     const seed = searchParams.get('seed')
@@ -363,9 +365,7 @@ export default function AgentPage() {
     const next = new URLSearchParams(searchParams)
     next.delete('seed')
     setSearchParams(next, { replace: true })
-    // Run once on mount only; we don't want to re-seed on every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [searchParams, seedNewSession, setSearchParams])
 
   // Honor ?edit=<name> URL param on /agent/auto: open the editor for that
   // agent and strip the param so the URL reflects steady state. Used by the
