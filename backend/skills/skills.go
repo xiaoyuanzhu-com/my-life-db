@@ -42,18 +42,27 @@ var renamedSkillFolders = []string{
 //   - <dataDir>/.agents/skills — replaced by the user-home install set; the
 //     data dir varies per deployment, so workspace-level install never
 //     covered the user's interactive sessions.
+//   - ~/.claude/skills — Claude Code reads ~/.agents/skills/ as well
+//     (verified empirically — it lists skills found there with no `agent`
+//     key, the same way the agentskills.io alias works for Codex/Gemini).
+//     Writing the same skill to both made every Claude Code session show
+//     two identical entries.
 func legacyInstallRoots(dataDir string) []string {
-	return []string{
+	roots := []string{
 		filepath.Join(dataDir, ".agents/skills"),
 	}
+	if home, err := os.UserHomeDir(); err == nil {
+		roots = append(roots, filepath.Join(home, ".claude/skills"))
+	}
+	return roots
 }
 
 // Install writes all bundled skills to user-home discovery directories so that
 // every supported agent CLI finds them regardless of CWD.
 //
-// Three roots cover all five agents MyLifeDB spawns:
-//   - ~/.claude/skills — Claude Code (no alias support)
-//   - ~/.agents/skills — Codex (native), Gemini (alias), opencode (alias)
+// Two roots cover all five agents MyLifeDB spawns:
+//   - ~/.agents/skills — Claude Code, Codex (native), Gemini (alias),
+//     opencode (alias)
 //   - ~/.qwen/skills   — Qwen Code (no alias support)
 //
 // Existing files are overwritten to keep skills up to date.
@@ -64,7 +73,6 @@ func Install(dataDir string) {
 		return
 	}
 	roots := []string{
-		filepath.Join(home, ".claude/skills"),
 		filepath.Join(home, ".agents/skills"),
 		filepath.Join(home, ".qwen/skills"),
 	}
