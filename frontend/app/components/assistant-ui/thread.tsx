@@ -561,9 +561,10 @@ const ComposerOptionsMenu: FC<{
             />
           </div>
         ))}
+        {hasSelectors && <DropdownMenuSeparator className="mx-2" />}
         <MCPServersSubMenu />
         <SkillsSubMenu />
-        {hasSelectors && <DropdownMenuSeparator className="mx-2" />}
+        <DropdownMenuSeparator className="mx-2" />
         <DropdownMenuItem
           onSelect={onAttachFiles}
           className="px-2 py-1.5 gap-2 text-xs text-muted-foreground focus:text-foreground"
