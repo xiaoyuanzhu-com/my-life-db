@@ -6,6 +6,13 @@ import type { ExplorePost } from "~/types/explore";
 const BATCH_SIZE = 30;
 const SCROLL_THRESHOLD = 1000;
 
+// Tailwind breakpoints: md=768, lg=1024
+function getColumnCount(width: number): number {
+  if (width >= 1024) return 4;
+  if (width >= 768) return 3;
+  return 2;
+}
+
 interface ExploreFeedProps {
   onPostClick: (post: ExplorePost) => void;
 }
@@ -16,7 +23,16 @@ export function ExploreFeed({ onPostClick }: ExploreFeedProps) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMoreOlder, setHasMoreOlder] = useState(false);
   const [lastCursor, setLastCursor] = useState<string | null>(null);
+  const [columnCount, setColumnCount] = useState(() =>
+    typeof window === "undefined" ? 2 : getColumnCount(window.innerWidth)
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onResize = () => setColumnCount(getColumnCount(window.innerWidth));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -79,12 +95,21 @@ export function ExploreFeed({ onPostClick }: ExploreFeedProps) {
     );
   }
 
+  // Round-robin distribute posts across columns so DOM/visual order is row-major:
+  // items 1..N fill the top of each column, items N+1..2N fill the next "row", etc.
+  const columns: ExplorePost[][] = Array.from({ length: columnCount }, () => []);
+  posts.forEach((post, i) => columns[i % columnCount].push(post));
+
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto">
       <div className="p-4 md:px-[10%]">
-        <div className="columns-2 md:columns-3 lg:columns-4 gap-3">
-          {posts.map((post) => (
-            <PostCard key={post.id} post={post} onClick={() => onPostClick(post)} />
+        <div className="flex gap-3">
+          {columns.map((col, colIdx) => (
+            <div key={colIdx} className="flex-1 min-w-0 flex flex-col gap-3">
+              {col.map((post) => (
+                <PostCard key={post.id} post={post} onClick={() => onPostClick(post)} />
+              ))}
+            </div>
           ))}
         </div>
         {loadingMore && (
