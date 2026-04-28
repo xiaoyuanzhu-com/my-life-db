@@ -66,11 +66,6 @@ export const Thread: FC<ThreadProps> = ({ onAttachmentsStorageIdChange }) => {
   const { pendingPermissions, hasActiveSession, historyLoadError, sessionError } = useAgentContext();
   const hasSession = useAuiState((s) => !s.thread.isEmpty);
   const isRunning = useAuiState((s) => s.thread.isRunning);
-  const attachments = useAgentAttachments();
-
-  useEffect(() => {
-    onAttachmentsStorageIdChange?.(attachments.storageId)
-  }, [attachments.storageId, onAttachmentsStorageIdChange])
 
   // Show loading when we have an active session but messages haven't loaded into the store yet.
   // Covers both "WS connecting" and "WS connected, replay in progress".
@@ -116,7 +111,7 @@ export const Thread: FC<ThreadProps> = ({ onAttachmentsStorageIdChange }) => {
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
       <div className="mx-auto flex w-full max-w-(--thread-max-width) flex-col px-2 md:px-16 pb-4 md:pb-6">
-        <Composer />
+        <Composer onAttachmentsStorageIdChange={onAttachmentsStorageIdChange} />
       </div>
     </ThreadPrimitive.Root>
   );
@@ -625,7 +620,10 @@ const ComposerOptionsMenu: FC<{
   )
 }
 
-const Composer: FC = () => {
+type ComposerProps = {
+  onAttachmentsStorageIdChange?: (storageId: string | null) => void
+}
+const Composer: FC<ComposerProps> = ({ onAttachmentsStorageIdChange }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasTouch = useHasTouch();
@@ -646,6 +644,10 @@ const Composer: FC = () => {
   const composerRuntime = useComposerRuntime();
   const aui = useAui();
   const attachments = useAgentAttachments();
+
+  useEffect(() => {
+    onAttachmentsStorageIdChange?.(attachments.storageId)
+  }, [attachments.storageId, onAttachmentsStorageIdChange])
 
   const handleFilesPicked = (files: FileList | File[] | null) => {
     if (!files) return;
