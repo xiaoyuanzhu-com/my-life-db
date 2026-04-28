@@ -3,9 +3,11 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 
+	acp "github.com/coder/acp-go-sdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
@@ -381,11 +383,47 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 		}
 	}
 
+	storageID := params.StorageID
+	if storageID == "" {
+		storageID = mintStorageID()
+	} else if !validStorageID(storageID) {
+		return nil, fmt.Errorf("invalid storageId: %q", storageID)
+	}
+
+	mcpToken := m.srv.MCPToken()
+	port := m.srv.Cfg().Port
+	mcpServers := []acp.McpServer{
+		{
+			Http: &acp.McpServerHttpInline{
+				Name: "explore",
+				Type: "http",
+				Url:  fmt.Sprintf("http://localhost:%d/api/explore/mcp", port),
+				Headers: []acp.HttpHeader{
+					{Name: "Authorization", Value: "Bearer " + mcpToken},
+				},
+			},
+		},
+		{
+			Http: &acp.McpServerHttpInline{
+				Name: "mylifedb-builtin",
+				Type: "http",
+				Url:  fmt.Sprintf("http://localhost:%d/api/agent/mcp", port),
+				Headers: []acp.HttpHeader{
+					{Name: "Authorization", Value: "Bearer " + mcpToken},
+					{Name: "X-MLD-Session-Id", Value: storageID},
+				},
+			},
+		},
+	}
+	systemPrompt := server.BuildAgentSystemPrompt(m.srv.Cfg().UserDataDir, storageID)
+
 	sess, err := m.agentClient.CreateSession(ctx, agentsdk.SessionConfig{
-		Agent:      agentType,
-		Mode:       params.PermissionMode,
-		WorkingDir: params.WorkingDir,
-		Env:        sessionEnv,
+		Agent:        agentType,
+		Mode:         params.PermissionMode,
+		WorkingDir:   params.WorkingDir,
+		Env:          sessionEnv,
+		McpServers:   mcpServers,
+		SystemPrompt: systemPrompt,
 	})
 	if err != nil {
 		return nil, err
@@ -393,10 +431,7 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 
 	sessionID := sess.ID()
 
-	// TRANSIENT: storage id is minted-and-discarded here only so the build stays
-	// green between Task 3 and Task 8. Task 8 will replace this line with full
-	// per-session config (storageID is wired into McpServers + SystemPrompt).
-	if err := db.CreateAgentSession(sessionID, agentTypeStr, params.WorkingDir, params.Title, params.Source, params.AgentName, params.TriggerKind, params.TriggerData, mintStorageID()); err != nil {
+	if err := db.CreateAgentSession(sessionID, agentTypeStr, params.WorkingDir, params.Title, params.Source, params.AgentName, params.TriggerKind, params.TriggerData, storageID); err != nil {
 		log.Error().Err(err).Msg("failed to create agent session in DB")
 		sess.Close()
 		return nil, err
@@ -498,5 +533,6 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 		AcpSession:   sess,
 		SessionState: sessionState,
 		PromptDone:   promptDone,
+		StorageID:    storageID,
 	}, nil
 }

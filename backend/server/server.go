@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	acp "github.com/coder/acp-go-sdk"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/xiaoyuanzhu-com/my-life-db/agent"
@@ -343,24 +342,10 @@ http_headers = { "x-litellm-customer-id" = %q }
 			Args:    []string{"acp"},
 		}
 
-		// Build MCP servers to pass via ACP (no .mcp.json discovery needed).
-		// One server, hosting every MyLifeDB tool. Tool names appear to the
-		// agent as `mcp__mylifedb-builtin__<tool>`.
-		mcpServers := []acp.McpServer{{
-			Http: &acp.McpServerHttpInline{
-				Name: mcppkg.ServerName,
-				Type: "http",
-				Url:  fmt.Sprintf("http://localhost:%d/api/mcp", cfg.Port),
-				Headers: []acp.HttpHeader{
-					{Name: "Authorization", Value: "Bearer " + s.mcpToken},
-				},
-			},
-		}}
-
-		s.agentClient = agentsdk.NewClient(agentsdk.SessionConfig{
-			SystemPrompt: buildAgentSystemPrompt(cfg.UserDataDir),
-			McpServers:   mcpServers,
-		}, ccAgent, codexAgent, qwenAgent, geminiAgent, opencodeAgent)
+		// SystemPrompt and McpServers are intentionally empty here — both are
+		// built per-session in agent_manager.CreateSession so the X-MLD-Session-Id
+		// header and HTML-render path can carry the storage id.
+		s.agentClient = agentsdk.NewClient(agentsdk.SessionConfig{}, ccAgent, codexAgent, qwenAgent, geminiAgent, opencodeAgent)
 		s.agentClient.StartPool(ctx, agentsdk.AgentClaudeCode, 3)
 
 		log.Info().
@@ -368,7 +353,6 @@ http_headers = { "x-litellm-customer-id" = %q }
 			Str("agent_base_url", cfg.AgentLLM.BaseURL).
 			Int("agent_models", len(cfg.AgentLLM.Models)).
 			Str("cc_model", ccEnv["ANTHROPIC_MODEL"]).
-			Int("mcp_servers", len(mcpServers)).
 			Msg("agent client initialized")
 	}
 
@@ -809,9 +793,10 @@ func (s *Server) SignalShutdown() {
 	// Agent client will be shut down in Shutdown()
 }
 
-// buildAgentSystemPrompt returns the system prompt appended to agent sessions.
-// dataDir is the user's data directory, used for file-based visualization paths.
-func buildAgentSystemPrompt(dataDir string) string {
+// BuildAgentSystemPrompt returns the system prompt appended to agent sessions.
+// dataDir is the user's data directory; storageID is the per-session storage
+// id used to scope generated files.
+func BuildAgentSystemPrompt(dataDir, storageID string) string {
 	return `When the user asks for a chart, diagram, or visualization, return it as a fenced code block. The frontend auto-renders these — do not describe the output unless asked.
 
 Two formats are supported:
@@ -826,8 +811,8 @@ HTML output must be mobile-friendly and responsive — use relative units, flexb
 
 When HTML output would exceed roughly 50 lines (complex dashboards, multi-slide presentations, data-heavy charts), do NOT inline it. Use the file-based approach instead:
 
-1. Create the directory: mkdir -p ` + dataDir + `/.generated
-2. Write the full HTML to ` + dataDir + `/.generated/<descriptive-name>.html using the Write tool
+1. Create the directory: mkdir -p ` + dataDir + `/sessions/` + storageID + `/generated
+2. Write the full HTML to ` + dataDir + `/sessions/` + storageID + `/generated/<descriptive-name>.html using the Write tool
 3. Return a small HTML code block wrapper that loads the file:
 
 ` + "```html" + `
@@ -838,12 +823,12 @@ When HTML output would exceed roughly 50 lines (complex dashboards, multi-slide 
   iframe { width: 100%; height: 100%; border: none; }
 </style></head>
 <body>
-  <iframe src="/raw/.generated/<descriptive-name>.html"></iframe>
+  <iframe src="/raw/sessions/` + storageID + `/generated/<descriptive-name>.html"></iframe>
 </body>
 </html>
 ` + "```" + `
 
-IMPORTANT: Always write files to ` + dataDir + `/.generated/ (absolute path). The iframe src must use /raw/.generated/ (the /raw/ endpoint serves files relative to the data directory).
+IMPORTANT: Always write files to ` + dataDir + `/sessions/` + storageID + `/generated/ (absolute path). The iframe src must use /raw/sessions/` + storageID + `/generated/ (the /raw/ endpoint serves files relative to the data directory).
 
 This keeps the LLM response small (saving tokens and latency) while the frontend renders the full visualization by loading it from the server via the /raw/ endpoint.
 
