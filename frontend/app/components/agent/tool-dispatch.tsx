@@ -11,6 +11,7 @@ import { EditToolRenderer } from "./tools/edit-tool"
 import { SearchToolRenderer } from "./tools/search-tool"
 import { FetchToolRenderer } from "./tools/fetch-tool"
 import { SkillToolRenderer } from "./tools/skill-tool"
+import { ImageToolRenderer } from "./tools/image-tool"
 import { FallbackToolRenderer } from "./tools/fallback-tool"
 import { SubagentSession } from "./subagent-session"
 import { useAgentContext } from "./agent-context"
@@ -34,6 +35,7 @@ export function inferToolKind(toolName: string, args: Record<string, unknown>): 
   if (metaName === "grep" || metaName === "glob" || metaName === "websearch" || metaName === "toolsearch") return "search"
   if (metaName === "webfetch") return "fetch"
   if (metaName === "skill") return "skill"
+  if (metaName.includes("generateimage") || metaName.includes("editimage")) return "image"
 
   // Read tools
   if (lower.startsWith("read ") || lower === "read") return "read"
@@ -87,6 +89,13 @@ export function inferToolKind(toolName: string, args: Record<string, unknown>): 
   // Skill tool
   if (lower.startsWith("skill") || lower === "skill") return "skill"
 
+  // Image generation/edit MCP tools (mylifedb-builtin)
+  if (
+    lower === "generateimage" || lower.startsWith("generateimage ") ||
+    lower === "editimage" || lower.startsWith("editimage ") ||
+    lower.includes("generateimage") || lower.includes("editimage")
+  ) return "image"
+
   // Agent/Task/TodoWrite -- intentionally "other" (use generic renderer)
   return "other"
 }
@@ -138,6 +147,8 @@ export function AcpToolRenderer(props: ToolCallMessagePartProps) {
       return <FetchToolRenderer {...props} />
     case "skill":
       return <SkillToolRenderer {...props} />
+    case "image":
+      return <ImageToolRenderer {...props} />
     default:
       return <FallbackToolRenderer {...props} />
   }

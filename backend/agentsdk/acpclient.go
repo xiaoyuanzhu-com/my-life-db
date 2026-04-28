@@ -145,9 +145,11 @@ func (c *acpClient) SessionUpdate(ctx context.Context, params acp.SessionNotific
 		return nil
 	}
 
-	// ⚠️ Mutates raw frame — reviewed perf exception to raw-frame-integrity principle.
-	// See StripHeavyToolCallContent doc comment for rationale and list of stripped fields.
-	data = StripHeavyToolCallContent(data)
+	// TEMPORARILY DISABLED: stripping content[] / rawOutput hides the MCP tool
+	// result needed by the frontend image renderer (resource_link blocks +
+	// `_meta.mylifedb/image` carrying the relPath). Re-enable as a per-tool
+	// allowlist once image-rendering path settles.
+	// data = StripHeavyToolCallContent(data)
 
 	c.emit(data)
 	return nil
@@ -187,8 +189,10 @@ func (c *acpClient) RequestPermission(ctx context.Context, params acp.RequestPer
 		"toolCall": toolCallJSON,
 		"options":  optionsJSON,
 	})
-	// Strip heavy payloads from the embedded toolCall (same fields as tool_call frames).
-	frame = StripHeavyPermissionContent(frame)
+	// TEMPORARILY DISABLED for parity with tool_call_update — see comment in
+	// SessionUpdate(). Re-enable as a per-tool allowlist alongside the
+	// tool_call stripping when the image-rendering path settles.
+	// frame = StripHeavyPermissionContent(frame)
 	c.emit(frame)
 
 	// Block until RespondToPermission is called or context cancelled

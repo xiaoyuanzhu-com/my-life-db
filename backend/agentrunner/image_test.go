@@ -35,7 +35,7 @@ var tinyPNG = []byte{
 type imageReqCapture struct {
 	Path  string
 	Auth  string
-	Body  map[string]any // for /images/generations (JSON)
+	Body  map[string]any    // for /images/generations (JSON)
 	Form  map[string]string // for /images/edits (multipart fields)
 	Files map[string]struct {
 		Filename string
@@ -129,10 +129,10 @@ func TestGenerateImage_HappyPath(t *testing.T) {
 	fixedTime := time.Date(2026, 4, 26, 12, 0, 0, 0, time.UTC)
 
 	res, err := GenerateImage(context.Background(), ImageGenConfig{
-		BaseURL:    srv.URL,
-		APIKey:     "test-key",
-		AppDataDir: dir,
-		Now:        func() time.Time { return fixedTime },
+		BaseURL:     srv.URL,
+		APIKey:      "test-key",
+		UserDataDir: dir,
+		Now:         func() time.Time { return fixedTime },
 	}, ImageGenRequest{
 		Prompt: "a tiny apple icon",
 	})
@@ -182,6 +182,13 @@ func TestGenerateImage_HappyPath(t *testing.T) {
 	if res.RevisedPrompt == "" {
 		t.Errorf("expected RevisedPrompt to be parsed from response, got empty")
 	}
+	wantRelPrefix := "generated/2026-04-26/"
+	if !strings.HasPrefix(res.RelPath, wantRelPrefix) {
+		t.Errorf("RelPath = %q, want prefix %q", res.RelPath, wantRelPrefix)
+	}
+	if strings.Contains(res.RelPath, "\\") {
+		t.Errorf("RelPath = %q must use forward slashes for /raw/ URL use", res.RelPath)
+	}
 }
 
 func TestGenerateImage_OverridesPassThrough(t *testing.T) {
@@ -189,9 +196,9 @@ func TestGenerateImage_OverridesPassThrough(t *testing.T) {
 	dir := t.TempDir()
 
 	_, err := GenerateImage(context.Background(), ImageGenConfig{
-		BaseURL:    srv.URL,
-		APIKey:     "k",
-		AppDataDir: dir,
+		BaseURL:     srv.URL,
+		APIKey:      "k",
+		UserDataDir: dir,
 	}, ImageGenRequest{
 		Prompt:     "test",
 		Size:       "1536x1024",
@@ -218,9 +225,9 @@ func TestGenerateImage_FilenameHintUsed(t *testing.T) {
 	dir := t.TempDir()
 
 	res, err := GenerateImage(context.Background(), ImageGenConfig{
-		BaseURL:    srv.URL,
-		APIKey:     "k",
-		AppDataDir: dir,
+		BaseURL:     srv.URL,
+		APIKey:      "k",
+		UserDataDir: dir,
 	}, ImageGenRequest{
 		Prompt:   "anything goes here",
 		Filename: "Custom Name!",
@@ -239,9 +246,9 @@ func TestGenerateImage_MissingConfigReturnsError(t *testing.T) {
 		name string
 		gc   ImageGenConfig
 	}{
-		{"no base url", ImageGenConfig{APIKey: "k", AppDataDir: t.TempDir()}},
-		{"no api key", ImageGenConfig{BaseURL: "http://x", AppDataDir: t.TempDir()}},
-		{"no app data dir", ImageGenConfig{BaseURL: "http://x", APIKey: "k"}},
+		{"no base url", ImageGenConfig{APIKey: "k", UserDataDir: t.TempDir()}},
+		{"no api key", ImageGenConfig{BaseURL: "http://x", UserDataDir: t.TempDir()}},
+		{"no user data dir", ImageGenConfig{BaseURL: "http://x", APIKey: "k"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -255,9 +262,9 @@ func TestGenerateImage_MissingConfigReturnsError(t *testing.T) {
 
 func TestGenerateImage_EmptyPromptReturnsError(t *testing.T) {
 	_, err := GenerateImage(context.Background(), ImageGenConfig{
-		BaseURL:    "http://x",
-		APIKey:     "k",
-		AppDataDir: t.TempDir(),
+		BaseURL:     "http://x",
+		APIKey:      "k",
+		UserDataDir: t.TempDir(),
 	}, ImageGenRequest{Prompt: "   "})
 	if err == nil {
 		t.Errorf("expected error for empty prompt, got nil")
@@ -272,9 +279,9 @@ func TestGenerateImage_HTTPErrorIsForwarded(t *testing.T) {
 	defer srv.Close()
 
 	_, err := GenerateImage(context.Background(), ImageGenConfig{
-		BaseURL:    srv.URL,
-		APIKey:     "k",
-		AppDataDir: t.TempDir(),
+		BaseURL:     srv.URL,
+		APIKey:      "k",
+		UserDataDir: t.TempDir(),
 	}, ImageGenRequest{Prompt: "p"})
 	if err == nil {
 		t.Fatal("expected error from non-2xx response")
@@ -297,10 +304,10 @@ func TestEditImage_HappyPath(t *testing.T) {
 	}
 
 	res, err := EditImage(context.Background(), ImageGenConfig{
-		BaseURL:    srv.URL,
-		APIKey:     "test-key",
-		AppDataDir: dir,
-		Now:        func() time.Time { return fixedTime },
+		BaseURL:     srv.URL,
+		APIKey:      "test-key",
+		UserDataDir: dir,
+		Now:         func() time.Time { return fixedTime },
 	}, ImageEditRequest{
 		Prompt:    "make it blue",
 		ImagePath: src,
@@ -370,9 +377,9 @@ func TestEditImage_WithMask(t *testing.T) {
 	}
 
 	_, err := EditImage(context.Background(), ImageGenConfig{
-		BaseURL:    srv.URL,
-		APIKey:     "k",
-		AppDataDir: dir,
+		BaseURL:     srv.URL,
+		APIKey:      "k",
+		UserDataDir: dir,
 	}, ImageEditRequest{
 		Prompt:    "inpaint",
 		ImagePath: src,
@@ -389,9 +396,9 @@ func TestEditImage_WithMask(t *testing.T) {
 func TestEditImage_RequiresAbsoluteImagePath(t *testing.T) {
 	dir := t.TempDir()
 	_, err := EditImage(context.Background(), ImageGenConfig{
-		BaseURL:    "http://x",
-		APIKey:     "k",
-		AppDataDir: dir,
+		BaseURL:     "http://x",
+		APIKey:      "k",
+		UserDataDir: dir,
 	}, ImageEditRequest{
 		Prompt:    "p",
 		ImagePath: "relative/path.png",
@@ -412,9 +419,9 @@ func TestEditImage_RejectsLargeSourceImage(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := EditImage(context.Background(), ImageGenConfig{
-		BaseURL:    "http://x",
-		APIKey:     "k",
-		AppDataDir: dir,
+		BaseURL:     "http://x",
+		APIKey:      "k",
+		UserDataDir: dir,
 	}, ImageEditRequest{
 		Prompt:    "p",
 		ImagePath: src,
@@ -435,9 +442,9 @@ func TestEditImage_DetectsJPEGMimeFromExtension(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := EditImage(context.Background(), ImageGenConfig{
-		BaseURL:    srv.URL,
-		APIKey:     "k",
-		AppDataDir: dir,
+		BaseURL:     srv.URL,
+		APIKey:      "k",
+		UserDataDir: dir,
 	}, ImageEditRequest{
 		Prompt:    "p",
 		ImagePath: src,
@@ -458,32 +465,47 @@ func TestMCP_ToolsList_HasGenerateAndEdit(t *testing.T) {
 	var resp struct {
 		Result struct {
 			Tools []struct {
-				Name string `json:"name"`
+				Name         string         `json:"name"`
+				OutputSchema map[string]any `json:"outputSchema"`
 			} `json:"tools"`
 		} `json:"result"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	got := map[string]bool{}
+	got := map[string]map[string]any{}
 	for _, tool := range resp.Result.Tools {
-		got[tool.Name] = true
+		got[tool.Name] = tool.OutputSchema
 	}
 	for _, want := range []string{"generateImage", "editImage"} {
-		if !got[want] {
-			t.Errorf("%s not in tools/list — got %+v", want, resp.Result.Tools)
+		schema, ok := got[want]
+		if !ok {
+			t.Errorf("%s not in tools/list", want)
+			continue
+		}
+		// Image tools must declare outputSchema so spec-aware clients
+		// (MCP 2025-06-18+) can validate structuredContent.
+		if schema == nil {
+			t.Errorf("%s missing outputSchema", want)
+			continue
+		}
+		props, _ := schema["properties"].(map[string]any)
+		if props["relPath"] == nil {
+			t.Errorf("%s.outputSchema missing relPath property", want)
 		}
 	}
 }
 
-func TestMCP_GenerateImage_ReturnsTextOnlyWithPath(t *testing.T) {
+func TestMCP_GenerateImage_ReturnsTextWithMarker(t *testing.T) {
 	dir := t.TempDir()
 	h := NewMCPHandler(New(Config{}), "")
-	wantPath := filepath.Join(dir, "out.png")
+	wantAbs := filepath.Join(dir, "out.png")
+	wantRel := "generated/2026-04-28/out.png"
 	h.ImageGen = func(ctx context.Context, req ImageGenRequest) (*ImageGenResult, error) {
-		_ = os.WriteFile(wantPath, tinyPNG, 0o644)
+		_ = os.WriteFile(wantAbs, tinyPNG, 0o644)
 		return &ImageGenResult{
-			AbsPath:       wantPath,
+			AbsPath:       wantAbs,
+			RelPath:       wantRel,
 			Bytes:         len(tinyPNG),
 			RevisedPrompt: "rephrased",
 		}, nil
@@ -505,8 +527,9 @@ func TestMCP_GenerateImage_ReturnsTextOnlyWithPath(t *testing.T) {
 	}
 	var resp struct {
 		Result struct {
-			Content []map[string]any `json:"content"`
-			IsError bool             `json:"isError"`
+			Content           []map[string]any `json:"content"`
+			StructuredContent map[string]any   `json:"structuredContent"`
+			IsError           bool             `json:"isError"`
 		} `json:"result"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
@@ -515,19 +538,76 @@ func TestMCP_GenerateImage_ReturnsTextOnlyWithPath(t *testing.T) {
 	if resp.Result.IsError {
 		t.Fatalf("got isError=true, body: %s", w.Body.String())
 	}
-	// Single text content block — image bytes intentionally not included.
+	// Single text content block. The agent CLI (Claude Code, observed
+	// 2026-04-28) flattens our MCP response and drops `_meta`,
+	// `structuredContent`, and `resource_link` blocks before forwarding over
+	// ACP. So the marker has to live inside text — that's the only field
+	// that always survives. structuredContent is still emitted (for
+	// spec-aware clients on MCP 2025-06-18+).
 	if len(resp.Result.Content) != 1 {
-		t.Fatalf("content blocks = %d, want 1 (text only — no inline b64)", len(resp.Result.Content))
+		t.Fatalf("content blocks = %d, want 1 (single text with marker)", len(resp.Result.Content))
+	}
+	// structuredContent: native MCP 2025-06-18 field carrying the same data
+	// as the marker. Tested for completeness even though current agent CLIs
+	// drop it on the wire.
+	if resp.Result.StructuredContent["relPath"] != wantRel {
+		t.Errorf("structuredContent.relPath = %v, want %s", resp.Result.StructuredContent["relPath"], wantRel)
+	}
+	if resp.Result.StructuredContent["op"] != "generated" {
+		t.Errorf("structuredContent.op = %v, want generated", resp.Result.StructuredContent["op"])
 	}
 	if resp.Result.Content[0]["type"] != "text" {
-		t.Errorf("block type = %v, want text", resp.Result.Content[0]["type"])
+		t.Errorf("block 0 type = %v, want text", resp.Result.Content[0]["type"])
 	}
 	textOut := resp.Result.Content[0]["text"].(string)
-	if !strings.Contains(textOut, wantPath) {
-		t.Errorf("text block missing path %q: %q", wantPath, textOut)
+	if !strings.Contains(textOut, wantAbs) {
+		t.Errorf("text block missing absPath %q: %q", wantAbs, textOut)
+	}
+	if !strings.Contains(textOut, wantRel) {
+		t.Errorf("text block missing relPath %q: %q", wantRel, textOut)
 	}
 	if !strings.Contains(textOut, "rephrased") {
 		t.Errorf("text block missing revised prompt: %q", textOut)
+	}
+	// Structured marker — the contract the frontend reads.
+	const markerPrefix = "[mylifedb-image] "
+	idx := strings.Index(textOut, markerPrefix)
+	if idx < 0 {
+		t.Fatalf("marker %q not found in text: %q", markerPrefix, textOut)
+	}
+	jsonPart := textOut[idx+len(markerPrefix):]
+	// Marker JSON must be a single line, on its own line, ending the message.
+	if strings.Contains(jsonPart, "\n") {
+		t.Errorf("marker JSON must be on a single line: %q", jsonPart)
+	}
+	var meta struct {
+		Op            string `json:"op"`
+		AbsPath       string `json:"absPath"`
+		RelPath       string `json:"relPath"`
+		MimeType      string `json:"mimeType"`
+		Bytes         int    `json:"bytes"`
+		RevisedPrompt string `json:"revisedPrompt"`
+	}
+	if err := json.Unmarshal([]byte(jsonPart), &meta); err != nil {
+		t.Fatalf("marker JSON parse failed: %v -- payload: %q", err, jsonPart)
+	}
+	if meta.RelPath != wantRel {
+		t.Errorf("marker.relPath = %q, want %q", meta.RelPath, wantRel)
+	}
+	if meta.AbsPath != wantAbs {
+		t.Errorf("marker.absPath = %q, want %q", meta.AbsPath, wantAbs)
+	}
+	if meta.Op != "generated" {
+		t.Errorf("marker.op = %q, want generated", meta.Op)
+	}
+	if meta.Bytes != len(tinyPNG) {
+		t.Errorf("marker.bytes = %d, want %d", meta.Bytes, len(tinyPNG))
+	}
+	if meta.RevisedPrompt != "rephrased" {
+		t.Errorf("marker.revisedPrompt = %q, want rephrased", meta.RevisedPrompt)
+	}
+	if meta.MimeType != "image/png" {
+		t.Errorf("marker.mimeType = %q, want image/png", meta.MimeType)
 	}
 	// Defense in depth: explicitly verify no image content block leaked through.
 	for _, b := range resp.Result.Content {
@@ -644,7 +724,7 @@ func TestMCP_EditImage_DispatchesAndPassesArgsThrough(t *testing.T) {
 		t.Fatalf("got isError=true: %s", w.Body.String())
 	}
 	if len(resp.Result.Content) != 1 {
-		t.Fatalf("content blocks = %d, want 1 (text only — no inline b64)", len(resp.Result.Content))
+		t.Fatalf("content blocks = %d, want 1 (text with marker)", len(resp.Result.Content))
 	}
 	textOut := resp.Result.Content[0]["text"].(string)
 	if !strings.HasPrefix(textOut, "Edited image") {
@@ -652,6 +732,9 @@ func TestMCP_EditImage_DispatchesAndPassesArgsThrough(t *testing.T) {
 	}
 	if !strings.Contains(textOut, editedPath) {
 		t.Errorf("edit result text missing path %q: %q", editedPath, textOut)
+	}
+	if !strings.Contains(textOut, "[mylifedb-image] ") {
+		t.Errorf("edit result text missing structured marker: %q", textOut)
 	}
 }
 
@@ -750,10 +833,10 @@ func TestMCP_ToolsCall_SSEStreamsResponseAndKeepalives(t *testing.T) {
 		t.Errorf("jsonrpc = %q, want 2.0", rpc.JSONRPC)
 	}
 	if len(rpc.Result.Content) != 1 {
-		t.Fatalf("content blocks = %d, want 1 (text only)", len(rpc.Result.Content))
+		t.Fatalf("content blocks = %d, want 1 (text with marker)", len(rpc.Result.Content))
 	}
 	if rpc.Result.Content[0]["type"] != "text" {
-		t.Errorf("block type = %v, want text", rpc.Result.Content[0]["type"])
+		t.Errorf("block 0 type = %v, want text", rpc.Result.Content[0]["type"])
 	}
 }
 

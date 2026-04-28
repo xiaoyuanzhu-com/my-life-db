@@ -49,33 +49,42 @@ type ImageEditRequest struct {
 }
 
 // ImageGenResult is what GenerateImage / EditImage returns: the on-disk
-// path of the saved PNG, the byte count, and the model's revised prompt
-// (useful for showing the model how its prompt was rephrased).
+// path of the saved PNG (both absolute and relative to UserDataDir), the
+// byte count, and the model's revised prompt.
+//
+// RelPath is what the frontend uses to render the image via /raw/<RelPath>;
+// AbsPath is what the model sees in the tool result text so it can pass the
+// path to other tools (Read, Edit) if needed.
 //
 // The base64 image bytes are intentionally NOT held here — they're decoded
 // once and written to disk. Returning them inline in the MCP tool_result
 // would burn ~640K text tokens or ~1500 vision tokens of model context per
-// generation; the model only needs the path. The frontend renders the
-// image from disk via the existing /raw/<path> static endpoint.
+// generation; the model only needs the path.
 type ImageGenResult struct {
 	AbsPath       string
+	RelPath       string // relative to UserDataDir, e.g. "generated/2026-04-28/foo.png"
 	Bytes         int
 	RevisedPrompt string
 }
 
 // ImageGenConfig holds the wiring used by GenerateImage and EditImage. In
 // production it's pulled from config.Get(); tests inject it directly.
+//
+// UserDataDir (not AppDataDir) — generated images go under the user's library
+// at USER_DATA_DIR/generated/<date>/ so they're served by the existing /raw/
+// endpoint and visible in the user's library/inbox flow. They're user content
+// the user just produced.
 type ImageGenConfig struct {
-	HTTPClient *http.Client
-	BaseURL    string // gateway base URL, e.g. https://litellm.example.com/v1
-	APIKey     string
-	AppDataDir string
-	Model      string // default "gpt-image-2"
-	Now        func() time.Time
+	HTTPClient  *http.Client
+	BaseURL     string // gateway base URL, e.g. https://litellm.example.com/v1
+	APIKey      string
+	UserDataDir string
+	Model       string // default "gpt-image-2"
+	Now         func() time.Time
 }
 
 // GenerateImage POSTs to {BaseURL}/images/generations and writes the returned
-// PNG to {AppDataDir}/generated/{YYYY-MM-DD}/{slug}-{hash}.png.
+// PNG to {UserDataDir}/generated/{YYYY-MM-DD}/{slug}-{hash}.png.
 //
 // Note: gpt-image-2 always returns base64 in `data[].b64_json` and does not
 // accept a `response_format` parameter (unlike gpt-image-1) — passing one
@@ -141,7 +150,7 @@ func GenerateImage(ctx context.Context, gc ImageGenConfig, req ImageGenRequest) 
 
 // EditImage POSTs to {BaseURL}/images/edits as multipart/form-data, uploading
 // the source image (and optional mask), and writes the result alongside
-// generated images at {AppDataDir}/generated/{YYYY-MM-DD}/.
+// generated images at {UserDataDir}/generated/{YYYY-MM-DD}/.
 func EditImage(ctx context.Context, gc ImageGenConfig, req ImageEditRequest) (*ImageGenResult, error) {
 	if err := validateConfig(gc); err != nil {
 		return nil, err
@@ -242,8 +251,8 @@ func validateConfig(gc ImageGenConfig) error {
 	if gc.BaseURL == "" || gc.APIKey == "" {
 		return fmt.Errorf("agent gateway not configured (set AGENT_BASE_URL and AGENT_API_KEY)")
 	}
-	if gc.AppDataDir == "" {
-		return fmt.Errorf("AppDataDir not set")
+	if gc.UserDataDir == "" {
+		return fmt.Errorf("UserDataDir not set")
 	}
 	return nil
 }
@@ -276,7 +285,7 @@ func defaultSizeQuality(size, quality string) (string, string) {
 }
 
 // writeImageFromResponse parses a gpt-image-2 response body, decodes the
-// first b64 image, writes it to {AppDataDir}/generated/{YYYY-MM-DD}/, and
+// first b64 image, writes it to {UserDataDir}/generated/{YYYY-MM-DD}/, and
 // returns the metadata including the model's revised prompt.
 //
 // The opTag distinguishes generated vs edited outputs in the saved filename
@@ -300,7 +309,8 @@ func writeImageFromResponse(rawBody []byte, gc ImageGenConfig, slugSrc, opTag st
 		return nil, fmt.Errorf("decoding b64: %w", err)
 	}
 
-	dayDir := filepath.Join(gc.AppDataDir, "generated", gc.Now().Format("2006-01-02"))
+	day := gc.Now().Format("2006-01-02")
+	dayDir := filepath.Join(gc.UserDataDir, "generated", day)
 	if err := os.MkdirAll(dayDir, 0o755); err != nil {
 		return nil, fmt.Errorf("mkdir %s: %w", dayDir, err)
 	}
@@ -323,6 +333,7 @@ func writeImageFromResponse(rawBody []byte, gc ImageGenConfig, slugSrc, opTag st
 	}
 	return &ImageGenResult{
 		AbsPath:       absPath,
+		RelPath:       filepath.ToSlash(filepath.Join("generated", day, name)),
 		Bytes:         len(pngBytes),
 		RevisedPrompt: parsed.Data[0].RevisedPrompt,
 	}, nil

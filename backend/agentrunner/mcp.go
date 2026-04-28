@@ -27,7 +27,7 @@ const imageCallTimeout = 6 * time.Minute
 //     calling the Write tool.
 //   - generateImage: generates an image via gpt-image-2 through the configured
 //     LiteLLM gateway (AGENT_BASE_URL / AGENT_API_KEY) and saves it under
-//     APP_DATA_DIR/generated/<date>/.
+//     USER_DATA_DIR/generated/<date>/.
 //   - editImage: edits an existing image via gpt-image-2's /images/edits
 //     endpoint, with optional inpainting mask. See image.go.
 type MCPHandler struct {
@@ -303,6 +303,21 @@ func (m *MCPHandler) handleRequest(req jsonrpcRequest) *jsonrpcResponse {
 }
 
 func (m *MCPHandler) handleToolsList(req jsonrpcRequest) *jsonrpcResponse {
+	// Shared output schema for generateImage / editImage. Mirrored by the
+	// `structuredContent` field on the tool result and the `[mylifedb-image]`
+	// text-block marker. See imageToolResult.
+	imageOutputSchema := map[string]any{
+		"type":     "object",
+		"required": []string{"op", "absPath", "relPath", "mimeType", "bytes"},
+		"properties": map[string]any{
+			"op":            map[string]any{"type": "string", "enum": []string{"generated", "edited"}},
+			"absPath":       map[string]any{"type": "string", "description": "Absolute on-disk path to the saved PNG."},
+			"relPath":       map[string]any{"type": "string", "description": "Path relative to USER_DATA_DIR, forward-slashed; usable directly in /raw/<relPath>."},
+			"mimeType":      map[string]any{"type": "string", "enum": []string{"image/png"}},
+			"bytes":         map[string]any{"type": "integer", "minimum": 0},
+			"revisedPrompt": map[string]any{"type": "string", "description": "Empty if the model did not rephrase the prompt."},
+		},
+	}
 	tools := []map[string]any{
 		{
 			"name": "validateAgent",
@@ -331,10 +346,10 @@ func (m *MCPHandler) handleToolsList(req jsonrpcRequest) *jsonrpcResponse {
 		{
 			"name": "generateImage",
 			"description": "Generate a new image from a text prompt using gpt-image-2. " +
-				"The image is saved to the user's APP_DATA_DIR/generated/<date>/ folder and also returned " +
-				"inline so it appears directly in the conversation. Use this whenever the user asks for " +
-				"an icon, illustration, mockup, diagram, or any visual asset — do NOT write Python/SVG code " +
-				"to fake an image when this tool is available.",
+				"The image is saved to the user's USER_DATA_DIR/generated/<date>/ folder and the frontend " +
+				"renders it inline in the conversation. Use this whenever the user asks for an icon, " +
+				"illustration, mockup, diagram, or any visual asset — do NOT write Python/SVG code to fake " +
+				"an image when this tool is available.",
 			"inputSchema": map[string]any{
 				"type":     "object",
 				"required": []string{"prompt"},
@@ -366,13 +381,14 @@ func (m *MCPHandler) handleToolsList(req jsonrpcRequest) *jsonrpcResponse {
 					},
 				},
 			},
+			"outputSchema": imageOutputSchema,
 		},
 		{
 			"name": "editImage",
 			"description": "Edit an existing image using gpt-image-2. The source image is read from disk by " +
 				"absolute path. Use for changing colors, adding/removing elements, applying styles, or " +
 				"inpainting (with an optional mask). Output is saved alongside generated images at " +
-				"APP_DATA_DIR/generated/<date>/edited-<slug>-<hash>.png and returned inline.",
+				"USER_DATA_DIR/generated/<date>/edited-<slug>-<hash>.png and rendered inline in the conversation.",
 			"inputSchema": map[string]any{
 				"type":     "object",
 				"required": []string{"prompt", "imagePath"},
@@ -409,6 +425,7 @@ func (m *MCPHandler) handleToolsList(req jsonrpcRequest) *jsonrpcResponse {
 					},
 				},
 			},
+			"outputSchema": imageOutputSchema,
 		},
 	}
 	return &jsonrpcResponse{
@@ -525,9 +542,9 @@ func (m *MCPHandler) callGenerateImage(id json.RawMessage, args map[string]any) 
 		gen = func(ctx context.Context, req ImageGenRequest) (*ImageGenResult, error) {
 			cfg := config.Get()
 			return GenerateImage(ctx, ImageGenConfig{
-				BaseURL:    cfg.AgentBaseURL,
-				APIKey:     cfg.AgentAPIKey,
-				AppDataDir: cfg.AppDataDir,
+				BaseURL:     cfg.AgentBaseURL,
+				APIKey:      cfg.AgentAPIKey,
+				UserDataDir: cfg.UserDataDir,
 			}, req)
 		}
 	}
@@ -568,9 +585,9 @@ func (m *MCPHandler) callEditImage(id json.RawMessage, args map[string]any) *jso
 		edit = func(ctx context.Context, req ImageEditRequest) (*ImageGenResult, error) {
 			cfg := config.Get()
 			return EditImage(ctx, ImageGenConfig{
-				BaseURL:    cfg.AgentBaseURL,
-				APIKey:     cfg.AgentAPIKey,
-				AppDataDir: cfg.AppDataDir,
+				BaseURL:     cfg.AgentBaseURL,
+				APIKey:      cfg.AgentAPIKey,
+				UserDataDir: cfg.UserDataDir,
 			}, req)
 		}
 	}
@@ -593,18 +610,45 @@ func (m *MCPHandler) callEditImage(id json.RawMessage, args map[string]any) *jso
 	return imageToolResult(id, "Edited", res)
 }
 
-// imageToolResult builds the MCP tool_result for an image operation:
-// a single text block with the saved path (and the model's revised prompt
-// if any). The image bytes are NOT included inline — the model only needs
-// the path. Inlining a 2.5 MB base64 image would burn ~640K text tokens or
-// ~1500 vision tokens of context per generation, with no upside (the model
-// just generated it; it doesn't need to re-see the bytes). The frontend
-// renders the image from disk via the existing /raw/<path> endpoint.
+// imageToolResult builds the MCP tool_result for an image operation.
+//
+// The result carries the same structured payload in TWO places, by design:
+//
+//  1. `structuredContent` — the MCP 2025-06-18 native field for structured
+//     tool results. Spec-aware clients read this directly. (Pre-2025-06-18
+//     clients ignore unknown fields, which is harmless.)
+//  2. `[mylifedb-image] <JSON>` marker line at the end of the text content
+//     block. The MCP spec itself recommends this pattern even when
+//     `structuredContent` is set: "For backwards compatibility, a tool that
+//     returns structured content SHOULD also return the serialized JSON in a
+//     TextContent block." We rely on this fallback because the agent CLI
+//     (Claude Code, observed 2026-04-28) drops fields it doesn't recognize
+//     when forwarding to ACP — `_meta` and `structuredContent` both vanish
+//     today. Text content is the only thing that always survives.
+//
+// The base64 image bytes are NOT included inline — that would burn ~640K
+// text tokens or ~1500 vision tokens per call. The frontend renders the
+// image from disk via the existing /raw/<RelPath> endpoint.
 func imageToolResult(id json.RawMessage, verb string, res *ImageGenResult) *jsonrpcResponse {
-	text := fmt.Sprintf("%s image saved to %s (%s).", verb, res.AbsPath, formatBytes(res.Bytes))
+	op := strings.ToLower(verb)
+
+	structured := map[string]any{
+		"op":            op,
+		"absPath":       res.AbsPath,
+		"relPath":       res.RelPath,
+		"mimeType":      "image/png",
+		"bytes":         res.Bytes,
+		"revisedPrompt": res.RevisedPrompt,
+	}
+	marker, _ := json.Marshal(structured)
+
+	text := fmt.Sprintf("%s image saved to %s\nRelative path (under USER_DATA_DIR): %s\nSize: %s.",
+		verb, res.AbsPath, res.RelPath, formatBytes(res.Bytes))
 	if res.RevisedPrompt != "" {
 		text += "\nModel's revised prompt: " + res.RevisedPrompt
 	}
+	text += "\n\n[mylifedb-image] " + string(marker)
+
 	return &jsonrpcResponse{
 		JSONRPC: "2.0",
 		ID:      id,
@@ -612,6 +656,7 @@ func imageToolResult(id json.RawMessage, verb string, res *ImageGenResult) *json
 			"content": []map[string]any{
 				{"type": "text", "text": text},
 			},
+			"structuredContent": structured,
 		},
 	}
 }

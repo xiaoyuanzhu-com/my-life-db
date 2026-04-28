@@ -103,42 +103,56 @@ Registered in [backend/agentrunner/mcp.go](my-life-db/backend/agentrunner/mcp.go
 
 The endpoint is multipart/form-data, not JSON. Source image bytes are uploaded as a file part; the MCP tool implementation reads from disk and constructs the multipart body. Same response shape as `generateImage`.
 
-### Tool result
+### Tool result — `structuredContent` + `[mylifedb-image]` marker
 
-Both tools return the same shape: a mixed-content `tool_result` — text first (so agents that ignore image blocks still get a useful result), then the image:
+Each tool returns the same payload in **two places** by design:
 
-```jsonc
-{
-  "content": [
-    {
-      "type": "text",
-      "text": "Generated image saved to /abs/path/to/data/generated/2026-04-26/cute-otter-3a4b5c.png (87.3 KB).\nModel's revised prompt: A small fluffy otter sitting on a moss-covered rock..."
-    },
-    {
-      "type": "image",
-      "data": "<base64 png bytes>",
-      "mimeType": "image/png"
-    }
-  ]
-}
+1. **`structuredContent`** on `CallToolResult`. This is the MCP 2025-06-18 native field for typed tool results. Each tool also declares an `outputSchema` so spec-aware clients can validate the payload. This is the "right" answer per spec.
+2. **`[mylifedb-image] <JSON>` marker line** at the end of the text content block. The MCP spec itself recommends this even when `structuredContent` is set: *"For backwards compatibility, a tool that returns structured content SHOULD also return the serialized JSON in a TextContent block."* We rely on it because the agent CLI (Claude Code, observed 2026-04-28) silently drops fields it doesn't recognize when forwarding to ACP — `structuredContent`, `_meta`, and `resource_link` all vanish today. **Text content is the only thing that always survives**, regardless of agent CLI version. The frontend prefers `structuredContent` when present, falls back to the marker.
+
+The text content block looks like:
+
+```text
+Generated image saved to /abs/path/.../generated/2026-04-26/cute-otter-3a4b5c.png
+Relative path (under USER_DATA_DIR): generated/2026-04-26/cute-otter-3a4b5c.png
+Size: 87.3 KB.
+Model's revised prompt: A small fluffy otter ...
+
+[mylifedb-image] {"op":"generated","absPath":"/abs/path/.../cute-otter-3a4b5c.png","relPath":"generated/2026-04-26/cute-otter-3a4b5c.png","mimeType":"image/png","bytes":89401,"revisedPrompt":"..."}
 ```
 
-The `revised_prompt` from the API response is appended to the text block when present — useful for the model to see how its prompt was rephrased and adjust on retries.
+**Survival matrix.** Observation of two real `tool_call_update` frames from Claude Code's CLI on 2026-04-28:
 
-Every ACP agent we support renders MCP `image` content blocks in the assistant message stream (this is what makes MCP the universal answer). The text part also gives the model a path it can reference later in the same session via `@<path>`.
+| What we sent                                                  | What arrived at the ACP client                                                                            |
+|---------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------|
+| `_meta.mylifedb/image`                                        | **dropped** (replaced with `_meta.claudeCode.toolName`)                                                   |
+| `resource_link` content block                                 | **rewritten** to plain text: `"[Resource link: <name>] file://<uri>"`                                     |
+| `structuredContent: {...}` + custom prose text block          | text block **replaced** with `JSON.stringify(structuredContent)`; `rawOutput` is the same JSON string     |
+| `structuredContent: {...}` (no custom text)                   | one text block containing `JSON.stringify(structuredContent)`; `rawOutput` likewise                       |
+| Plain text content block (no `structuredContent`)             | **preserved verbatim**                                                                                    |
+
+This is actually following the MCP 2025-06-18 spec: *"For backwards compatibility, a tool that returns structured content SHOULD also return the serialized JSON in a TextContent block."* Claude Code does this for us — it overwrites whatever text we sent with the canonical JSON serialization. So the on-the-wire contract simplifies to: **`rawOutput` will be a JSON string of `structuredContent` whenever `structuredContent` is present**. The frontend parses that JSON directly. The `[mylifedb-image]` marker remains as a fallback for agent CLIs that don't rewrite text.
+
+**The base64 image is not included inline.** Inlining a 1024×1024 PNG (~2.5 MB base64) per call would burn ~640K text tokens or ~1500 vision tokens of model context, with no upside — the model just generated the image; it doesn't need to re-see the bytes. It just needs the path so it can pass it to `editImage` for follow-ups or reference it in later turns.
+
+The image is rendered to the user by the **frontend**, not the model. The frontend's image renderer ([frontend/app/components/agent/tools/image-tool.tsx](my-life-db/frontend/app/components/agent/tools/image-tool.tsx)) walks the result for any text block containing the `[mylifedb-image]` marker, parses the JSON, and renders `<img src="/raw/<relPath>" />` inline using the existing `/raw/<path>` static endpoint.
+
+This separation matches every production AI image flow (DALL-E, Midjourney): tools return a path/URL, never bytes.
+
+> **Note on stripping (temporary)**: the backend's `agentsdk.StripHeavyToolCallContent` previously stripped `content[]` and (most) `rawOutput` from `tool_call_update` frames as a wire-size optimization. That stripping is currently **disabled at the call sites** in `backend/agentsdk/acpclient.go` so the image renderer can see the MCP result. Re-enable as a per-tool allowlist once the rendering path is settled.
 
 ## Storage
 
 ```
-APP_DATA_DIR/generated/<YYYY-MM-DD>/<slug>-<short-hash>.png
+USER_DATA_DIR/generated/<YYYY-MM-DD>/<slug>-<short-hash>.png
 ```
 
+- Lives in `USER_DATA_DIR` (not `APP_DATA_DIR`) — generated images are user content. They're served by the existing `/raw/*path` handler, indexed by the file watcher / digest worker, and visible in the user's library / inbox flow.
 - Per-day subdirectory keeps the folder scannable as the library grows.
 - `<slug>` from the user's `filename` arg if provided, else a slugified prompt prefix (max 40 chars).
-- `<short-hash>` is the first 6 chars of the SHA-256 of the b64 bytes — guarantees uniqueness without collisions when the user generates many images with the same prompt.
+- `<short-hash>` is the first 6 chars of the SHA-256 of the PNG bytes — guarantees uniqueness without collisions when the user generates many images with the same prompt.
 - Stored as `.png` only. `gpt-image-2` returns PNG by default.
-- Indexed by the existing file watcher / digest worker the same way any other file is. No special-case table.
-- Not garbage-collected. Generated images are first-class user data — they live in `APP_DATA_DIR` and the user deletes them like any other file.
+- Not garbage-collected. The user deletes them like any other file.
 
 ## Backend implementation
 
@@ -233,7 +247,9 @@ For tools/list, initialize, and clients that don't advertise SSE in `Accept`, we
 
 ## Frontend
 
-No new component. The MCP `tool_result` with an `image` content block is already rendered by the existing tool-result viewer in the agent UI. The text part ("saved to ...") becomes a clickable file link via the standard path-detection pass.
+A dedicated tool renderer at [frontend/app/components/agent/tools/image-tool.tsx](my-life-db/frontend/app/components/agent/tools/image-tool.tsx) handles `generateImage` / `editImage` tool calls. The dispatcher in [frontend/app/components/agent/tool-dispatch.tsx](my-life-db/frontend/app/components/agent/tool-dispatch.tsx) routes any tool whose `metaToolName` or `title` includes "generateImage" / "editImage" to it.
+
+The renderer reads the MCP tool result via `result._meta["mylifedb/image"]` (with content-block fallbacks — see "Frontend extraction order" above), then renders `<img src="/raw/<relPath>" />` inline with a max-height clamp. Prompt and (optional) revised prompt show as caption / expandable details. If the image fails to load, an inline error appears with the attempted URL.
 
 The composer's `+` attachment button (from [docs/plans/2026-04-22-agent-attachments-design.md](my-life-db/docs/plans/2026-04-22-agent-attachments-design.md)) handles image *input*. No changes there.
 
