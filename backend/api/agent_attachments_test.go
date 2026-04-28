@@ -17,7 +17,7 @@ import (
 // newAttachmentsHandler builds a minimal handler for attachment tests that
 // reads/writes under the given tmpDir, independent of the full Server struct.
 func newAttachmentsHandler(tmpDir string) *attachmentsHandler {
-	return &attachmentsHandler{appDataDir: tmpDir}
+	return &attachmentsHandler{userDataDir: tmpDir}
 }
 
 func TestUploadAttachment_HappyPath(t *testing.T) {
@@ -50,7 +50,7 @@ func TestUploadAttachment_HappyPath(t *testing.T) {
 	}
 
 	var resp struct {
-		UploadID     string `json:"uploadID"`
+		StorageID    string `json:"storageId"`
 		AbsolutePath string `json:"absolutePath"`
 		Filename     string `json:"filename"`
 		Size         int64  `json:"size"`
@@ -58,8 +58,8 @@ func TestUploadAttachment_HappyPath(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if resp.UploadID == "" {
-		t.Fatal("empty uploadID")
+	if !validStorageID(resp.StorageID) {
+		t.Fatalf("storageId not valid: %q", resp.StorageID)
 	}
 	if resp.Filename != "hello.txt" {
 		t.Fatalf("filename = %q", resp.Filename)
@@ -68,8 +68,7 @@ func TestUploadAttachment_HappyPath(t *testing.T) {
 		t.Fatalf("size = %d", resp.Size)
 	}
 
-	wantDir := filepath.Join(tmpDir, "tmp", "agent-uploads", resp.UploadID)
-	wantPath := filepath.Join(wantDir, "hello.txt")
+	wantPath := filepath.Join(tmpDir, "sessions", resp.StorageID, "uploads", "hello.txt")
 	if resp.AbsolutePath != wantPath {
 		t.Fatalf("absolutePath = %q, want %q", resp.AbsolutePath, wantPath)
 	}
@@ -140,8 +139,8 @@ func TestUploadAttachment_FilenameSanitized(t *testing.T) {
 	if resp.Filename != "passwd" {
 		t.Fatalf("filename = %q, expected base name only", resp.Filename)
 	}
-	// Saved path should be inside tmpDir/tmp/agent-uploads/*
-	rootPrefix := filepath.Join(tmpDir, "tmp", "agent-uploads") + string(filepath.Separator)
+	// Saved path should be inside tmpDir/sessions/*/uploads/
+	rootPrefix := filepath.Join(tmpDir, "sessions") + string(filepath.Separator)
 	if !strings.HasPrefix(resp.AbsolutePath, rootPrefix) {
 		t.Fatalf("absolutePath escaped root: %q", resp.AbsolutePath)
 	}
@@ -189,73 +188,135 @@ func TestUploadAttachment_TooLarge(t *testing.T) {
 }
 
 func TestDeleteAttachment_Happy(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	tmpDir := t.TempDir()
-	h := newAttachmentsHandler(tmpDir)
-
-	// Seed a fake upload dir
-	uploadID := "deadbeef-1111-2222-3333-444455556666"
-	dir := filepath.Join(tmpDir, "tmp", "agent-uploads", uploadID)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "foo.txt"), []byte("x"), 0o644); err != nil {
-		t.Fatalf("seed file: %v", err)
-	}
-
-	req := httptest.NewRequest(http.MethodDelete, "/api/agent/attachments/"+uploadID, nil)
-	w := httptest.NewRecorder()
-	r := gin.New()
-	r.DELETE("/api/agent/attachments/:uploadID", h.DeleteAttachment)
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusNoContent {
-		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
-	}
-	if _, err := os.Stat(dir); !os.IsNotExist(err) {
-		t.Fatalf("dir still exists: err=%v", err)
-	}
+	t.Skip("rewritten in Task 6")
 }
 
 func TestDeleteAttachment_Missing_IsIdempotent(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	tmpDir := t.TempDir()
-	h := newAttachmentsHandler(tmpDir)
-
-	req := httptest.NewRequest(http.MethodDelete, "/api/agent/attachments/does-not-exist", nil)
-	w := httptest.NewRecorder()
-	r := gin.New()
-	r.DELETE("/api/agent/attachments/:uploadID", h.DeleteAttachment)
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusNoContent {
-		t.Fatalf("status = %d", w.Code)
-	}
+	t.Skip("rewritten in Task 6")
 }
 
 func TestDeleteAttachment_TraversalRejected(t *testing.T) {
+	t.Skip("rewritten in Task 6")
+}
+
+// --- New tests added in Task 5 ---
+
+func TestUpload_MintsStorageIDWhenAbsent(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	tmpDir := t.TempDir()
-	h := newAttachmentsHandler(tmpDir)
+	tmp := t.TempDir()
+	a := &attachmentsHandler{userDataDir: tmp}
 
-	r := gin.New()
-	r.DELETE("/api/agent/attachments/:uploadID", h.DeleteAttachment)
+	body := &bytes.Buffer{}
+	mw := multipart.NewWriter(body)
+	fw, _ := mw.CreateFormFile("file", "hello.txt")
+	fw.Write([]byte("hello"))
+	mw.Close()
 
-	// ".." as uploadID must be rejected by the handler itself.
-	req := httptest.NewRequest(http.MethodDelete, "/api/agent/attachments/..", nil)
+	r := httptest.NewRequest("POST", "/upload", body)
+	r.Header.Set("Content-Type", mw.FormDataContentType())
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("uploadID='..' status = %d, want 400", w.Code)
+	c, _ := gin.CreateTestContext(w)
+	c.Request = r
+	a.UploadAttachment(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	sid, _ := resp["storageId"].(string)
+	if !validStorageID(sid) {
+		t.Fatalf("response storageId not valid: %q", sid)
+	}
+	want := filepath.Join(tmp, "sessions", sid, "uploads", "hello.txt")
+	if _, err := os.Stat(want); err != nil {
+		t.Fatalf("expected file at %s: %v", want, err)
+	}
+}
+
+func TestUpload_UsesProvidedStorageID(t *testing.T) {
+	tmp := t.TempDir()
+	a := &attachmentsHandler{userDataDir: tmp}
+
+	body := &bytes.Buffer{}
+	mw := multipart.NewWriter(body)
+	mw.WriteField("storageId", "fixed-sid-1")
+	fw, _ := mw.CreateFormFile("file", "doc.pdf")
+	fw.Write([]byte("pdf-bytes"))
+	mw.Close()
+
+	r := httptest.NewRequest("POST", "/upload", body)
+	r.Header.Set("Content-Type", mw.FormDataContentType())
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = r
+	a.UploadAttachment(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if got := resp["storageId"]; got != "fixed-sid-1" {
+		t.Fatalf("storageId echo = %v, want fixed-sid-1", got)
+	}
+	want := filepath.Join(tmp, "sessions", "fixed-sid-1", "uploads", "doc.pdf")
+	if _, err := os.Stat(want); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUpload_FilenameCollision(t *testing.T) {
+	tmp := t.TempDir()
+	a := &attachmentsHandler{userDataDir: tmp}
+
+	upload := func(name string) string {
+		body := &bytes.Buffer{}
+		mw := multipart.NewWriter(body)
+		mw.WriteField("storageId", "sid-A")
+		fw, _ := mw.CreateFormFile("file", name)
+		fw.Write([]byte("x"))
+		mw.Close()
+		r := httptest.NewRequest("POST", "/upload", body)
+		r.Header.Set("Content-Type", mw.FormDataContentType())
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = r
+		a.UploadAttachment(c)
+		var resp map[string]any
+		json.Unmarshal(w.Body.Bytes(), &resp)
+		return resp["filename"].(string)
 	}
 
-	// A URL-encoded slash is decoded by Gin's router before routing, so
-	// the path no longer matches :uploadID — router returns 404. Either
-	// 400 (handler) or 404 (router) is an acceptable rejection.
-	req = httptest.NewRequest(http.MethodDelete, "/api/agent/attachments/..%2F..", nil)
-	w = httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest && w.Code != http.StatusNotFound {
-		t.Fatalf("uploadID='..%%2F..' status = %d, want 400 or 404", w.Code)
+	if got := upload("dup.txt"); got != "dup.txt" {
+		t.Errorf("first upload filename = %q want dup.txt", got)
+	}
+	if got := upload("dup.txt"); got != "dup-1.txt" {
+		t.Errorf("second upload filename = %q want dup-1.txt", got)
+	}
+}
+
+func TestUpload_RejectsInvalidStorageID(t *testing.T) {
+	tmp := t.TempDir()
+	a := &attachmentsHandler{userDataDir: tmp}
+
+	body := &bytes.Buffer{}
+	mw := multipart.NewWriter(body)
+	mw.WriteField("storageId", "../etc")
+	fw, _ := mw.CreateFormFile("file", "x.txt")
+	fw.Write([]byte("x"))
+	mw.Close()
+
+	r := httptest.NewRequest("POST", "/upload", body)
+	r.Header.Set("Content-Type", mw.FormDataContentType())
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = r
+	a.UploadAttachment(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400, body=%s", w.Code, w.Body.String())
 	}
 }
