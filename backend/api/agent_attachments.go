@@ -89,7 +89,7 @@ func (a *attachmentsHandler) UploadAttachment(c *gin.Context) {
 	closeErr := dst.Close()
 	if err != nil || closeErr != nil {
 		os.Remove(destPath)
-		log.Error().Err(err).Err(closeErr).Str("path", destPath).Msg("agent-attachments: write failed")
+		log.Error().Err(err).AnErr("closeErr", closeErr).Str("path", destPath).Msg("agent-attachments: write failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to write file"})
 		return
 	}
