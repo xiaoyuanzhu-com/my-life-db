@@ -85,7 +85,7 @@ type ImageGenConfig struct {
 }
 
 // GenerateImage POSTs to {BaseURL}/images/generations and writes the returned
-// PNG to {UserDataDir}/generated/{YYYY-MM-DD}/{slug}-{hash}.png.
+// PNG to {UserDataDir}/sessions/{StorageID}/generated/{slug}-{hash}.png.
 //
 // Note: gpt-image-2 always returns base64 in `data[].b64_json` and does not
 // accept a `response_format` parameter (unlike gpt-image-1) — passing one
@@ -151,7 +151,7 @@ func GenerateImage(ctx context.Context, gc ImageGenConfig, req ImageGenRequest) 
 
 // EditImage POSTs to {BaseURL}/images/edits as multipart/form-data, uploading
 // the source image (and optional mask), and writes the result alongside
-// generated images at {UserDataDir}/generated/{YYYY-MM-DD}/.
+// generated images at {UserDataDir}/sessions/{StorageID}/generated/.
 func EditImage(ctx context.Context, gc ImageGenConfig, req ImageEditRequest) (*ImageGenResult, error) {
 	if err := validateConfig(gc); err != nil {
 		return nil, err
