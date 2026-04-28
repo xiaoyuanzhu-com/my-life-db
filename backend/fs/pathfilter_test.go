@@ -176,9 +176,6 @@ func TestExcludeForTree_ShowsDotDirs(t *testing.T) {
 	if f.IsExcludedEntry(".claude", false) {
 		t.Error(".claude should be visible in tree")
 	}
-	if f.IsExcludedEntry(".generated", false) {
-		t.Error(".generated should be visible in tree")
-	}
 	if f.IsExcludedEntry(".obsidian", false) {
 		t.Error(".obsidian should be visible in tree")
 	}

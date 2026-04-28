@@ -54,8 +54,8 @@ const (
 
 	// ExcludeForTree - exclusions for the data page tree and for scanning/indexing.
 	// Excludes every specific "junk" category (VCS, IDE, build artifacts, OS files, etc.)
-	// but NOT generic hidden dot-dirs, so app-relevant dot-dirs like .generated,
-	// .claude, and .obsidian stay visible on the data page AND searchable.
+	// but NOT generic hidden dot-dirs, so app-relevant dot-dirs like .claude
+	// and .obsidian stay visible on the data page AND searchable.
 	ExcludeForTree = CategoryBackup | CategoryVCS | CategoryIDE | CategoryDependencies |
 		CategoryCache | CategoryBuild | CategoryVirtualEnv | CategoryOS |
 		CategoryLogs | CategoryAppReserved

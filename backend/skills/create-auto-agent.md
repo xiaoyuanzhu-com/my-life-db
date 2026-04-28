@@ -112,7 +112,7 @@ Use this when the user opens the skill without a specific task ("make me an agen
 1. Scan the user's data dir to ground the proposals:
    - `Glob` `<USER_DATA_DIR>/*` for top-level folders (signals: domains — `inbox/`, `words/`, `photos/`, `journal/`, …).
    - `Glob` `<USER_DATA_DIR>/agents/*/` for existing agents (signals: what's already automated — don't duplicate).
-   - `Glob` the 20 most-recently-modified files under `<USER_DATA_DIR>/` (excluding `agents/`, `.*`, `.generated/`) for an activity signal — where is the user actually working today?
+   - `Glob` the 20 most-recently-modified files under `<USER_DATA_DIR>/` (excluding `agents/`, `.*`, `sessions/`) for an activity signal — where is the user actually working today?
 2. Propose exactly **3 examples** designed to span trigger diversity:
    - one `cron` agent (scheduled report / digest / cleanup),
    - one `file.*` agent that uses an MCP tool (e.g. `publish-post`) on interesting content,
@@ -231,7 +231,7 @@ Use the `createPost` tool from the `explore` MCP server to share the weekly summ
 
 - **Forgetting the subfolder** — `agents/foo.md` is ignored. It must be `agents/foo/foo.md`.
 - **Missing `path` on file triggers** — the runner rejects the def. Use `path: "**"` only if you genuinely want every file event.
-- **Over-broad globs** — `path: "**"` fires on every digest output, thumbnail, `.generated/` write, and more. Scope tighter unless you want that.
+- **Over-broad globs** — `path: "**"` fires on every digest output, thumbnail, `sessions/` write, and more. Scope tighter unless you want that.
 - **Missing `schedule` on cron** — also rejected by the runner.
 - **No skip case in the prompt** — every matching event fires the agent. Without a skip branch, the agent acts on things it shouldn't.
 - **Inventing MCP tool names** — only reference tools that are actually connected in the current session.

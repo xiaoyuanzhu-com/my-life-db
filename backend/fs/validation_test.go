@@ -65,7 +65,6 @@ func TestExclusionPatterns(t *testing.T) {
 		{"library/.git/config", true, "should exclude .git in subdirectories"},
 
 		// App-relevant dot-dirs are NOT excluded (visible on data page + searchable)
-		{".generated/report.html", false, "should NOT exclude .generated"},
 		{".claude/settings", false, "should NOT exclude .claude"},
 		{".obsidian/workspace", false, "should NOT exclude .obsidian"},
 		{"notes/.obsidian/workspace", false, "should NOT exclude .obsidian in subdirectories"},
