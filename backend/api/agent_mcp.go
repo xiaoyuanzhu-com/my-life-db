@@ -35,6 +35,31 @@ func (h *Handlers) ListMCPServers(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"servers": servers})
 }
 
+// ListMCPServerTools probes the named MCP server for its tool catalog (the
+// MCP "tools/list" call). Result is cached per-server in mcptools.Cache and
+// invalidated when .mcp.json changes (fsnotify) or after 24h.
+//
+// On probe failure (timeout, transport error, server returned error), responds
+// 200 with `{ tools: [], error: "..." }` so the composer UI can show the
+// failure inline rather than treating it as an HTTP error.
+//
+// GET /api/agent/mcp-servers/:name/tools
+func (h *Handlers) ListMCPServerTools(c *gin.Context) {
+	name := c.Param("name")
+	cache := h.server.MCPTools()
+	if cache == nil {
+		c.JSON(http.StatusOK, gin.H{"tools": []any{}, "error": "mcp tools cache not initialized"})
+		return
+	}
+	tools, err := cache.GetTools(c.Request.Context(), name)
+	if err != nil {
+		log.Debug().Err(err).Str("server", name).Msg("mcp tools probe failed")
+		c.JSON(http.StatusOK, gin.H{"tools": []any{}, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"tools": tools})
+}
+
 // UpdateMCPServer toggles a server's `disabled` flag in .mcp.json.
 //
 // PATCH /api/agent/mcp-servers/:name

@@ -25,6 +25,18 @@ export interface MCPServerEntry {
   disabled: boolean
 }
 
+export interface MCPTool {
+  name: string
+  description?: string
+  inputSchema?: unknown
+}
+
+export interface MCPToolsResponse {
+  tools: MCPTool[]
+  /** Probe failure surfaces inline rather than as an HTTP error. */
+  error?: string
+}
+
 /**
  * List skills discoverable for the current composer state.
  *
@@ -61,6 +73,25 @@ export function useMCPServers() {
   })
 }
 
+/**
+ * Fetch the tool catalog for one MCP server. Use `enabled` to gate this on
+ * UI state — e.g. only fire when the server's row is expanded in the menu —
+ * so we don't probe every server up front. Probe results are cached on the
+ * backend (24h TTL, invalidated on .mcp.json changes) so re-renders are free.
+ */
+export function useMCPServerTools(name: string | null, opts?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ["agent", "mcp-tools", name],
+    queryFn: async (): Promise<MCPToolsResponse> => {
+      const res = await api.get(`/api/agent/mcp-servers/${encodeURIComponent(name!)}/tools`)
+      const body = (await res.json()) as MCPToolsResponse
+      return { tools: body.tools ?? [], error: body.error }
+    },
+    enabled: !!name && (opts?.enabled ?? true),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
 export function useToggleMCPServer() {
   const qc = useQueryClient()
   return useMutation({
@@ -75,6 +106,7 @@ export function useToggleMCPServer() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["agent", "mcp-servers"] })
+      qc.invalidateQueries({ queryKey: ["agent", "mcp-tools"] })
     },
   })
 }

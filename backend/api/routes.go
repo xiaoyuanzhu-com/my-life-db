@@ -168,6 +168,7 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		// Skills + MCP listing for the composer + menu.
 		agentRoutes.GET("/skills", h.ListSkills)
 		agentRoutes.GET("/mcp-servers", h.ListMCPServers)
+		agentRoutes.GET("/mcp-servers/:name/tools", h.ListMCPServerTools)
 		agentRoutes.PATCH("/mcp-servers/:name", h.UpdateMCPServer)
 	}
 	r.GET("/api/agent/sessions/:id/subscribe", wsAuth, h.AgentSessionWebSocket)

@@ -25,6 +25,7 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/hooks"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	mcppkg "github.com/xiaoyuanzhu-com/my-life-db/mcp"
+	"github.com/xiaoyuanzhu-com/my-life-db/mcptools"
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 	"github.com/xiaoyuanzhu-com/my-life-db/skills"
 	"github.com/xiaoyuanzhu-com/my-life-db/workers/digest"
@@ -49,6 +50,7 @@ type Server struct {
 	cronHook        *hooks.CronHook
 	fsHook          *hooks.FSHook
 	agentRunner     *agentrunner.Runner
+	mcpTools        *mcptools.Cache
 
 	// Central MCP server. Backed by a single Registry into which every
 	// feature package (agentrunner, explore, ...) registers its tools at
@@ -400,6 +402,20 @@ http_headers = { "x-litellm-customer-id" = %q }
 	// matching edit in skills.go.
 	skills.InstallClientConfig(cfg.UserDataDir, cfg.Port, mcpRegistry.AllowlistEntries())
 
+	// 1.10. Initialize MCP tools cache. Probes registered MCP servers in
+	// .mcp.json on first request and caches the result; invalidated by
+	// fsnotify when .mcp.json is rewritten. The headers resolver injects
+	// the ephemeral bearer token for our own localhost MCP endpoint
+	// (mylifedb-builtin at /api/mcp) — that's server-owned and requires
+	// auth that isn't stored in .mcp.json.
+	internalPrefix := fmt.Sprintf("http://localhost:%d/api/", cfg.Port)
+	s.mcpTools = mcptools.New(cfg.UserDataDir, func(spec mcptools.ServerSpec) map[string]string {
+		if spec.Type == "http" && strings.HasPrefix(spec.URL, internalPrefix) {
+			return map[string]string{"Authorization": "Bearer " + s.mcpToken}
+		}
+		return nil
+	})
+
 	// 2. Load user settings from database and apply log level
 	settings, err := db.LoadUserSettings()
 	if err == nil && settings.Preferences.LogLevel != "" {
@@ -652,6 +668,11 @@ func (s *Server) Start() error {
 		log.Error().Err(err).Msg("failed to start agent runner")
 	}
 
+	// Start MCP tools cache (.mcp.json fsnotify watcher).
+	if err := s.mcpTools.Start(s.shutdownCtx); err != nil {
+		log.Error().Err(err).Msg("failed to start mcp tools cache")
+	}
+
 	// Start background sweep of stale agent-attachment staging dirs.
 	go s.runAttachmentsJanitor()
 
@@ -701,6 +722,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	// 4.5. Stop agent runner + hooks (before agent client shutdown)
 	if s.agentRunner != nil {
 		s.agentRunner.Stop()
+	}
+	if s.mcpTools != nil {
+		s.mcpTools.Stop()
 	}
 	if s.hookRegistry != nil {
 		s.hookRegistry.Stop()
@@ -772,6 +796,7 @@ func (s *Server) HookRegistry() *hooks.Registry                  { return s.hook
 func (s *Server) FSHook() *hooks.FSHook                          { return s.fsHook }
 func (s *Server) AgentRunner() *agentrunner.Runner               { return s.agentRunner }
 func (s *Server) MCP() *mcppkg.Server                            { return s.mcpServer }
+func (s *Server) MCPTools() *mcptools.Cache                      { return s.mcpTools }
 func (s *Server) MCPToken() string                            { return s.mcpToken }
 func (s *Server) Cfg() *Config                               { return s.cfg }
 func (s *Server) Router() *gin.Engine                         { return s.router }
