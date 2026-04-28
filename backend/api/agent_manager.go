@@ -393,7 +393,10 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 
 	sessionID := sess.ID()
 
-	if err := db.CreateAgentSession(sessionID, agentTypeStr, params.WorkingDir, params.Title, params.Source, params.AgentName, params.TriggerKind, params.TriggerData); err != nil {
+	// TRANSIENT: storage id is minted-and-discarded here only so the build stays
+	// green between Task 3 and Task 8. Task 8 will replace this line with full
+	// per-session config (storageID is wired into McpServers + SystemPrompt).
+	if err := db.CreateAgentSession(sessionID, agentTypeStr, params.WorkingDir, params.Title, params.Source, params.AgentName, params.TriggerKind, params.TriggerData, mintStorageID()); err != nil {
 		log.Error().Err(err).Msg("failed to create agent session in DB")
 		sess.Close()
 		return nil, err
