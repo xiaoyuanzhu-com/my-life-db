@@ -97,7 +97,8 @@ func RegisterTools(reg *mcp.Registry, runner *Runner, opts *ToolOptions) {
 	reg.Register(mcp.Tool{
 		Name: "generateImage",
 		Description: "Generate a new image from a text prompt using gpt-image-2. " +
-			"The image is saved to the user's USER_DATA_DIR/generated/<date>/ folder and the frontend " +
+			"The image is saved under the current session's generated/ folder " +
+			"(USER_DATA_DIR/sessions/<storage-id>/generated/) and the frontend " +
 			"renders it inline in the conversation. Use this whenever the user asks for an icon, " +
 			"illustration, mockup, diagram, or any visual asset — do NOT write Python/SVG code to fake " +
 			"an image when this tool is available.",
@@ -143,7 +144,7 @@ func RegisterTools(reg *mcp.Registry, runner *Runner, opts *ToolOptions) {
 		Description: "Edit an existing image using gpt-image-2. The source image is read from disk by " +
 			"absolute path. Use for changing colors, adding/removing elements, applying styles, or " +
 			"inpainting (with an optional mask). Output is saved alongside generated images at " +
-			"USER_DATA_DIR/generated/<date>/edited-<slug>-<hash>.png and rendered inline in the conversation.",
+			"USER_DATA_DIR/sessions/<storage-id>/generated/edited-<slug>-<hash>.png and rendered inline in the conversation.",
 		InputSchema: map[string]any{
 			"type":     "object",
 			"required": []string{"prompt", "imagePath"},
