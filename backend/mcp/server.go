@@ -68,6 +68,13 @@ func (s *Server) HandleMCP(c *gin.Context) {
 		}
 	}
 
+	// Stash the per-session storage id on the request context so tool calls
+	// (image gen, etc.) can resolve the per-session destination directory
+	// without threading session state explicitly.
+	if sid := c.GetHeader("X-MLD-Session-Id"); sid != "" {
+		c.Request = c.Request.WithContext(WithSessionID(c.Request.Context(), sid))
+	}
+
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, jsonrpcResponse{

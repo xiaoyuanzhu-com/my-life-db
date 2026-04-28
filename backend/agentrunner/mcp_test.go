@@ -2,12 +2,15 @@ package agentrunner
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/xiaoyuanzhu-com/my-life-db/mcp"
 )
 
 const validFileAgentMD = `---
@@ -316,5 +319,29 @@ func TestMCP_Auth_WrongHeaderRejected(t *testing.T) {
 	w := postJSONRPC(t, r, `{"jsonrpc":"2.0","id":1,"method":"ping"}`, "Bearer wrong")
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("status = %d, want 401", w.Code)
+	}
+}
+
+func TestHandleMCP_PassesSessionIDIntoContext(t *testing.T) {
+	var seen string
+	h := NewMCPHandler(New(Config{}), "")
+	h.ImageGen = func(ctx context.Context, req ImageGenRequest) (*ImageGenResult, error) {
+		seen = mcp.SessionIDFromContext(ctx)
+		return &ImageGenResult{AbsPath: "/tmp/x.png", RelPath: "x.png", Bytes: 1}, nil
+	}
+	r := newTestRouter(h)
+
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"generateImage","arguments":{"prompt":"hi"}}}`
+	req := httptest.NewRequest("POST", "/mcp", strings.NewReader(body))
+	req.Header.Set("X-MLD-Session-Id", "sid-from-header")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	if seen != "sid-from-header" {
+		t.Fatalf("ctx session id = %q, want sid-from-header", seen)
 	}
 }
