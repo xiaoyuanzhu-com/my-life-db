@@ -24,6 +24,7 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
 	"github.com/xiaoyuanzhu-com/my-life-db/hooks"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
+	mcppkg "github.com/xiaoyuanzhu-com/my-life-db/mcp"
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 	"github.com/xiaoyuanzhu-com/my-life-db/skills"
 	"github.com/xiaoyuanzhu-com/my-life-db/workers/digest"
@@ -49,9 +50,14 @@ type Server struct {
 	fsHook          *hooks.FSHook
 	agentRunner     *agentrunner.Runner
 
-	// Ephemeral token for internal MCP endpoints. Generated at startup,
-	// passed to agents via ACP headers. All internal MCP HTTP handlers
-	// validate this token.
+	// Central MCP server. Backed by a single Registry into which every
+	// feature package (agentrunner, explore, ...) registers its tools at
+	// server startup. Routes mount this at POST /api/mcp.
+	mcpServer *mcppkg.Server
+
+	// Ephemeral token for the internal MCP endpoint. Generated at startup,
+	// passed to agents via ACP headers. The MCP HTTP handler validates this
+	// token (when present).
 	mcpToken string
 
 	// Shutdown context - cancelled when server is shutting down.
@@ -91,11 +97,9 @@ func New(cfg *Config) (*Server, error) {
 	// Install bundled skills for agent discovery
 	skills.Install(cfg.UserDataDir)
 
-	// Install Claude Code client-discovery files (.mcp.json + settings.local.json)
-	// into the data dir so CLI sessions started inside USER_DATA_DIR auto-connect
-	// to our MCP servers with the right tools pre-allowed. Must be called after
-	// cfg.Port is set.
-	skills.InstallClientConfig(cfg.UserDataDir, cfg.Port)
+	// Note: skills.InstallClientConfig (writes .mcp.json + settings.local.json)
+	// is deferred until after the MCP registry is populated below, so the
+	// allowlist is derived from the live tool set rather than a hardcoded list.
 
 	// 1.5. Initialize explore service
 	s.explore = explore.NewService(cfg.UserDataDir)
@@ -337,28 +341,19 @@ http_headers = { "x-litellm-customer-id" = %q }
 			Args:    []string{"acp"},
 		}
 
-		// Build MCP servers to pass via ACP (no .mcp.json discovery needed)
-		var mcpServers []acp.McpServer
-		mcpServers = append(mcpServers, acp.McpServer{
+		// Build MCP servers to pass via ACP (no .mcp.json discovery needed).
+		// One server, hosting every MyLifeDB tool. Tool names appear to the
+		// agent as `mcp__mylifedb-builtin__<tool>`.
+		mcpServers := []acp.McpServer{{
 			Http: &acp.McpServerHttpInline{
-				Name: "explore",
+				Name: mcppkg.ServerName,
 				Type: "http",
-				Url:  fmt.Sprintf("http://localhost:%d/api/explore/mcp", cfg.Port),
+				Url:  fmt.Sprintf("http://localhost:%d/api/mcp", cfg.Port),
 				Headers: []acp.HttpHeader{
 					{Name: "Authorization", Value: "Bearer " + s.mcpToken},
 				},
 			},
-		})
-		mcpServers = append(mcpServers, acp.McpServer{
-			Http: &acp.McpServerHttpInline{
-				Name: "mylifedb-builtin",
-				Type: "http",
-				Url:  fmt.Sprintf("http://localhost:%d/api/agent/mcp", cfg.Port),
-				Headers: []acp.HttpHeader{
-					{Name: "Authorization", Value: "Bearer " + s.mcpToken},
-				},
-			},
-		})
+		}}
 
 		s.agentClient = agentsdk.NewClient(agentsdk.SessionConfig{
 			SystemPrompt: buildAgentSystemPrompt(cfg.UserDataDir),
@@ -390,6 +385,20 @@ http_headers = { "x-litellm-customer-id" = %q }
 		CronHook:   s.cronHook,
 		WorkingDir: cfg.UserDataDir,
 	})
+
+	// 1.9. Build the central MCP server. Each feature package registers its
+	// tools into the shared registry; the Server wraps the registry as a
+	// JSON-RPC HTTP handler mounted at /api/mcp.
+	mcpRegistry := mcppkg.NewRegistry()
+	agentrunner.RegisterTools(mcpRegistry, s.agentRunner, nil)
+	explore.RegisterTools(mcpRegistry, s.explore)
+	s.mcpServer = mcppkg.NewServer(mcpRegistry, s.mcpToken)
+
+	// Now that the registry is populated, install Claude Code client-discovery
+	// files (.mcp.json + settings.local.json) into the data dir. Allowlist is
+	// derived from the live registry — adding a tool no longer requires a
+	// matching edit in skills.go.
+	skills.InstallClientConfig(cfg.UserDataDir, cfg.Port, mcpRegistry.AllowlistEntries())
 
 	// 2. Load user settings from database and apply log level
 	settings, err := db.LoadUserSettings()
@@ -762,6 +771,7 @@ func (s *Server) Explore() *explore.Service                      { return s.expl
 func (s *Server) HookRegistry() *hooks.Registry                  { return s.hookRegistry }
 func (s *Server) FSHook() *hooks.FSHook                          { return s.fsHook }
 func (s *Server) AgentRunner() *agentrunner.Runner               { return s.agentRunner }
+func (s *Server) MCP() *mcppkg.Server                            { return s.mcpServer }
 func (s *Server) MCPToken() string                            { return s.mcpToken }
 func (s *Server) Cfg() *Config                               { return s.cfg }
 func (s *Server) Router() *gin.Engine                         { return s.router }

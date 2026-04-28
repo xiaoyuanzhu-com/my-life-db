@@ -8,6 +8,15 @@ import (
 	"testing"
 )
 
+// testAllowlist is the canonical allowlist passed to InstallClientConfig in
+// these tests. Mirrors what mcp.Registry.AllowlistEntries() would return for
+// the live server so the test data isn't tied to whatever tools are
+// currently registered.
+var testAllowlist = []string{
+	"mcp__mylifedb-builtin__validateAgent",
+	"mcp__mylifedb-builtin__createPost",
+}
+
 func readJSON(t *testing.T, path string) map[string]any {
 	t.Helper()
 	body, err := os.ReadFile(path)
@@ -23,7 +32,7 @@ func readJSON(t *testing.T, path string) map[string]any {
 
 func TestInstallClientConfig_WritesMCPJSON(t *testing.T) {
 	dir := t.TempDir()
-	InstallClientConfig(dir, 12345)
+	InstallClientConfig(dir, 12345, testAllowlist)
 
 	mcp := readJSON(t, filepath.Join(dir, ".mcp.json"))
 	servers, _ := mcp["mcpServers"].(map[string]any)
@@ -31,8 +40,8 @@ func TestInstallClientConfig_WritesMCPJSON(t *testing.T) {
 	if agent == nil {
 		t.Fatalf("mylifedb-builtin not registered, got: %v", mcp)
 	}
-	if url, _ := agent["url"].(string); url != "http://localhost:12345/api/agent/mcp" {
-		t.Errorf("url = %q, want http://localhost:12345/api/agent/mcp", url)
+	if url, _ := agent["url"].(string); url != "http://localhost:12345/api/mcp" {
+		t.Errorf("url = %q, want http://localhost:12345/api/mcp", url)
 	}
 	if typ, _ := agent["type"].(string); typ != "http" {
 		t.Errorf("type = %q, want http", typ)
@@ -41,12 +50,12 @@ func TestInstallClientConfig_WritesMCPJSON(t *testing.T) {
 
 func TestInstallClientConfig_MCPJSONReflectsPort(t *testing.T) {
 	dir := t.TempDir()
-	InstallClientConfig(dir, 4321)
+	InstallClientConfig(dir, 4321, testAllowlist)
 
 	mcp := readJSON(t, filepath.Join(dir, ".mcp.json"))
 	servers, _ := mcp["mcpServers"].(map[string]any)
 	agent, _ := servers["mylifedb-builtin"].(map[string]any)
-	if url, _ := agent["url"].(string); url != "http://localhost:4321/api/agent/mcp" {
+	if url, _ := agent["url"].(string); url != "http://localhost:4321/api/mcp" {
 		t.Errorf("url = %q, want port 4321 reflected", url)
 	}
 }
@@ -56,23 +65,50 @@ func TestInstallClientConfig_MCPJSONOverwrites(t *testing.T) {
 	// file and must overwrite it on every startup so port changes propagate.
 	dir := t.TempDir()
 	stalePath := filepath.Join(dir, ".mcp.json")
-	if err := os.WriteFile(stalePath, []byte(`{"mcpServers":{"mylifedb-builtin":{"type":"http","url":"http://localhost:9999/api/agent/mcp"}}}`), 0644); err != nil {
+	if err := os.WriteFile(stalePath, []byte(`{"mcpServers":{"mylifedb-builtin":{"type":"http","url":"http://localhost:9999/api/mcp"}}}`), 0644); err != nil {
 		t.Fatalf("seed stale .mcp.json: %v", err)
 	}
 
-	InstallClientConfig(dir, 12345)
+	InstallClientConfig(dir, 12345, testAllowlist)
 
 	mcp := readJSON(t, stalePath)
 	servers, _ := mcp["mcpServers"].(map[string]any)
 	agent, _ := servers["mylifedb-builtin"].(map[string]any)
-	if url, _ := agent["url"].(string); url != "http://localhost:12345/api/agent/mcp" {
+	if url, _ := agent["url"].(string); url != "http://localhost:12345/api/mcp" {
 		t.Errorf("stale port not overwritten — url = %q", url)
+	}
+}
+
+func TestInstallClientConfig_MCPJSONPrunesLegacyServer(t *testing.T) {
+	// Old installs registered "mylifedb-agent" alongside "mylifedb-builtin".
+	// After the central-MCP refactor only one server is hosted; the legacy
+	// key must be pruned so .mcp.json doesn't accumulate dead entries.
+	// User-added servers must survive.
+	dir := t.TempDir()
+	stalePath := filepath.Join(dir, ".mcp.json")
+	seed := `{"mcpServers":{
+		"mylifedb-agent":{"type":"http","url":"http://localhost:9999/api/agent/mcp"},
+		"my-other-mcp":{"type":"http","url":"http://localhost:7777/x"}
+	}}`
+	if err := os.WriteFile(stalePath, []byte(seed), 0644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	InstallClientConfig(dir, 12345, testAllowlist)
+
+	mcp := readJSON(t, stalePath)
+	servers, _ := mcp["mcpServers"].(map[string]any)
+	if _, ok := servers["mylifedb-agent"]; ok {
+		t.Errorf("legacy server mylifedb-agent should have been pruned, got: %v", servers)
+	}
+	if _, ok := servers["my-other-mcp"]; !ok {
+		t.Errorf("user-added server my-other-mcp must survive, got: %v", servers)
 	}
 }
 
 func TestInstallClientConfig_CreatesSettingsFromScratch(t *testing.T) {
 	dir := t.TempDir()
-	InstallClientConfig(dir, 12345)
+	InstallClientConfig(dir, 12345, testAllowlist)
 
 	settings := readJSON(t, filepath.Join(dir, ".claude", "settings.local.json"))
 	perms, _ := settings["permissions"].(map[string]any)
@@ -84,7 +120,7 @@ func TestInstallClientConfig_CreatesSettingsFromScratch(t *testing.T) {
 			got[s] = true
 		}
 	}
-	for _, want := range mcpToolAllowlist {
+	for _, want := range testAllowlist {
 		if !got[want] {
 			t.Errorf("allow list missing %q — got: %v", want, allow)
 		}
@@ -102,7 +138,7 @@ func TestInstallClientConfig_PreservesUserEntries(t *testing.T) {
   "permissions": {
     "allow": [
       "Bash(npm run *)",
-      "mcp__explore__createPost"
+      "mcp__some-other-server__doThing"
     ]
   }
 }`
@@ -110,7 +146,7 @@ func TestInstallClientConfig_PreservesUserEntries(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	InstallClientConfig(dir, 12345)
+	InstallClientConfig(dir, 12345, testAllowlist)
 
 	settings := readJSON(t, path)
 	perms, _ := settings["permissions"].(map[string]any)
@@ -123,19 +159,12 @@ func TestInstallClientConfig_PreservesUserEntries(t *testing.T) {
 		}
 	}
 
-	// User entries must survive.
+	// User entries must survive (both bash and a non-MyLifeDB MCP entry).
 	if !got["Bash(npm run *)"] {
 		t.Errorf("user entry 'Bash(npm run *)' was dropped")
 	}
-	// Existing MCP entry should NOT be duplicated.
-	count := 0
-	for _, v := range allow {
-		if s, _ := v.(string); s == "mcp__explore__createPost" {
-			count++
-		}
-	}
-	if count != 1 {
-		t.Errorf("mcp__explore__createPost appears %d times, want 1 — allow: %v", count, allow)
+	if !got["mcp__some-other-server__doThing"] {
+		t.Errorf("user-added MCP entry was dropped — allow: %v", allow)
 	}
 	// MyLifeDB tools must be added.
 	if !got["mcp__mylifedb-builtin__validateAgent"] {
@@ -143,38 +172,59 @@ func TestInstallClientConfig_PreservesUserEntries(t *testing.T) {
 	}
 }
 
-func TestInstallClientConfig_DropsRenamedAllowEntries(t *testing.T) {
-	// Old installs put mcp__mylifedb-agent__validateAgent on the allow list.
-	// After the rename to mylifedb-builtin, the stale entry must be dropped.
+func TestInstallClientConfig_DropsLegacyAllowEntries(t *testing.T) {
+	// Pre-refactor installs put split-server tool names on the allow list
+	// (mcp__mylifedb-agent__*, mcp__explore__*). After the central-MCP
+	// refactor those must be pruned. User-added entries (Bash, other MCPs)
+	// must survive.
 	dir := t.TempDir()
 	settingsDir := filepath.Join(dir, ".claude")
 	if err := os.MkdirAll(settingsDir, 0755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
 	path := filepath.Join(settingsDir, "settings.local.json")
-	seed := `{"permissions":{"allow":["mcp__mylifedb-agent__validateAgent","Bash(npm run *)"]}}`
+	seed := `{"permissions":{"allow":[
+		"mcp__mylifedb-agent__validateAgent",
+		"mcp__explore__createPost",
+		"mcp__explore__listPosts",
+		"Bash(npm run *)"
+	]}}`
 	if err := os.WriteFile(path, []byte(seed), 0644); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
-	InstallClientConfig(dir, 12345)
+	InstallClientConfig(dir, 12345, testAllowlist)
 
 	settings := readJSON(t, path)
 	perms, _ := settings["permissions"].(map[string]any)
 	allow, _ := perms["allow"].([]any)
+	got := map[string]bool{}
 	for _, v := range allow {
-		if s, _ := v.(string); s == "mcp__mylifedb-agent__validateAgent" {
-			t.Errorf("renamed entry mcp__mylifedb-agent__validateAgent should have been dropped, got: %v", allow)
+		if s, ok := v.(string); ok {
+			got[s] = true
 		}
+	}
+
+	for _, dropped := range []string{
+		"mcp__mylifedb-agent__validateAgent",
+		"mcp__explore__createPost",
+		"mcp__explore__listPosts",
+	} {
+		if got[dropped] {
+			t.Errorf("legacy entry %q should have been dropped, got: %v", dropped, allow)
+		}
+	}
+	if !got["Bash(npm run *)"] {
+		t.Errorf("user entry 'Bash(npm run *)' must survive legacy pruning")
 	}
 }
 
 func TestInstallClientConfig_Idempotent(t *testing.T) {
 	dir := t.TempDir()
-	InstallClientConfig(dir, 12345)
+	InstallClientConfig(dir, 12345, testAllowlist)
 	first := readJSON(t, filepath.Join(dir, ".claude", "settings.local.json"))
 
-	InstallClientConfig(dir, 12345)
+	InstallClientConfig(dir, 12345, testAllowlist)
 	second := readJSON(t, filepath.Join(dir, ".claude", "settings.local.json"))
 
 	if !reflect.DeepEqual(first, second) {
@@ -280,7 +330,7 @@ func TestInstallClientConfig_HandlesInvalidSettingsJSON(t *testing.T) {
 		t.Fatalf("seed corrupt: %v", err)
 	}
 
-	InstallClientConfig(dir, 12345)
+	InstallClientConfig(dir, 12345, testAllowlist)
 
 	settings := readJSON(t, path)
 	perms, _ := settings["permissions"].(map[string]any)

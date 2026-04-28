@@ -4,8 +4,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/xiaoyuanzhu-com/my-life-db/agentrunner"
-	"github.com/xiaoyuanzhu-com/my-life-db/explore"
 )
 
 // SetupRoutes configures all API routes with handlers
@@ -28,19 +26,13 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		public.GET("/share/:token", h.GetSharedSession)
 		public.GET("/share/:token/messages", h.GetSharedSessionMessages)
 
-		// Explore MCP endpoint — uses server's internal MCP token
-		exploreMCP := explore.NewMCPHandler(h.server.Explore(), h.server.MCPToken())
-		public.POST("/explore/mcp", exploreMCP.HandleMCP)
-		public.GET("/explore/mcp", func(c *gin.Context) {
-			c.Status(http.StatusMethodNotAllowed)
-		})
-
-		// Agent MCP endpoint — exposes validateAgent for the create-auto-agent skill.
-		// Accepts the server's MCP token when auto-run agents call in; accepts
-		// no-auth requests from Claude Code CLI on localhost.
-		agentMCP := agentrunner.NewMCPHandler(h.server.AgentRunner(), h.server.MCPToken())
-		public.POST("/agent/mcp", agentMCP.HandleMCP)
-		public.GET("/agent/mcp", func(c *gin.Context) {
+		// Single MCP endpoint — hosts every MyLifeDB tool (validateAgent,
+		// generateImage, editImage, createPost, listPosts, ...). Auth: the
+		// server's internal MCP token is enforced when callers send an
+		// Authorization header (auto-run agents do); requests with no header
+		// are accepted (localhost trust — Claude Code CLI on the same host).
+		public.POST("/mcp", h.server.MCP().HandleMCP)
+		public.GET("/mcp", func(c *gin.Context) {
 			c.Status(http.StatusMethodNotAllowed)
 		})
 	}

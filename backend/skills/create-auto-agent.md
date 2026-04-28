@@ -94,13 +94,12 @@ For `cron` triggers, the Path/Name/Folder lines are absent and a `Schedule:` lin
 
 ## Available MCP tools
 
-This skill can call MCP tools provided by MyLifeDB. **Before you reference any tool in an agent's prompt, confirm it's actually connected in the current session** (tool names appear prefixed with `mcp__<server>__<tool>` in your tool list). The two MyLifeDB servers are:
+This skill can call MCP tools provided by MyLifeDB. **Before you reference any tool in an agent's prompt, confirm it's actually connected in the current session** (tool names appear prefixed with `mcp__<server>__<tool>` in your tool list). All MyLifeDB tools live on a single server:
 
 - **`mylifedb-builtin`**
   - `mcp__mylifedb-builtin__validateAgent({ name, markdown })` → `{ valid, error?, parsed? }`. Parses the frontmatter without writing to disk. **Always call this before `Write`** so the user doesn't land a broken file that the runner silently ignores.
-- **`explore`**
-  - `mcp__explore__createPost({ author, title, content, media, tags })` — publishes a post to the explore feed.
-  - `mcp__explore__listPosts`, `addComment`, `addTags`, `deletePost` — other feed operations.
+  - `mcp__mylifedb-builtin__createPost({ author, title, content, media, tags })` — publishes a post to the explore feed.
+  - `mcp__mylifedb-builtin__listPosts`, `addComment`, `addTags`, `deletePost` — other feed operations.
 
 Other MCP tools may be connected (e.g. `chrome-devtools` for rendering). Only hint a tool in an agent's prompt if you can see it in your current session — a prompt that references a missing tool will fail at runtime.
 

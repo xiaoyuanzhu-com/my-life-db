@@ -120,30 +120,46 @@ func Install(dataDir string) {
 	}
 }
 
-// mcpToolAllowlist names the MyLifeDB MCP tools that Claude Code sessions
-// started in the data directory should be pre-allowed to call. Kept in sync
-// with the tools actually exposed by the backend.
-var mcpToolAllowlist = []string{
-	"mcp__mylifedb-builtin__validateAgent",
+// legacyAllowlistEntries are tool-permission strings written by older MyLifeDB
+// versions that no longer exist after the MCP refactor. Removed from
+// settings.local.json on every merge so they don't linger as dead allows.
+// Add to this list when a tool is renamed or removed; entries can be deleted
+// once they're old enough that no live install still has them.
+var legacyAllowlistEntries = []string{
+	// Pre-refactor split-server names (replaced by mylifedb-builtin).
+	"mcp__mylifedb-agent__validateAgent",
 	"mcp__explore__createPost",
+	"mcp__explore__deletePost",
 	"mcp__explore__listPosts",
 	"mcp__explore__addComment",
 	"mcp__explore__addTags",
 }
 
+// legacyMCPServers are .mcp.json server keys written by older MyLifeDB versions.
+// Pruned on every install so .mcp.json doesn't accumulate stale entries while
+// leaving anything the user added themselves untouched.
+var legacyMCPServers = []string{
+	// Pre-refactor split-server name.
+	"mylifedb-agent",
+}
+
 // InstallClientConfig writes Claude Code client-discovery files into the user's
 // data directory so that CLI sessions started inside USER_DATA_DIR connect to
-// MyLifeDB's MCP servers without any manual setup. Two files are managed:
+// MyLifeDB's MCP server without any manual setup. Two files are managed:
 //
 //   - <dataDir>/.mcp.json — registers the mylifedb-builtin MCP server at the
-//     configured port. Fully server-owned (overwritten each startup) so that
-//     changing PORT is reflected without manual edits.
-//   - <dataDir>/.claude/settings.local.json — adds MyLifeDB's MCP tools to the
-//     permissions.allow list. Merged (not replaced) so any user-added entries
-//     survive.
-func InstallClientConfig(dataDir string, port int) {
+//     configured port. Merged so user-added servers survive; legacy MyLifeDB
+//     keys are pruned.
+//   - <dataDir>/.claude/settings.local.json — adds MyLifeDB's MCP tool names
+//     (passed in `allowlist`, derived from the live registry) to
+//     permissions.allow. Merged so user-added entries survive; legacy
+//     MyLifeDB-prefixed entries are pruned.
+//
+// `allowlist` should be a slice of `mcp__<server>__<tool>` strings, typically
+// from `mcp.Registry.AllowlistEntries()`.
+func InstallClientConfig(dataDir string, port int, allowlist []string) {
 	installMCPJSON(dataDir, port)
-	mergeAllowlist(dataDir)
+	mergeAllowlist(dataDir, allowlist)
 }
 
 func installMCPJSON(dataDir string, port int) {
@@ -173,12 +189,15 @@ func installMCPJSON(dataDir string, port int) {
 		mld = map[string]any{}
 	}
 	mld["type"] = "http"
-	mld["url"] = fmt.Sprintf("http://localhost:%d/api/agent/mcp", port)
+	mld["url"] = fmt.Sprintf("http://localhost:%d/api/mcp", port)
 	servers["mylifedb-builtin"] = mld
 
-	// Migrate from the old key name. Drop on next install if present so .mcp.json
-	// doesn't accumulate stale duplicate entries.
-	delete(servers, "mylifedb-agent")
+	// Drop legacy server keys that previous MyLifeDB versions wrote so
+	// .mcp.json doesn't accumulate stale duplicate entries. User-added
+	// servers are not in the list and are left alone.
+	for _, key := range legacyMCPServers {
+		delete(servers, key)
+	}
 
 	body, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
@@ -192,7 +211,7 @@ func installMCPJSON(dataDir string, port int) {
 	log.Debug().Str("path", path).Msg(".mcp.json installed")
 }
 
-func mergeAllowlist(dataDir string) {
+func mergeAllowlist(dataDir string, allowlist []string) {
 	path := filepath.Join(dataDir, ".claude", "settings.local.json")
 
 	// Read any existing settings so we preserve user-added entries.
@@ -214,17 +233,20 @@ func mergeAllowlist(dataDir string) {
 	}
 
 	// Normalize existing allow list into a set so we only append missing entries
-	// and keep the file diff-friendly across restarts. Drop renamed entries so
-	// the old mylifedb-agent allow doesn't linger after the rename to mylifedb-builtin.
-	renamed := map[string]bool{
-		"mcp__mylifedb-agent__validateAgent": true,
+	// and keep the file diff-friendly across restarts. Drop legacy MyLifeDB
+	// entries so old per-server tool names don't linger after a rename.
+	// User-added entries (anything not in the legacy list and not in the live
+	// allowlist) are preserved untouched.
+	legacy := map[string]bool{}
+	for _, s := range legacyAllowlistEntries {
+		legacy[s] = true
 	}
 	existing, _ := perms["allow"].([]any)
 	present := map[string]bool{}
 	filtered := existing[:0]
 	changed := false
 	for _, v := range existing {
-		if s, ok := v.(string); ok && renamed[s] {
+		if s, ok := v.(string); ok && legacy[s] {
 			changed = true
 			continue
 		}
@@ -234,7 +256,7 @@ func mergeAllowlist(dataDir string) {
 		}
 	}
 	existing = filtered
-	for _, tool := range mcpToolAllowlist {
+	for _, tool := range allowlist {
 		if !present[tool] {
 			existing = append(existing, tool)
 			present[tool] = true
