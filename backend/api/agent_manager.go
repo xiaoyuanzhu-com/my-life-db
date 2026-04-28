@@ -522,19 +522,9 @@ func (m *AgentManager) buildSessionMcpServers(storageID string) []acp.McpServer 
 	return []acp.McpServer{
 		{
 			Http: &acp.McpServerHttpInline{
-				Name: "explore",
-				Type: "http",
-				Url:  fmt.Sprintf("http://localhost:%d/api/explore/mcp", port),
-				Headers: []acp.HttpHeader{
-					{Name: "Authorization", Value: "Bearer " + mcpToken},
-				},
-			},
-		},
-		{
-			Http: &acp.McpServerHttpInline{
 				Name: "mylifedb-builtin",
 				Type: "http",
-				Url:  fmt.Sprintf("http://localhost:%d/api/agent/mcp", port),
+				Url:  fmt.Sprintf("http://localhost:%d/api/mcp", port),
 				Headers: []acp.HttpHeader{
 					{Name: "Authorization", Value: "Bearer " + mcpToken},
 					{Name: "X-MLD-Session-Id", Value: storageID},
