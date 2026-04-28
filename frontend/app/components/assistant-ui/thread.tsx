@@ -26,8 +26,6 @@ import {
   ArrowDownIcon,
   ArrowUpIcon,
   AtSign,
-  ChevronDown,
-  ChevronRight,
   Plus,
   SquareIcon,
   SquareSlash,
@@ -439,44 +437,33 @@ const MCPServerRow: FC<{
   server: MCPServerEntry
   onToggleDisabled: (disabled: boolean) => void
 }> = ({ server, onToggleDisabled }) => {
-  const [expanded, setExpanded] = useState(false)
-  const { data, isLoading } = useMCPServerTools(server.name, { enabled: expanded })
+  const [open, setOpen] = useState(false)
+  const { data, isLoading } = useMCPServerTools(server.name, { enabled: open })
   const tools = data?.tools ?? []
 
   return (
-    <div className="flex flex-col">
-      <div className="flex items-center justify-between px-2 py-1.5 gap-3">
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            setExpanded((v) => !v)
-          }}
-          className="flex items-center gap-1.5 min-w-0 flex-1 text-left text-muted-foreground hover:text-foreground"
-        >
-          {expanded ? (
-            <ChevronDown className="size-3 shrink-0" />
-          ) : (
-            <ChevronRight className="size-3 shrink-0" />
+    <DropdownMenuSub open={open} onOpenChange={setOpen}>
+      <DropdownMenuSubTrigger className="px-2 py-1.5 gap-2">
+        <div className="flex flex-col min-w-0 flex-1">
+          <span className="text-xs text-foreground truncate">{server.name}</span>
+          {(server.url || server.command) && (
+            <span className="text-[10px] text-muted-foreground/70 truncate">
+              {server.url ?? server.command}
+            </span>
           )}
-          <div className="flex flex-col min-w-0">
-            <span className="text-xs text-foreground truncate">{server.name}</span>
-            {(server.url || server.command) && (
-              <span className="text-[10px] text-muted-foreground/70 truncate">
-                {server.url ?? server.command}
-              </span>
-            )}
-          </div>
-        </button>
-        <Switch
-          size="sm"
-          checked={!server.disabled}
-          onCheckedChange={(checked) => onToggleDisabled(!checked)}
-        />
-      </div>
-      {expanded && (
-        <div className="pl-7 pr-2 pb-2">
+        </div>
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="min-w-64 max-w-96 max-h-96 overflow-y-auto">
+        <div className="flex items-center justify-between px-2 py-1.5 gap-3">
+          <span className="text-xs text-foreground">Enabled</span>
+          <Switch
+            size="sm"
+            checked={!server.disabled}
+            onCheckedChange={(checked) => onToggleDisabled(!checked)}
+          />
+        </div>
+        <DropdownMenuSeparator className="mx-2" />
+        <div className="px-2 py-1.5">
           {isLoading && (
             <div className="text-[11px] text-muted-foreground/70">Loading tools…</div>
           )}
@@ -503,8 +490,8 @@ const MCPServerRow: FC<{
             </div>
           )}
         </div>
-      )}
-    </div>
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
   )
 }
 
