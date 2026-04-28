@@ -393,7 +393,7 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 
 	sessionID := sess.ID()
 
-	if err := db.CreateAgentSession(sessionID, agentTypeStr, params.WorkingDir, params.Title, params.Source, params.AgentName, params.TriggerKind, params.TriggerData); err != nil {
+	if err := db.CreateAgentSession(sessionID, agentTypeStr, params.WorkingDir, params.Title, params.Source, params.AgentName, params.TriggerKind, params.TriggerData, mintStorageID()); err != nil {
 		log.Error().Err(err).Msg("failed to create agent session in DB")
 		sess.Close()
 		return nil, err
