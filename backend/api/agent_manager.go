@@ -390,31 +390,7 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 		return nil, fmt.Errorf("invalid storageId: %q", storageID)
 	}
 
-	mcpToken := m.srv.MCPToken()
-	port := m.srv.Cfg().Port
-	mcpServers := []acp.McpServer{
-		{
-			Http: &acp.McpServerHttpInline{
-				Name: "explore",
-				Type: "http",
-				Url:  fmt.Sprintf("http://localhost:%d/api/explore/mcp", port),
-				Headers: []acp.HttpHeader{
-					{Name: "Authorization", Value: "Bearer " + mcpToken},
-				},
-			},
-		},
-		{
-			Http: &acp.McpServerHttpInline{
-				Name: "mylifedb-builtin",
-				Type: "http",
-				Url:  fmt.Sprintf("http://localhost:%d/api/agent/mcp", port),
-				Headers: []acp.HttpHeader{
-					{Name: "Authorization", Value: "Bearer " + mcpToken},
-					{Name: "X-MLD-Session-Id", Value: storageID},
-				},
-			},
-		},
-	}
+	mcpServers := m.buildSessionMcpServers(storageID)
 	systemPrompt := server.BuildAgentSystemPrompt(m.srv.Cfg().UserDataDir, storageID)
 
 	sess, err := m.agentClient.CreateSession(ctx, agentsdk.SessionConfig{
@@ -535,4 +511,35 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 		PromptDone:   promptDone,
 		StorageID:    storageID,
 	}, nil
+}
+
+// buildSessionMcpServers returns the per-session MCP server config including
+// the X-MLD-Session-Id header that scopes mylifedb-builtin tool calls to a
+// specific session storage directory.
+func (m *AgentManager) buildSessionMcpServers(storageID string) []acp.McpServer {
+	mcpToken := m.srv.MCPToken()
+	port := m.srv.Cfg().Port
+	return []acp.McpServer{
+		{
+			Http: &acp.McpServerHttpInline{
+				Name: "explore",
+				Type: "http",
+				Url:  fmt.Sprintf("http://localhost:%d/api/explore/mcp", port),
+				Headers: []acp.HttpHeader{
+					{Name: "Authorization", Value: "Bearer " + mcpToken},
+				},
+			},
+		},
+		{
+			Http: &acp.McpServerHttpInline{
+				Name: "mylifedb-builtin",
+				Type: "http",
+				Url:  fmt.Sprintf("http://localhost:%d/api/agent/mcp", port),
+				Headers: []acp.HttpHeader{
+					{Name: "Authorization", Value: "Bearer " + mcpToken},
+					{Name: "X-MLD-Session-Id", Value: storageID},
+				},
+			},
+		},
+	}
 }

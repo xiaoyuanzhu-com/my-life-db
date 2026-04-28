@@ -14,6 +14,7 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
+	"github.com/xiaoyuanzhu-com/my-life-db/server"
 )
 
 // AgentSessionWebSocket handles WebSocket connections for ACP-based agent sessions.
@@ -200,9 +201,11 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			mode, _ := db.GetAgentSessionPermissionMode(sessionID)
 
 			sess, err := h.server.AgentClient().CreateSession(h.server.ShutdownContext(), agentsdk.SessionConfig{
-				Agent:      agentType,
-				Mode:       mode,
-				WorkingDir: sessionRecord.WorkingDir,
+				Agent:        agentType,
+				Mode:         mode,
+				WorkingDir:   sessionRecord.WorkingDir,
+				McpServers:   h.agentMgr.buildSessionMcpServers(sessionRecord.StorageID),
+				SystemPrompt: server.BuildAgentSystemPrompt(h.server.Cfg().UserDataDir, sessionRecord.StorageID),
 			})
 
 			if err != nil {
@@ -373,19 +376,23 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				// Look up session metadata from DB for agent type, working dir, permission mode
 				agentType := agentsdk.AgentClaudeCode
 				workDir := ""
+				lazyStorageID := ""
 				if sessionRecord, _ := db.GetAgentSession(sessionID); sessionRecord != nil {
 					if sessionRecord.AgentType == "codex" {
 						agentType = agentsdk.AgentCodex
 					}
 					workDir = sessionRecord.WorkingDir
+					lazyStorageID = sessionRecord.StorageID
 				}
 				mode, _ := db.GetAgentSessionPermissionMode(sessionID)
 
 				// Create a new ACP session
 				sess, err := h.server.AgentClient().CreateSession(h.server.ShutdownContext(), agentsdk.SessionConfig{
-					Agent:      agentType,
-					Mode:       mode,
-					WorkingDir: workDir,
+					Agent:        agentType,
+					Mode:         mode,
+					WorkingDir:   workDir,
+					McpServers:   h.agentMgr.buildSessionMcpServers(lazyStorageID),
+					SystemPrompt: server.BuildAgentSystemPrompt(h.server.Cfg().UserDataDir, lazyStorageID),
 				})
 				if err != nil {
 					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to create ACP session")
