@@ -138,6 +138,8 @@ func (a *attachmentsHandler) DeleteAttachment(c *gin.Context) {
 	}
 	log.Info().Str("storageID", storageID).Str("filename", filename).Msg("agent-attachments: upload deleted")
 	c.Status(http.StatusNoContent)
+	// WriteHeaderNow flushes the status immediately. Without this, gin's lazy
+	// header writing leaves httptest.ResponseRecorder.Code at 200 in unit tests.
 	c.Writer.WriteHeaderNow()
 }
 

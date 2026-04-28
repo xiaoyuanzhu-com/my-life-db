@@ -250,6 +250,24 @@ func TestDelete_RejectsTraversal(t *testing.T) {
 	}
 }
 
+func TestDelete_RejectsInvalidStorageID(t *testing.T) {
+	tmp := t.TempDir()
+	a := &attachmentsHandler{userDataDir: tmp}
+
+	r := httptest.NewRequest("DELETE", "/x", nil)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = r
+	c.Params = gin.Params{
+		{Key: "storageId", Value: "../etc"},
+		{Key: "filename", Value: "passwd"},
+	}
+	a.DeleteAttachment(c)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+}
+
 // --- New tests added in Task 5 ---
 
 func TestUpload_MintsStorageIDWhenAbsent(t *testing.T) {
