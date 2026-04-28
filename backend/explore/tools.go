@@ -10,11 +10,11 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/mcp"
 )
 
-// RegisterTools registers the explore tools (createPost, deletePost, listPosts,
-// addComment, addTags) on the given registry.
+// RegisterTools registers the explore tools (create_post, delete_post,
+// list_posts, add_comment, add_tags) on the given registry.
 func RegisterTools(reg *mcp.Registry, svc *Service) {
 	reg.Register(mcp.Tool{
-		Name:        "createPost",
+		Name:        "create_post",
 		Description: "Create a new explore post. RENDERING CONTEXT: In the feed, only the first image and the title (max 2 lines) are visible on the post card — no description, no tags, no content. Users decide whether to open a post based solely on the cover image and title. Write a short, intriguing title that sparks curiosity. The first media item is the cover image — make it visually compelling and representative of the post. Content, tags, and additional images are only shown after the user opens the post. IMAGE GUIDELINES: Most readers view posts on mobile devices. Generated images should be mobile-friendly — use large, legible text, bold visuals, high contrast, and avoid tiny details that get lost on small screens. IMAGE SIZE: The feed crops cover images into 3 aspect ratio buckets — portrait (3:4), square (1:1), or landscape (4:3) — based on the image's natural ratio. For best results use one of these sizes: 1080×1440 (3:4 portrait, recommended — takes up the most screen space), 1080×1080 (1:1 square), or 1440×1080 (4:3 landscape). Avoid extreme aspect ratios as they will be cropped significantly.",
 		InputSchema: map[string]any{
 			"type":     "object",
@@ -72,7 +72,7 @@ func RegisterTools(reg *mcp.Registry, svc *Service) {
 	})
 
 	reg.Register(mcp.Tool{
-		Name:        "deletePost",
+		Name:        "delete_post",
 		Description: "Delete an explore post and its associated media files.",
 		InputSchema: map[string]any{
 			"type":     "object",
@@ -90,7 +90,7 @@ func RegisterTools(reg *mcp.Registry, svc *Service) {
 	})
 
 	reg.Register(mcp.Tool{
-		Name:        "listPosts",
+		Name:        "list_posts",
 		Description: "List explore posts in reverse-chronological order with cursor-based pagination.",
 		InputSchema: map[string]any{
 			"type": "object",
@@ -111,7 +111,7 @@ func RegisterTools(reg *mcp.Registry, svc *Service) {
 	})
 
 	reg.Register(mcp.Tool{
-		Name:        "addComment",
+		Name:        "add_comment",
 		Description: "Add a comment to an existing explore post.",
 		InputSchema: map[string]any{
 			"type":     "object",
@@ -137,7 +137,7 @@ func RegisterTools(reg *mcp.Registry, svc *Service) {
 	})
 
 	reg.Register(mcp.Tool{
-		Name:        "addTags",
+		Name:        "add_tags",
 		Description: "Add tags to an existing explore post. Tags are merged idempotently with existing tags.",
 		InputSchema: map[string]any{
 			"type":     "object",

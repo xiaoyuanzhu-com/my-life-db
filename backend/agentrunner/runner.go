@@ -504,7 +504,7 @@ func (r *Runner) GetDef(name string) (*AgentDef, []byte, error) {
 }
 
 // ValidateDef parses and validates an agent definition without writing to disk.
-// Used by the MCP validateAgent tool to surface frontmatter errors before the
+// Used by the MCP validate_agent tool to surface frontmatter errors before the
 // skill writes the file. Returns the parsed def on success.
 func (r *Runner) ValidateDef(name string, markdown []byte) (*AgentDef, error) {
 	if err := validateAgentName(name); err != nil {

@@ -212,13 +212,13 @@ func TestMCP_ToolsList_HasValidateAgent(t *testing.T) {
 	}
 	found := false
 	for _, tool := range resp.Result.Tools {
-		if tool.Name == "validateAgent" {
+		if tool.Name == "validate_agent" {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Errorf("validateAgent tool not found in tools/list — got %+v", resp.Result.Tools)
+		t.Errorf("validate_agent tool not found in tools/list — got %+v", resp.Result.Tools)
 	}
 }
 
@@ -229,7 +229,7 @@ func TestMCP_ValidateAgent_Valid(t *testing.T) {
 		"id":      1,
 		"method":  "tools/call",
 		"params": map[string]any{
-			"name":      "validateAgent",
+			"name":      "validate_agent",
 			"arguments": map[string]any{"name": "organize-inbox", "markdown": validFileAgentMD},
 		},
 	})
@@ -254,7 +254,7 @@ func TestMCP_ValidateAgent_InvalidReturnsError(t *testing.T) {
 		"id":      1,
 		"method":  "tools/call",
 		"params": map[string]any{
-			"name": "validateAgent",
+			"name": "validate_agent",
 			"arguments": map[string]any{
 				"name":     "bad-cron",
 				"markdown": "---\nagent: claude_code\ntrigger: cron\n---\n\nNo schedule.\n",
@@ -273,7 +273,7 @@ func TestMCP_ValidateAgent_InvalidReturnsError(t *testing.T) {
 
 func TestMCP_ValidateAgent_MissingArgs(t *testing.T) {
 	r := newTestRouter(NewMCPHandler(New(Config{}), ""))
-	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"validateAgent","arguments":{}}}`
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"validate_agent","arguments":{}}}`
 	w := postJSONRPC(t, r, body, "")
 	payload := unwrapToolResult(t, w.Body.Bytes())
 	if valid, _ := payload["valid"].(bool); valid {
@@ -331,7 +331,7 @@ func TestHandleMCP_PassesSessionIDIntoContext(t *testing.T) {
 	}
 	r := newTestRouter(h)
 
-	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"generateImage","arguments":{"prompt":"hi"}}}`
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"generate_image","arguments":{"prompt":"hi"}}}`
 	req := httptest.NewRequest("POST", "/mcp", strings.NewReader(body))
 	req.Header.Set("X-MLD-Session-Id", "sid-from-header")
 	req.Header.Set("Content-Type", "application/json")

@@ -35,7 +35,11 @@ export function inferToolKind(toolName: string, args: Record<string, unknown>): 
   if (metaName === "grep" || metaName === "glob" || metaName === "websearch" || metaName === "toolsearch") return "search"
   if (metaName === "webfetch") return "fetch"
   if (metaName === "skill") return "skill"
-  if (metaName.includes("generateimage") || metaName.includes("editimage")) return "image"
+  // Match both snake_case (current) and camelCase (legacy persisted sessions).
+  if (
+    metaName.includes("generate_image") || metaName.includes("edit_image") ||
+    metaName.includes("generateimage") || metaName.includes("editimage")
+  ) return "image"
 
   // Read tools
   if (lower.startsWith("read ") || lower === "read") return "read"
@@ -89,8 +93,12 @@ export function inferToolKind(toolName: string, args: Record<string, unknown>): 
   // Skill tool
   if (lower.startsWith("skill") || lower === "skill") return "skill"
 
-  // Image generation/edit MCP tools (mylifedb-builtin)
+  // Image generation/edit MCP tools (mylifedb-builtin).
+  // Matches both snake_case (current) and camelCase (legacy persisted sessions).
   if (
+    lower === "generate_image" || lower.startsWith("generate_image ") ||
+    lower === "edit_image" || lower.startsWith("edit_image ") ||
+    lower.includes("generate_image") || lower.includes("edit_image") ||
     lower === "generateimage" || lower.startsWith("generateimage ") ||
     lower === "editimage" || lower.startsWith("editimage ") ||
     lower.includes("generateimage") || lower.includes("editimage")

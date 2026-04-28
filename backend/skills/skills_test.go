@@ -13,8 +13,8 @@ import (
 // the live server so the test data isn't tied to whatever tools are
 // currently registered.
 var testAllowlist = []string{
-	"mcp__mylifedb-builtin__validateAgent",
-	"mcp__mylifedb-builtin__createPost",
+	"mcp__mylifedb-builtin__validate_agent",
+	"mcp__mylifedb-builtin__create_post",
 }
 
 func readJSON(t *testing.T, path string) map[string]any {
@@ -167,8 +167,8 @@ func TestInstallClientConfig_PreservesUserEntries(t *testing.T) {
 		t.Errorf("user-added MCP entry was dropped — allow: %v", allow)
 	}
 	// MyLifeDB tools must be added.
-	if !got["mcp__mylifedb-builtin__validateAgent"] {
-		t.Errorf("mcp__mylifedb-builtin__validateAgent was not added")
+	if !got["mcp__mylifedb-builtin__validate_agent"] {
+		t.Errorf("mcp__mylifedb-builtin__validate_agent was not added")
 	}
 }
 

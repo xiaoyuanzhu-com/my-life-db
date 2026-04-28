@@ -26,8 +26,8 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		public.GET("/share/:token", h.GetSharedSession)
 		public.GET("/share/:token/messages", h.GetSharedSessionMessages)
 
-		// Single MCP endpoint — hosts every MyLifeDB tool (validateAgent,
-		// generateImage, editImage, createPost, listPosts, ...). Auth: the
+		// Single MCP endpoint — hosts every MyLifeDB tool (validate_agent,
+		// generate_image, edit_image, create_post, list_posts, ...). Auth: the
 		// server's internal MCP token is enforced when callers send an
 		// Authorization header (auto-run agents do); requests with no header
 		// are accepted (localhost trust — Claude Code CLI on the same host).

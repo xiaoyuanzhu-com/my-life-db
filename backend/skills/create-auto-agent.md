@@ -97,9 +97,9 @@ For `cron` triggers, the Path/Name/Folder lines are absent and a `Schedule:` lin
 This skill can call MCP tools provided by MyLifeDB. **Before you reference any tool in an agent's prompt, confirm it's actually connected in the current session** (tool names appear prefixed with `mcp__<server>__<tool>` in your tool list). All MyLifeDB tools live on a single server:
 
 - **`mylifedb-builtin`**
-  - `mcp__mylifedb-builtin__validateAgent({ name, markdown })` → `{ valid, error?, parsed? }`. Parses the frontmatter without writing to disk. **Always call this before `Write`** so the user doesn't land a broken file that the runner silently ignores.
-  - `mcp__mylifedb-builtin__createPost({ author, title, content, media, tags })` — publishes a post to the explore feed.
-  - `mcp__mylifedb-builtin__listPosts`, `addComment`, `addTags`, `deletePost` — other feed operations.
+  - `mcp__mylifedb-builtin__validate_agent({ name, markdown })` → `{ valid, error?, parsed? }`. Parses the frontmatter without writing to disk. **Always call this before `Write`** so the user doesn't land a broken file that the runner silently ignores.
+  - `mcp__mylifedb-builtin__create_post({ author, title, content, media, tags })` — publishes a post to the explore feed.
+  - `mcp__mylifedb-builtin__list_posts`, `add_comment`, `add_tags`, `delete_post` — other feed operations.
 
 Other MCP tools may be connected (e.g. `chrome-devtools` for rendering). Only hint a tool in an agent's prompt if you can see it in your current session — a prompt that references a missing tool will fail at runtime.
 
@@ -136,7 +136,7 @@ The goal is to write the prompt from **experience**, not imagination. Walk throu
 ### Phase 3 — Save, validate, and trial-run
 
 1. Assemble the frontmatter + prompt. Include the correctness basics you learned in Phase 2; state skip cases explicitly (*"If the file is NOT in inbox/, respond 'Skipping' and do nothing."*).
-2. **Validate with the MCP tool before writing.** Call `mcp__mylifedb-builtin__validateAgent` with the name and markdown. If `valid: false`, fix the error and re-validate. Do **not** call `Write` until validation passes.
+2. **Validate with the MCP tool before writing.** Call `mcp__mylifedb-builtin__validate_agent` with the name and markdown. If `valid: false`, fix the error and re-validate. Do **not** call `Write` until validation passes.
 3. Write the file with `Write` to `<USER_DATA_DIR>/agents/<kebab-name>/<kebab-name>.md`. The fs watcher picks it up within ~500ms; no restart needed.
 4. Trial run:
    - **File-triggered agent with non-destructive action**: drop a real test file into the trigger path. The runner fires the agent; watch the session page for output.
@@ -203,7 +203,7 @@ Rules learned from experience:
 - Personal documents → documents/
 - If unsure, leave the file in inbox/ and explain why in your summary.
 
-If the file is something genuinely interesting or noteworthy, use the `createPost` tool from the `explore` MCP server to share a brief note on the explore feed.
+If the file is something genuinely interesting or noteworthy, use the `create_post` tool from the `explore` MCP server to share a brief note on the explore feed.
 
 Summarize what you did in a short message.
 ```
@@ -224,7 +224,7 @@ Generate a weekly review of activity in this life database.
 2. Summarize activity by category (documents, photos, notes, etc.).
 3. Note anything that might need attention (large files in inbox, orphaned items, gaps where the user normally writes).
 
-Use the `createPost` tool from the `explore` MCP server to share the weekly summary on the feed. Title it with the date range.
+Use the `create_post` tool from the `explore` MCP server to share the weekly summary on the feed. Title it with the date range.
 ```
 
 ## Common pitfalls

@@ -487,7 +487,7 @@ func TestMCP_ToolsList_HasGenerateAndEdit(t *testing.T) {
 	for _, tool := range resp.Result.Tools {
 		got[tool.Name] = tool.OutputSchema
 	}
-	for _, want := range []string{"generateImage", "editImage"} {
+	for _, want := range []string{"generate_image", "edit_image"} {
 		schema, ok := got[want]
 		if !ok {
 			t.Errorf("%s not in tools/list", want)
@@ -527,7 +527,7 @@ func TestMCP_GenerateImage_ReturnsTextWithMarker(t *testing.T) {
 		"id":      1,
 		"method":  "tools/call",
 		"params": map[string]any{
-			"name":      "generateImage",
+			"name":      "generate_image",
 			"arguments": map[string]any{"prompt": "a cat", "background": "transparent"},
 		},
 	})
@@ -635,7 +635,7 @@ func TestMCP_GenerateImage_PassesBackgroundThrough(t *testing.T) {
 		return &ImageGenResult{Bytes: 1, AbsPath: "/x.png"}, nil
 	}
 	r := newTestRouter(h)
-	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"generateImage","arguments":{"prompt":"p","background":"opaque"}}}`
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"generate_image","arguments":{"prompt":"p","background":"opaque"}}}`
 	postJSONRPC(t, r, body, "")
 	if capturedBg != "opaque" {
 		t.Errorf("background passthrough = %q, want opaque", capturedBg)
@@ -644,7 +644,7 @@ func TestMCP_GenerateImage_PassesBackgroundThrough(t *testing.T) {
 
 func TestMCP_GenerateImage_MissingPromptReturnsToolError(t *testing.T) {
 	r := newTestRouter(NewMCPHandler(New(Config{}), ""))
-	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"generateImage","arguments":{}}}`
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"generate_image","arguments":{}}}`
 	w := postJSONRPC(t, r, body, "")
 	var resp struct {
 		Result struct {
@@ -663,7 +663,7 @@ func TestMCP_GenerateImage_GeneratorErrorReturnsToolError(t *testing.T) {
 		return nil, errBoom
 	}
 	r := newTestRouter(h)
-	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"generateImage","arguments":{"prompt":"x"}}}`
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"generate_image","arguments":{"prompt":"x"}}}`
 	w := postJSONRPC(t, r, body, "")
 	var resp struct {
 		Result struct {
@@ -701,7 +701,7 @@ func TestMCP_EditImage_DispatchesAndPassesArgsThrough(t *testing.T) {
 		"id":      1,
 		"method":  "tools/call",
 		"params": map[string]any{
-			"name": "editImage",
+			"name": "edit_image",
 			"arguments": map[string]any{
 				"prompt":    "make it blue",
 				"imagePath": src,
@@ -751,9 +751,9 @@ func TestMCP_EditImage_DispatchesAndPassesArgsThrough(t *testing.T) {
 func TestMCP_EditImage_MissingArgsReturnsToolError(t *testing.T) {
 	r := newTestRouter(NewMCPHandler(New(Config{}), ""))
 	cases := []string{
-		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"editImage","arguments":{}}}`,
-		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"editImage","arguments":{"prompt":"p"}}}`,
-		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"editImage","arguments":{"imagePath":"/x"}}}`,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"edit_image","arguments":{}}}`,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"edit_image","arguments":{"prompt":"p"}}}`,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"edit_image","arguments":{"imagePath":"/x"}}}`,
 	}
 	for _, body := range cases {
 		w := postJSONRPC(t, r, body, "")
@@ -802,7 +802,7 @@ func TestMCP_ToolsCall_SSEStreamsResponseAndKeepalives(t *testing.T) {
 		"id":      1,
 		"method":  "tools/call",
 		"params": map[string]any{
-			"name":      "generateImage",
+			"name":      "generate_image",
 			"arguments": map[string]any{"prompt": "x"},
 		},
 	})
@@ -859,7 +859,7 @@ func TestMCP_ToolsCall_NoSSEFallsBackToJSON(t *testing.T) {
 		return &ImageGenResult{Bytes: 1, AbsPath: "/x.png"}, nil
 	}
 	r := newTestRouter(h)
-	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"generateImage","arguments":{"prompt":"p"}}}`
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"generate_image","arguments":{"prompt":"p"}}}`
 	w := postJSONRPC(t, r, body, "")
 	if got := w.Header().Get("Content-Type"); !strings.Contains(got, "application/json") {
 		t.Errorf("Content-Type = %q, want application/json (no SSE in Accept)", got)

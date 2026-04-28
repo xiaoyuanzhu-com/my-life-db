@@ -1,5 +1,5 @@
 /**
- * ImageTool -- renderer for `generateImage` and `editImage` MCP tool calls.
+ * ImageTool -- renderer for `generate_image` and `edit_image` MCP tool calls.
  *
  * Pulls the saved image's relative path out of the tool result and renders
  * it inline via the existing /raw/<path> static endpoint. Image bytes are

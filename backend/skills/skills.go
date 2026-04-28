@@ -133,6 +133,15 @@ var legacyAllowlistEntries = []string{
 	"mcp__explore__listPosts",
 	"mcp__explore__addComment",
 	"mcp__explore__addTags",
+	// Pre-snake-case tool names (renamed for parity with popular MCP servers).
+	"mcp__mylifedb-builtin__validateAgent",
+	"mcp__mylifedb-builtin__generateImage",
+	"mcp__mylifedb-builtin__editImage",
+	"mcp__mylifedb-builtin__createPost",
+	"mcp__mylifedb-builtin__deletePost",
+	"mcp__mylifedb-builtin__listPosts",
+	"mcp__mylifedb-builtin__addComment",
+	"mcp__mylifedb-builtin__addTags",
 }
 
 // legacyMCPServers are .mcp.json server keys written by older MyLifeDB versions.

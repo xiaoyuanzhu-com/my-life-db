@@ -18,7 +18,7 @@ type ToolOptions struct {
 	ImageEdit func(ctx context.Context, req ImageEditRequest) (*ImageGenResult, error)
 }
 
-// imageOutputSchema is shared by generateImage and editImage. Mirrored by
+// imageOutputSchema is shared by generate_image and edit_image. Mirrored by
 // the structuredContent field on the tool result and the [mylifedb-image]
 // text-block marker. See imageToolResult.
 var imageOutputSchema = map[string]any{
@@ -34,8 +34,8 @@ var imageOutputSchema = map[string]any{
 	},
 }
 
-// RegisterTools registers the agentrunner tools (validateAgent, generateImage,
-// editImage) on the given registry. opts is optional; a nil ToolOptions uses
+// RegisterTools registers the agentrunner tools (validate_agent, generate_image,
+// edit_image) on the given registry. opts is optional; a nil ToolOptions uses
 // production implementations.
 func RegisterTools(reg *mcp.Registry, runner *Runner, opts *ToolOptions) {
 	if opts == nil {
@@ -67,7 +67,7 @@ func RegisterTools(reg *mcp.Registry, runner *Runner, opts *ToolOptions) {
 	}
 
 	reg.Register(mcp.Tool{
-		Name: "validateAgent",
+		Name: "validate_agent",
 		Description: "Parse an agent definition's frontmatter and validate required fields without writing to disk. " +
 			"Use this BEFORE writing an agent markdown file to catch syntax errors (wrong trigger type, " +
 			"missing schedule on cron, missing path glob on file triggers). " +
@@ -95,7 +95,7 @@ func RegisterTools(reg *mcp.Registry, runner *Runner, opts *ToolOptions) {
 	})
 
 	reg.Register(mcp.Tool{
-		Name: "generateImage",
+		Name: "generate_image",
 		Description: "Generate a new image from a text prompt using gpt-image-2. " +
 			"The image is saved under the current session's generated/ folder " +
 			"(USER_DATA_DIR/sessions/<storage-id>/generated/) and the frontend " +
@@ -140,7 +140,7 @@ func RegisterTools(reg *mcp.Registry, runner *Runner, opts *ToolOptions) {
 	})
 
 	reg.Register(mcp.Tool{
-		Name: "editImage",
+		Name: "edit_image",
 		Description: "Edit an existing image using gpt-image-2. The source image is read from disk by " +
 			"absolute path. Use for changing colors, adding/removing elements, applying styles, or " +
 			"inpainting (with an optional mask). Output is saved alongside generated images at " +

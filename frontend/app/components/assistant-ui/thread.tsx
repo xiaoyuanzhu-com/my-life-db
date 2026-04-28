@@ -26,6 +26,8 @@ import {
   ArrowDownIcon,
   ArrowUpIcon,
   AtSign,
+  ChevronDown,
+  ChevronRight,
   Plus,
   SquareIcon,
   SquareSlash,
@@ -53,7 +55,13 @@ import { useAgentContext } from "~/components/agent/agent-context";
 import { AttachmentStrip } from "~/components/agent/attachment-strip";
 import { useAgentAttachments } from "~/hooks/use-agent-attachments";
 import { Paperclip } from "lucide-react";
-import { useSkills, useMCPServers, useToggleMCPServer } from "~/hooks/use-agent-extras";
+import {
+  useSkills,
+  useMCPServers,
+  useToggleMCPServer,
+  useMCPServerTools,
+  type MCPServerEntry,
+} from "~/hooks/use-agent-extras";
 
 // Create the AssistantMessage with our ACP tool renderers baked in
 const AcpAssistantMessage = createAssistantMessage(acpToolsConfig);
@@ -427,6 +435,79 @@ const DraftPersistenceSync: FC = () => {
   return null;
 };
 
+const MCPServerRow: FC<{
+  server: MCPServerEntry
+  onToggleDisabled: (disabled: boolean) => void
+}> = ({ server, onToggleDisabled }) => {
+  const [expanded, setExpanded] = useState(false)
+  const { data, isLoading } = useMCPServerTools(server.name, { enabled: expanded })
+  const tools = data?.tools ?? []
+
+  return (
+    <div className="flex flex-col">
+      <div className="flex items-center justify-between px-2 py-1.5 gap-3">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            setExpanded((v) => !v)
+          }}
+          className="flex items-center gap-1.5 min-w-0 flex-1 text-left text-muted-foreground hover:text-foreground"
+        >
+          {expanded ? (
+            <ChevronDown className="size-3 shrink-0" />
+          ) : (
+            <ChevronRight className="size-3 shrink-0" />
+          )}
+          <div className="flex flex-col min-w-0">
+            <span className="text-xs text-foreground truncate">{server.name}</span>
+            {(server.url || server.command) && (
+              <span className="text-[10px] text-muted-foreground/70 truncate">
+                {server.url ?? server.command}
+              </span>
+            )}
+          </div>
+        </button>
+        <Switch
+          size="sm"
+          checked={!server.disabled}
+          onCheckedChange={(checked) => onToggleDisabled(!checked)}
+        />
+      </div>
+      {expanded && (
+        <div className="pl-7 pr-2 pb-2">
+          {isLoading && (
+            <div className="text-[11px] text-muted-foreground/70">Loading tools…</div>
+          )}
+          {!isLoading && data?.error && (
+            <div className="text-[11px] text-destructive/80 break-words">{data.error}</div>
+          )}
+          {!isLoading && !data?.error && tools.length === 0 && (
+            <div className="text-[11px] text-muted-foreground/70">No tools advertised.</div>
+          )}
+          {!isLoading && !data?.error && tools.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              {tools.map((t) => (
+                <div key={t.name} className="flex flex-col gap-0.5">
+                  <span className="text-[11px] font-mono text-foreground/80 break-all">
+                    {t.name}
+                  </span>
+                  {t.description && (
+                    <span className="text-[10px] text-muted-foreground/70 line-clamp-2">
+                      {t.description}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 const MCPServersSubMenu: FC = () => {
   const { data: servers } = useMCPServers()
   const toggle = useToggleMCPServer()
@@ -438,33 +519,18 @@ const MCPServersSubMenu: FC = () => {
       <DropdownMenuSubTrigger className="px-2 py-1.5 text-xs text-muted-foreground focus:text-foreground">
         <span className="shrink-0">MCP</span>
       </DropdownMenuSubTrigger>
-      <DropdownMenuSubContent className="min-w-56 max-w-80">
+      <DropdownMenuSubContent className="min-w-56 max-w-80 max-h-96 overflow-y-auto">
         {list.length === 0 && (
           <div className="px-2 py-1.5 text-xs text-muted-foreground">
             No MCP servers configured.
           </div>
         )}
         {list.map((s) => (
-          <div
+          <MCPServerRow
             key={s.name}
-            className="flex items-center justify-between px-2 py-1.5 gap-3"
-          >
-            <div className="flex flex-col min-w-0">
-              <span className="text-xs text-foreground truncate">{s.name}</span>
-              {(s.url || s.command) && (
-                <span className="text-[10px] text-muted-foreground/70 truncate">
-                  {s.url ?? s.command}
-                </span>
-              )}
-            </div>
-            <Switch
-              size="sm"
-              checked={!s.disabled}
-              onCheckedChange={(checked) =>
-                toggle.mutate({ name: s.name, disabled: !checked })
-              }
-            />
-          </div>
+            server={s}
+            onToggleDisabled={(disabled) => toggle.mutate({ name: s.name, disabled })}
+          />
         ))}
         {list.length > 0 && <DropdownMenuSeparator className="mx-2" />}
         <DropdownMenuItem
