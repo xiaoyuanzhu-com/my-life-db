@@ -46,9 +46,14 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 		AgentType      string `json:"agentType"`
 		PermissionMode string `json:"permissionMode"`
 		Model          string `json:"model"`
+		StorageID      string `json:"storageId"` // optional — set when client did an upload first
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.StorageID != "" && !validStorageID(req.StorageID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid storageId"})
 		return
 	}
 
@@ -90,6 +95,7 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 			PermissionMode: req.PermissionMode,
 			DefaultModel:   model,
 			Source:         "user",
+			StorageID:      req.StorageID,
 		},
 	)
 	if err != nil {
@@ -103,6 +109,7 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 		"agentType":  agentTypeStr,
 		"workingDir": req.WorkingDir,
 		"title":      req.Title,
+		"storageId":  handle.StorageID,
 	})
 }
 
