@@ -476,15 +476,14 @@ func TestMCP_ToolsList_HasGenerateAndEdit(t *testing.T) {
 	}
 }
 
-func TestMCP_GenerateImage_ReturnsTextAndImageBlocks(t *testing.T) {
+func TestMCP_GenerateImage_ReturnsTextOnlyWithPath(t *testing.T) {
 	dir := t.TempDir()
 	h := NewMCPHandler(New(Config{}), "")
+	wantPath := filepath.Join(dir, "out.png")
 	h.ImageGen = func(ctx context.Context, req ImageGenRequest) (*ImageGenResult, error) {
-		path := filepath.Join(dir, "out.png")
-		_ = os.WriteFile(path, tinyPNG, 0o644)
+		_ = os.WriteFile(wantPath, tinyPNG, 0o644)
 		return &ImageGenResult{
-			AbsPath:       path,
-			B64Data:       base64.StdEncoding.EncodeToString(tinyPNG),
+			AbsPath:       wantPath,
 			Bytes:         len(tinyPNG),
 			RevisedPrompt: "rephrased",
 		}, nil
@@ -516,20 +515,25 @@ func TestMCP_GenerateImage_ReturnsTextAndImageBlocks(t *testing.T) {
 	if resp.Result.IsError {
 		t.Fatalf("got isError=true, body: %s", w.Body.String())
 	}
-	if len(resp.Result.Content) != 2 {
-		t.Fatalf("content blocks = %d, want 2", len(resp.Result.Content))
+	// Single text content block — image bytes intentionally not included.
+	if len(resp.Result.Content) != 1 {
+		t.Fatalf("content blocks = %d, want 1 (text only — no inline b64)", len(resp.Result.Content))
 	}
 	if resp.Result.Content[0]["type"] != "text" {
-		t.Errorf("first block type = %v, want text", resp.Result.Content[0]["type"])
+		t.Errorf("block type = %v, want text", resp.Result.Content[0]["type"])
 	}
-	if !strings.Contains(resp.Result.Content[0]["text"].(string), "rephrased") {
-		t.Errorf("text block missing revised prompt: %v", resp.Result.Content[0]["text"])
+	textOut := resp.Result.Content[0]["text"].(string)
+	if !strings.Contains(textOut, wantPath) {
+		t.Errorf("text block missing path %q: %q", wantPath, textOut)
 	}
-	if resp.Result.Content[1]["type"] != "image" {
-		t.Errorf("second block type = %v, want image", resp.Result.Content[1]["type"])
+	if !strings.Contains(textOut, "rephrased") {
+		t.Errorf("text block missing revised prompt: %q", textOut)
 	}
-	if resp.Result.Content[1]["mimeType"] != "image/png" {
-		t.Errorf("mimeType = %v, want image/png", resp.Result.Content[1]["mimeType"])
+	// Defense in depth: explicitly verify no image content block leaked through.
+	for _, b := range resp.Result.Content {
+		if b["type"] == "image" {
+			t.Errorf("image content block must NOT be present (would burn token context); got %v", b)
+		}
 	}
 }
 
@@ -538,7 +542,7 @@ func TestMCP_GenerateImage_PassesBackgroundThrough(t *testing.T) {
 	h := NewMCPHandler(New(Config{}), "")
 	h.ImageGen = func(ctx context.Context, req ImageGenRequest) (*ImageGenResult, error) {
 		capturedBg = req.Background
-		return &ImageGenResult{B64Data: "x", Bytes: 1, AbsPath: "/x.png"}, nil
+		return &ImageGenResult{Bytes: 1, AbsPath: "/x.png"}, nil
 	}
 	r := newTestRouter(h)
 	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"generateImage","arguments":{"prompt":"p","background":"opaque"}}}`
@@ -593,11 +597,11 @@ func TestMCP_EditImage_DispatchesAndPassesArgsThrough(t *testing.T) {
 
 	var captured ImageEditRequest
 	h := NewMCPHandler(New(Config{}), "")
+	editedPath := filepath.Join(dir, "edited-out.png")
 	h.ImageEdit = func(ctx context.Context, req ImageEditRequest) (*ImageGenResult, error) {
 		captured = req
 		return &ImageGenResult{
-			AbsPath: filepath.Join(dir, "edited-out.png"),
-			B64Data: base64.StdEncoding.EncodeToString(tinyPNG),
+			AbsPath: editedPath,
 			Bytes:   len(tinyPNG),
 		}, nil
 	}
@@ -639,11 +643,15 @@ func TestMCP_EditImage_DispatchesAndPassesArgsThrough(t *testing.T) {
 	if resp.Result.IsError {
 		t.Fatalf("got isError=true: %s", w.Body.String())
 	}
-	if len(resp.Result.Content) != 2 || resp.Result.Content[1]["type"] != "image" {
-		t.Errorf("expected text + image content blocks, got %+v", resp.Result.Content)
+	if len(resp.Result.Content) != 1 {
+		t.Fatalf("content blocks = %d, want 1 (text only — no inline b64)", len(resp.Result.Content))
 	}
-	if !strings.HasPrefix(resp.Result.Content[0]["text"].(string), "Edited image") {
-		t.Errorf("edit result text should start with 'Edited image', got %v", resp.Result.Content[0]["text"])
+	textOut := resp.Result.Content[0]["text"].(string)
+	if !strings.HasPrefix(textOut, "Edited image") {
+		t.Errorf("edit result text should start with 'Edited image', got %q", textOut)
+	}
+	if !strings.Contains(textOut, editedPath) {
+		t.Errorf("edit result text missing path %q: %q", editedPath, textOut)
 	}
 }
 
@@ -686,7 +694,6 @@ func TestMCP_ToolsCall_SSEStreamsResponseAndKeepalives(t *testing.T) {
 		_ = os.WriteFile(path, tinyPNG, 0o644)
 		return &ImageGenResult{
 			AbsPath: path,
-			B64Data: base64.StdEncoding.EncodeToString(tinyPNG),
 			Bytes:   len(tinyPNG),
 		}, nil
 	}
@@ -742,8 +749,11 @@ func TestMCP_ToolsCall_SSEStreamsResponseAndKeepalives(t *testing.T) {
 	if rpc.JSONRPC != "2.0" {
 		t.Errorf("jsonrpc = %q, want 2.0", rpc.JSONRPC)
 	}
-	if len(rpc.Result.Content) != 2 || rpc.Result.Content[1]["type"] != "image" {
-		t.Errorf("expected text + image content blocks, got %+v", rpc.Result.Content)
+	if len(rpc.Result.Content) != 1 {
+		t.Fatalf("content blocks = %d, want 1 (text only)", len(rpc.Result.Content))
+	}
+	if rpc.Result.Content[0]["type"] != "text" {
+		t.Errorf("block type = %v, want text", rpc.Result.Content[0]["type"])
 	}
 }
 
@@ -753,7 +763,7 @@ func TestMCP_ToolsCall_SSEStreamsResponseAndKeepalives(t *testing.T) {
 func TestMCP_ToolsCall_NoSSEFallsBackToJSON(t *testing.T) {
 	h := NewMCPHandler(New(Config{}), "")
 	h.ImageGen = func(ctx context.Context, req ImageGenRequest) (*ImageGenResult, error) {
-		return &ImageGenResult{B64Data: "x", Bytes: 1, AbsPath: "/x.png"}, nil
+		return &ImageGenResult{Bytes: 1, AbsPath: "/x.png"}, nil
 	}
 	r := newTestRouter(h)
 	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"generateImage","arguments":{"prompt":"p"}}}`

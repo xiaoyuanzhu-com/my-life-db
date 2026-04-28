@@ -593,9 +593,13 @@ func (m *MCPHandler) callEditImage(id json.RawMessage, args map[string]any) *jso
 	return imageToolResult(id, "Edited", res)
 }
 
-// imageToolResult builds the standard MCP tool_result for an image operation:
-// a text block with the saved path (and the model's revised prompt if any),
-// followed by the inline image block.
+// imageToolResult builds the MCP tool_result for an image operation:
+// a single text block with the saved path (and the model's revised prompt
+// if any). The image bytes are NOT included inline — the model only needs
+// the path. Inlining a 2.5 MB base64 image would burn ~640K text tokens or
+// ~1500 vision tokens of context per generation, with no upside (the model
+// just generated it; it doesn't need to re-see the bytes). The frontend
+// renders the image from disk via the existing /raw/<path> endpoint.
 func imageToolResult(id json.RawMessage, verb string, res *ImageGenResult) *jsonrpcResponse {
 	text := fmt.Sprintf("%s image saved to %s (%s).", verb, res.AbsPath, formatBytes(res.Bytes))
 	if res.RevisedPrompt != "" {
@@ -607,7 +611,6 @@ func imageToolResult(id json.RawMessage, verb string, res *ImageGenResult) *json
 		Result: map[string]any{
 			"content": []map[string]any{
 				{"type": "text", "text": text},
-				{"type": "image", "data": res.B64Data, "mimeType": "image/png"},
 			},
 		},
 	}

@@ -48,13 +48,17 @@ type ImageEditRequest struct {
 	Filename   string
 }
 
-// ImageGenResult is what GenerateImage / EditImage returns: the on-disk path
-// of the saved PNG, the base64 bytes (so the caller can include the image
-// inline in the MCP tool_result), the byte count, and the model's revised
-// prompt (useful for showing the model how its prompt was rephrased).
+// ImageGenResult is what GenerateImage / EditImage returns: the on-disk
+// path of the saved PNG, the byte count, and the model's revised prompt
+// (useful for showing the model how its prompt was rephrased).
+//
+// The base64 image bytes are intentionally NOT held here — they're decoded
+// once and written to disk. Returning them inline in the MCP tool_result
+// would burn ~640K text tokens or ~1500 vision tokens of model context per
+// generation; the model only needs the path. The frontend renders the
+// image from disk via the existing /raw/<path> static endpoint.
 type ImageGenResult struct {
 	AbsPath       string
-	B64Data       string
 	Bytes         int
 	RevisedPrompt string
 }
@@ -291,8 +295,7 @@ func writeImageFromResponse(rawBody []byte, gc ImageGenConfig, slugSrc, opTag st
 	if len(parsed.Data) == 0 || parsed.Data[0].B64JSON == "" {
 		return nil, fmt.Errorf("empty image data in response")
 	}
-	b64 := parsed.Data[0].B64JSON
-	pngBytes, err := base64.StdEncoding.DecodeString(b64)
+	pngBytes, err := base64.StdEncoding.DecodeString(parsed.Data[0].B64JSON)
 	if err != nil {
 		return nil, fmt.Errorf("decoding b64: %w", err)
 	}
@@ -320,7 +323,6 @@ func writeImageFromResponse(rawBody []byte, gc ImageGenConfig, slugSrc, opTag st
 	}
 	return &ImageGenResult{
 		AbsPath:       absPath,
-		B64Data:       b64,
 		Bytes:         len(pngBytes),
 		RevisedPrompt: parsed.Data[0].RevisedPrompt,
 	}, nil
