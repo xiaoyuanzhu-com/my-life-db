@@ -152,11 +152,10 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		agentRoutes.POST("/sessions/:id/share", h.ShareAgentSession)
 		agentRoutes.DELETE("/sessions/:id/share", h.UnshareAgentSession)
 
-		// Ephemeral attachments for agent prompts (1 GiB cap per file).
+		// Per-session attachments for agent prompts (1 GiB cap per file).
 		// Files stage under USER_DATA_DIR/sessions/<storageId>/uploads/<filename>.
 		// The storageId is minted by the first upload (returned in the response) and
 		// included on subsequent uploads + on POST /api/agent/sessions.
-		// Files are swept by a background janitor after 30 days.
 		agentRoutes.POST("/attachments", h.UploadAgentAttachment)
 		agentRoutes.DELETE("/attachments/:uploadID", h.DeleteAgentAttachment)
 
