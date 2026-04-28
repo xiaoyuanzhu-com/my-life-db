@@ -23,7 +23,6 @@ interface ImageInfo {
   relPath: string
   absPath?: string
   bytes?: number
-  revisedPrompt?: string
   op: "generated" | "edited" | string
 }
 
@@ -72,7 +71,6 @@ function infoFromObject(p: unknown): ImageInfo | null {
     relPath: r.relPath,
     absPath: typeof r.absPath === "string" ? r.absPath : undefined,
     bytes: typeof r.bytes === "number" ? r.bytes : undefined,
-    revisedPrompt: typeof r.revisedPrompt === "string" ? r.revisedPrompt : undefined,
     op: typeof r.op === "string" ? r.op : "generated",
   }
 }
@@ -153,7 +151,7 @@ export function ImageToolRenderer({
   const [imgFailed, setImgFailed] = useState(false)
   const failedSrcRef = useRef<string | null>(null)
 
-  const op = toolName.toLowerCase().includes("edit") ? "Edit image" : "Generate image"
+  const op = toolName.toLowerCase().includes("edit") ? "Edit Image" : "Generate Image"
   const prompt = typeof args?.prompt === "string" ? args.prompt : ""
 
   const info = isComplete ? extractImageInfo(result) : null
@@ -186,22 +184,48 @@ export function ImageToolRenderer({
     return null
   })()
 
+  const canExpand = !!prompt
+
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
-      {/* Header */}
-      <div className="flex items-start gap-2">
+      {/* Header: dot + op (bold) + prompt (muted, truncated) + chevron */}
+      <button
+        type="button"
+        onClick={() => canExpand && setShowDetails((s) => !s)}
+        className={`flex items-start gap-2 w-full text-left ${canExpand ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
+      >
         <MessageDot type={dotType} />
         <div className="flex-1 min-w-0 flex items-center gap-2">
-          <span className="font-semibold text-foreground">{op}</span>
+          <span className="font-semibold text-foreground shrink-0 whitespace-nowrap">{op}</span>
           {prompt && (
             <span className="text-muted-foreground truncate" title={prompt}>
               {prompt}
             </span>
           )}
+          {canExpand && (
+            <span className="text-[11px] shrink-0 text-muted-foreground/60">
+              {showDetails ? "▾" : "▸"}
+            </span>
+          )}
         </div>
-      </div>
+      </button>
 
-      {/* Inline image */}
+      {/* Summary line */}
+      {summary && (
+        <div className={`flex gap-2 ml-5 ${isError ? "text-destructive" : "text-muted-foreground"}`}>
+          <span className="select-none">{"└"}</span>
+          <span>{summary}</span>
+        </div>
+      )}
+
+      {/* Expanded: full prompt */}
+      {showDetails && prompt && (
+        <div className="ml-5 mt-2 p-2 rounded-md bg-muted/50 text-foreground whitespace-pre-wrap">
+          {prompt}
+        </div>
+      )}
+
+      {/* Inline image — always shown when available */}
       {src && !imgFailed && (
         <div className="ml-5 mt-2">
           <img
@@ -215,39 +239,8 @@ export function ImageToolRenderer({
           />
         </div>
       )}
-
-      {/* Summary line */}
-      {summary && (
-        <div className={`flex gap-2 ml-5 mt-2 ${isError ? "text-destructive" : "text-muted-foreground"}`}>
-          <span className="select-none">{"└"}</span>
-          <button
-            type="button"
-            className="text-left hover:opacity-80"
-            onClick={() => setShowDetails((s) => !s)}
-          >
-            <span>{summary}</span>
-            {info?.revisedPrompt && (
-              <span className="ml-2 text-[11px] text-muted-foreground/60">
-                {showDetails ? "▾" : "▸"}
-              </span>
-            )}
-          </button>
-        </div>
-      )}
-
-      {/* Image load failure note */}
       {src && imgFailed && (
-        <div className="flex gap-2 ml-5 mt-1 text-destructive">
-          <span className="select-none">{"└"}</span>
-          <span>Image saved to disk but failed to load from {src}.</span>
-        </div>
-      )}
-
-      {/* Revised prompt details */}
-      {showDetails && info?.revisedPrompt && (
-        <div className="ml-5 mt-1 p-2 rounded-md bg-muted/50 text-muted-foreground whitespace-pre-wrap">
-          <span className="font-semibold">Model's revised prompt:</span>{"\n"}{info.revisedPrompt}
-        </div>
+        <div className="ml-5 mt-2 text-destructive">Image saved to disk but failed to load from {src}.</div>
       )}
     </div>
   )
