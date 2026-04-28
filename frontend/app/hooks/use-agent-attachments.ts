@@ -4,6 +4,11 @@
  * Each Attachment goes through: uploading → ready | error. The hook owns
  * the XHR lifecycle (including abort on remove) and fires a server-side
  * DELETE when a chip is removed or the hook unmounts with pending chips.
+ *
+ * The first upload in a draft establishes a storageId (returned by the
+ * backend). Subsequent uploads in the same draft pass that storageId back
+ * so all files for the draft land in the same per-session folder. The
+ * storageId is cleared when the composer calls clear() after a send.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react"
@@ -26,6 +31,9 @@ export interface StagedAttachment {
 
 export function useAgentAttachments() {
   const [items, setItems] = useState<StagedAttachment[]>([])
+  const [storageId, setStorageId] = useState<string | null>(null)
+  const storageIdRef = useRef<string | null>(null)
+  storageIdRef.current = storageId
   const abortersRef = useRef(new Map<string, AbortController>())
   const itemsRef = useRef<StagedAttachment[]>([])
   itemsRef.current = items
@@ -44,9 +52,9 @@ export function useAgentAttachments() {
       abortersRef.current.set(clientID, ac)
 
       try {
-        const attachment = await uploadAgentAttachment(
-          file,
-          (pct) => {
+        const attachment = await uploadAgentAttachment(file, {
+          storageId: storageIdRef.current ?? undefined,
+          onProgress: (pct) => {
             setItems((prev) =>
               prev.map((it) =>
                 it.clientID === clientID && it.state.status === "uploading"
@@ -55,8 +63,14 @@ export function useAgentAttachments() {
               ),
             )
           },
-          ac.signal,
-        )
+          signal: ac.signal,
+        })
+        // First upload in this draft mints the storageId; lock it in for
+        // subsequent uploads + for the session-create POST.
+        if (storageIdRef.current === null) {
+          storageIdRef.current = attachment.storageId
+          setStorageId(attachment.storageId)
+        }
         setItems((prev) =>
           prev.map((it) =>
             it.clientID === clientID
@@ -84,15 +98,20 @@ export function useAgentAttachments() {
     ac?.abort()
     abortersRef.current.delete(clientID)
 
-    let uploadID: string | undefined
+    let toDelete: { storageId: string; filename: string } | undefined
     setItems((prev) => {
       const it = prev.find((i) => i.clientID === clientID)
-      if (it?.state.status === "ready") uploadID = it.state.attachment.uploadID
+      if (it?.state.status === "ready") {
+        toDelete = {
+          storageId: it.state.attachment.storageId,
+          filename: it.state.attachment.filename,
+        }
+      }
       return prev.filter((i) => i.clientID !== clientID)
     })
-    if (uploadID) {
+    if (toDelete) {
       try {
-        await deleteAgentAttachment(uploadID)
+        await deleteAgentAttachment(toDelete.storageId, toDelete.filename)
       } catch (e) {
         console.warn("[agent-attachments] delete on remove failed", e)
       }
@@ -101,11 +120,12 @@ export function useAgentAttachments() {
 
   /** Called by the composer after a successful send to clear the strip. */
   const clear = useCallback(() => {
-    // Don't call DELETE — these files were just sent to the agent and may
-    // still be referenced. The 30-day janitor will clean up.
+    // Don't call DELETE — these files were just sent to the agent.
     abortersRef.current.forEach((ac) => ac.abort())
     abortersRef.current.clear()
     setItems([])
+    storageIdRef.current = null
+    setStorageId(null)
   }, [])
 
   /** Ready attachments, in order — used by the composer on send. */
@@ -118,20 +138,20 @@ export function useAgentAttachments() {
   // staged-but-not-sent attachments so we don't leak tmp files when the
   // user navigates away with chips still in the strip.
   useEffect(() => {
-    // Capture ref objects into locals (the lint rule warns that `.current`
-    // can drift between mount and unmount — not an issue here since we
-    // only instantiate these refs once, but capturing makes intent explicit).
     const aborters = abortersRef
     const itemsR = itemsRef
     return () => {
       aborters.current.forEach((ac) => ac.abort())
       for (const it of itemsR.current) {
         if (it.state.status === "ready") {
-          deleteAgentAttachment(it.state.attachment.uploadID).catch(() => {})
+          deleteAgentAttachment(
+            it.state.attachment.storageId,
+            it.state.attachment.filename,
+          ).catch(() => {})
         }
       }
     }
   }, [])
 
-  return { items, readyAttachments, hasPending, addFiles, remove, clear }
+  return { items, readyAttachments, storageId, hasPending, addFiles, remove, clear }
 }
