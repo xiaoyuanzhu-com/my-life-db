@@ -104,3 +104,14 @@ func TestUniqueFilename_NoExtension(t *testing.T) {
 		t.Fatalf("got %q want README-1", got)
 	}
 }
+
+func TestUniqueFilename_Dotfile(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := uniqueFilename(dir, ".gitignore")
+	if got != ".gitignore-1" {
+		t.Fatalf("got %q want .gitignore-1", got)
+	}
+}

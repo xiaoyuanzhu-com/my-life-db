@@ -3,6 +3,7 @@ package api
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -32,6 +33,11 @@ func sessionGeneratedDir(userDataDir, storageID string) string {
 // uniqueFilename returns a filename within dir that does not yet exist on disk.
 // If dir/name is free, it returns name unchanged. Otherwise it appends a
 // numeric suffix before the extension: report.html -> report-1.html.
+// Hidden files like .gitignore are treated as having no extension, so the
+// suffix is appended to the end: .gitignore -> .gitignore-1.
+// If 9999 candidates are all taken, name is returned unchanged (the caller's
+// subsequent os.Create will then overwrite the existing file — acceptable for
+// a per-session staging directory where this is essentially impossible).
 // Caller is responsible for creating dir.
 func uniqueFilename(dir, name string) string {
 	full := filepath.Join(dir, name)
@@ -40,29 +46,18 @@ func uniqueFilename(dir, name string) string {
 	}
 	ext := filepath.Ext(name)
 	stem := strings.TrimSuffix(name, ext)
+	if stem == "" {
+		// Dotfile (e.g. .gitignore): treat the whole name as the stem.
+		ext = ""
+		stem = name
+	}
 	for i := 1; i < 10000; i++ {
-		candidate := stem + "-" + itoa(i) + ext
+		candidate := stem + "-" + strconv.Itoa(i) + ext
 		if _, err := os.Stat(filepath.Join(dir, candidate)); os.IsNotExist(err) {
 			return candidate
 		}
 	}
 	return name
-}
-
-// itoa is a tiny strconv-free integer formatter used by uniqueFilename
-// (avoids pulling in strconv just for one call site).
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var buf [20]byte
-	i := len(buf)
-	for n > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(buf[i:])
 }
 
 // validStorageID rejects empty values, path traversal sequences, separators,
