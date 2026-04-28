@@ -132,6 +132,7 @@ func TestGenerateImage_HappyPath(t *testing.T) {
 		BaseURL:     srv.URL,
 		APIKey:      "test-key",
 		UserDataDir: dir,
+		StorageID:   "test-sid",
 		Now:         func() time.Time { return fixedTime },
 	}, ImageGenRequest{
 		Prompt: "a tiny apple icon",
@@ -165,7 +166,7 @@ func TestGenerateImage_HappyPath(t *testing.T) {
 		t.Errorf("background was not requested but is present in body: %v", cap.Body["background"])
 	}
 
-	wantDir := filepath.Join(dir, "generated", "2026-04-26")
+	wantDir := filepath.Join(dir, "sessions", "test-sid", "generated")
 	if !strings.HasPrefix(res.AbsPath, wantDir) {
 		t.Errorf("AbsPath = %q, want under %q", res.AbsPath, wantDir)
 	}
@@ -182,7 +183,7 @@ func TestGenerateImage_HappyPath(t *testing.T) {
 	if res.RevisedPrompt == "" {
 		t.Errorf("expected RevisedPrompt to be parsed from response, got empty")
 	}
-	wantRelPrefix := "generated/2026-04-26/"
+	wantRelPrefix := "sessions/test-sid/generated/"
 	if !strings.HasPrefix(res.RelPath, wantRelPrefix) {
 		t.Errorf("RelPath = %q, want prefix %q", res.RelPath, wantRelPrefix)
 	}
@@ -199,6 +200,7 @@ func TestGenerateImage_OverridesPassThrough(t *testing.T) {
 		BaseURL:     srv.URL,
 		APIKey:      "k",
 		UserDataDir: dir,
+		StorageID:   "test-sid",
 	}, ImageGenRequest{
 		Prompt:     "test",
 		Size:       "1536x1024",
@@ -228,6 +230,7 @@ func TestGenerateImage_FilenameHintUsed(t *testing.T) {
 		BaseURL:     srv.URL,
 		APIKey:      "k",
 		UserDataDir: dir,
+		StorageID:   "test-sid",
 	}, ImageGenRequest{
 		Prompt:   "anything goes here",
 		Filename: "Custom Name!",
@@ -246,9 +249,10 @@ func TestGenerateImage_MissingConfigReturnsError(t *testing.T) {
 		name string
 		gc   ImageGenConfig
 	}{
-		{"no base url", ImageGenConfig{APIKey: "k", UserDataDir: t.TempDir()}},
-		{"no api key", ImageGenConfig{BaseURL: "http://x", UserDataDir: t.TempDir()}},
-		{"no user data dir", ImageGenConfig{BaseURL: "http://x", APIKey: "k"}},
+		{"no base url", ImageGenConfig{APIKey: "k", UserDataDir: t.TempDir(), StorageID: "test-sid"}},
+		{"no api key", ImageGenConfig{BaseURL: "http://x", UserDataDir: t.TempDir(), StorageID: "test-sid"}},
+		{"no user data dir", ImageGenConfig{BaseURL: "http://x", APIKey: "k", StorageID: "test-sid"}},
+		{"no storage id", ImageGenConfig{BaseURL: "http://x", APIKey: "k", UserDataDir: t.TempDir()}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -282,6 +286,7 @@ func TestGenerateImage_HTTPErrorIsForwarded(t *testing.T) {
 		BaseURL:     srv.URL,
 		APIKey:      "k",
 		UserDataDir: t.TempDir(),
+		StorageID:   "test-sid",
 	}, ImageGenRequest{Prompt: "p"})
 	if err == nil {
 		t.Fatal("expected error from non-2xx response")
@@ -307,6 +312,7 @@ func TestEditImage_HappyPath(t *testing.T) {
 		BaseURL:     srv.URL,
 		APIKey:      "test-key",
 		UserDataDir: dir,
+		StorageID:   "test-sid",
 		Now:         func() time.Time { return fixedTime },
 	}, ImageEditRequest{
 		Prompt:    "make it blue",
@@ -351,8 +357,8 @@ func TestEditImage_HappyPath(t *testing.T) {
 		t.Errorf("mask part present but was not requested")
 	}
 
-	// Output file goes under generated/<date>/edited-<slug>-<hash>.png.
-	wantDir := filepath.Join(dir, "generated", "2026-04-26")
+	// Output file goes under sessions/<sid>/generated/edited-<slug>-<hash>.png.
+	wantDir := filepath.Join(dir, "sessions", "test-sid", "generated")
 	if !strings.HasPrefix(res.AbsPath, wantDir) {
 		t.Errorf("AbsPath = %q, want under %q", res.AbsPath, wantDir)
 	}
@@ -380,6 +386,7 @@ func TestEditImage_WithMask(t *testing.T) {
 		BaseURL:     srv.URL,
 		APIKey:      "k",
 		UserDataDir: dir,
+		StorageID:   "test-sid",
 	}, ImageEditRequest{
 		Prompt:    "inpaint",
 		ImagePath: src,
@@ -399,6 +406,7 @@ func TestEditImage_RequiresAbsoluteImagePath(t *testing.T) {
 		BaseURL:     "http://x",
 		APIKey:      "k",
 		UserDataDir: dir,
+		StorageID:   "test-sid",
 	}, ImageEditRequest{
 		Prompt:    "p",
 		ImagePath: "relative/path.png",
@@ -422,6 +430,7 @@ func TestEditImage_RejectsLargeSourceImage(t *testing.T) {
 		BaseURL:     "http://x",
 		APIKey:      "k",
 		UserDataDir: dir,
+		StorageID:   "test-sid",
 	}, ImageEditRequest{
 		Prompt:    "p",
 		ImagePath: src,
@@ -445,6 +454,7 @@ func TestEditImage_DetectsJPEGMimeFromExtension(t *testing.T) {
 		BaseURL:     srv.URL,
 		APIKey:      "k",
 		UserDataDir: dir,
+		StorageID:   "test-sid",
 	}, ImageEditRequest{
 		Prompt:    "p",
 		ImagePath: src,
@@ -877,6 +887,63 @@ func extractSSEData(body string) string {
 		}
 	}
 	return ""
+}
+
+func TestWriteImageFromResponse_PerSessionPath(t *testing.T) {
+	tmp := t.TempDir()
+	gc := ImageGenConfig{
+		UserDataDir: tmp,
+		StorageID:   "sid-Q",
+		Now:         func() time.Time { return time.Date(2026, 4, 28, 0, 0, 0, 0, time.UTC) },
+	}
+	body, _ := json.Marshal(map[string]any{
+		"data": []map[string]any{
+			{
+				"b64_json":       base64.StdEncoding.EncodeToString(tinyPNG),
+				"revised_prompt": "",
+			},
+		},
+	})
+	res, err := writeImageFromResponse(body, gc, "my-prompt", "generated")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantDir := filepath.Join(tmp, "sessions", "sid-Q", "generated")
+	if !strings.HasPrefix(res.AbsPath, wantDir+string(filepath.Separator)) {
+		t.Fatalf("AbsPath = %q, want under %q", res.AbsPath, wantDir)
+	}
+	if !strings.HasPrefix(res.RelPath, "sessions/sid-Q/generated/") {
+		t.Fatalf("RelPath = %q, want under sessions/sid-Q/generated/", res.RelPath)
+	}
+	if strings.Contains(res.RelPath, "2026-04-28") {
+		t.Fatalf("RelPath %q should not include a date subdir", res.RelPath)
+	}
+}
+
+func TestWriteImageFromResponse_RequiresStorageID(t *testing.T) {
+	tmp := t.TempDir()
+	gc := ImageGenConfig{
+		BaseURL:     "http://x",
+		APIKey:      "k",
+		UserDataDir: tmp,
+		// StorageID intentionally empty
+	}
+	body, _ := json.Marshal(map[string]any{
+		"data": []map[string]any{
+			{"b64_json": base64.StdEncoding.EncodeToString(tinyPNG)},
+		},
+	})
+	// writeImageFromResponse itself doesn't validate config (validateConfig
+	// is invoked by GenerateImage / EditImage). Test that GenerateImage
+	// returns the expected error when StorageID is empty.
+	_, err := GenerateImage(context.Background(), gc, ImageGenRequest{Prompt: "hi"})
+	_ = body
+	if err == nil {
+		t.Fatal("expected error when StorageID empty")
+	}
+	if !strings.Contains(err.Error(), "StorageID") && !strings.Contains(err.Error(), "X-MLD-Session-Id") {
+		t.Fatalf("error should mention StorageID or X-MLD-Session-Id, got: %v", err)
+	}
 }
 
 // --- helpers --------------------------------------------------------------

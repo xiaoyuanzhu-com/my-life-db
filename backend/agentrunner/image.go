@@ -62,7 +62,7 @@ type ImageEditRequest struct {
 // generation; the model only needs the path.
 type ImageGenResult struct {
 	AbsPath       string
-	RelPath       string // relative to UserDataDir, e.g. "generated/2026-04-28/foo.png"
+	RelPath       string // relative to UserDataDir, e.g. "sessions/<storageID>/generated/foo.png"
 	Bytes         int
 	RevisedPrompt string
 }
@@ -71,14 +71,15 @@ type ImageGenResult struct {
 // production it's pulled from config.Get(); tests inject it directly.
 //
 // UserDataDir (not AppDataDir) — generated images go under the user's library
-// at USER_DATA_DIR/generated/<date>/ so they're served by the existing /raw/
-// endpoint and visible in the user's library/inbox flow. They're user content
-// the user just produced.
+// at USER_DATA_DIR/sessions/<storageID>/generated/ so they're served by the
+// existing /raw/ endpoint and visible in the user's library/inbox flow. They're
+// user content the user just produced.
 type ImageGenConfig struct {
 	HTTPClient  *http.Client
 	BaseURL     string // gateway base URL, e.g. https://litellm.example.com/v1
 	APIKey      string
 	UserDataDir string
+	StorageID   string // per-session storage id; required at write time
 	Model       string // default "gpt-image-2"
 	Now         func() time.Time
 }
@@ -254,6 +255,9 @@ func validateConfig(gc ImageGenConfig) error {
 	if gc.UserDataDir == "" {
 		return fmt.Errorf("UserDataDir not set")
 	}
+	if gc.StorageID == "" {
+		return fmt.Errorf("StorageID not set (X-MLD-Session-Id header missing on MCP request)")
+	}
 	return nil
 }
 
@@ -285,8 +289,8 @@ func defaultSizeQuality(size, quality string) (string, string) {
 }
 
 // writeImageFromResponse parses a gpt-image-2 response body, decodes the
-// first b64 image, writes it to {UserDataDir}/generated/{YYYY-MM-DD}/, and
-// returns the metadata including the model's revised prompt.
+// first b64 image, writes it to {UserDataDir}/sessions/{storageID}/generated/,
+// and returns the metadata including the model's revised prompt.
 //
 // The opTag distinguishes generated vs edited outputs in the saved filename
 // (e.g. "edited-foo-abc123.png" vs "foo-abc123.png") — opTag of "generated"
@@ -309,10 +313,9 @@ func writeImageFromResponse(rawBody []byte, gc ImageGenConfig, slugSrc, opTag st
 		return nil, fmt.Errorf("decoding b64: %w", err)
 	}
 
-	day := gc.Now().Format("2006-01-02")
-	dayDir := filepath.Join(gc.UserDataDir, "generated", day)
-	if err := os.MkdirAll(dayDir, 0o755); err != nil {
-		return nil, fmt.Errorf("mkdir %s: %w", dayDir, err)
+	destDir := filepath.Join(gc.UserDataDir, "sessions", gc.StorageID, "generated")
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return nil, fmt.Errorf("mkdir %s: %w", destDir, err)
 	}
 
 	slug := slugifyForFile(slugSrc)
@@ -327,13 +330,13 @@ func writeImageFromResponse(rawBody []byte, gc ImageGenConfig, slugSrc, opTag st
 	} else {
 		name = fmt.Sprintf("%s-%s-%s.png", opTag, slug, short)
 	}
-	absPath := filepath.Join(dayDir, name)
+	absPath := filepath.Join(destDir, name)
 	if err := os.WriteFile(absPath, pngBytes, 0o644); err != nil {
 		return nil, fmt.Errorf("writing %s: %w", absPath, err)
 	}
 	return &ImageGenResult{
 		AbsPath:       absPath,
-		RelPath:       filepath.ToSlash(filepath.Join("generated", day, name)),
+		RelPath:       filepath.ToSlash(filepath.Join("sessions", gc.StorageID, "generated", name)),
 		Bytes:         len(pngBytes),
 		RevisedPrompt: parsed.Data[0].RevisedPrompt,
 	}, nil
