@@ -187,16 +187,67 @@ func TestUploadAttachment_TooLarge(t *testing.T) {
 	}
 }
 
-func TestDeleteAttachment_Happy(t *testing.T) {
-	t.Skip("rewritten in Task 6")
+func TestDelete_RemovesStagedFile(t *testing.T) {
+	tmp := t.TempDir()
+	a := &attachmentsHandler{userDataDir: tmp}
+
+	dir := filepath.Join(tmp, "sessions", "sid-X", "uploads")
+	os.MkdirAll(dir, 0o755)
+	file := filepath.Join(dir, "doc.txt")
+	os.WriteFile(file, []byte("x"), 0o644)
+
+	r := httptest.NewRequest("DELETE", "/attachments/sid-X/doc.txt", nil)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = r
+	c.Params = gin.Params{
+		{Key: "storageId", Value: "sid-X"},
+		{Key: "filename", Value: "doc.txt"},
+	}
+	a.DeleteAttachment(c)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	if _, err := os.Stat(file); !os.IsNotExist(err) {
+		t.Fatalf("file should be removed; stat err=%v", err)
+	}
 }
 
-func TestDeleteAttachment_Missing_IsIdempotent(t *testing.T) {
-	t.Skip("rewritten in Task 6")
+func TestDelete_IdempotentMissingFile(t *testing.T) {
+	tmp := t.TempDir()
+	a := &attachmentsHandler{userDataDir: tmp}
+
+	r := httptest.NewRequest("DELETE", "/attachments/sid-Y/nope.txt", nil)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = r
+	c.Params = gin.Params{
+		{Key: "storageId", Value: "sid-Y"},
+		{Key: "filename", Value: "nope.txt"},
+	}
+	a.DeleteAttachment(c)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204", w.Code)
+	}
 }
 
-func TestDeleteAttachment_TraversalRejected(t *testing.T) {
-	t.Skip("rewritten in Task 6")
+func TestDelete_RejectsTraversal(t *testing.T) {
+	tmp := t.TempDir()
+	a := &attachmentsHandler{userDataDir: tmp}
+
+	r := httptest.NewRequest("DELETE", "/x", nil)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = r
+	c.Params = gin.Params{
+		{Key: "storageId", Value: "sid-Z"},
+		{Key: "filename", Value: "../../etc/passwd"},
+	}
+	a.DeleteAttachment(c)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
 }
 
 // --- New tests added in Task 5 ---

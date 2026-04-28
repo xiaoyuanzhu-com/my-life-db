@@ -157,7 +157,7 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		// The storageId is minted by the first upload (returned in the response) and
 		// included on subsequent uploads + on POST /api/agent/sessions.
 		agentRoutes.POST("/attachments", h.UploadAgentAttachment)
-		agentRoutes.DELETE("/attachments/:uploadID", h.DeleteAgentAttachment)
+		agentRoutes.DELETE("/attachments/:storageId/:filename", h.DeleteAgentAttachment)
 
 		// Auto agent definitions (markdown files with triggers that spawn sessions)
 		agentRoutes.GET("/defs", h.ListAutoAgents)

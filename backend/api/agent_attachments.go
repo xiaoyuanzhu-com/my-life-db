@@ -115,14 +115,32 @@ func (h *Handlers) UploadAgentAttachment(c *gin.Context) {
 	inner.UploadAttachment(c)
 }
 
-// DeleteAttachment is a temporary stub kept only to keep the build green
-// between Task 5 and Task 6. It accepts the old :uploadID param and is a
-// no-op. Replaced in Task 6 with the per-session/per-filename version.
+// DeleteAttachment handles DELETE /api/agent/attachments/:storageId/:filename.
+// Removes one staged file. Idempotent — returns 204 whether or not the file
+// existed. Rejects path-traversal attempts in either parameter.
 func (a *attachmentsHandler) DeleteAttachment(c *gin.Context) {
+	storageID := c.Param("storageId")
+	filename := c.Param("filename")
+	if !validStorageID(storageID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid storageId"})
+		return
+	}
+	if filename == "" || filename != filepath.Base(filename) || filename == "." || filename == ".." {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid filename"})
+		return
+	}
+
+	full := filepath.Join(sessionUploadsDir(a.userDataDir, storageID), filename)
+	if err := os.Remove(full); err != nil && !os.IsNotExist(err) {
+		log.Error().Err(err).Str("path", full).Msg("agent-attachments: delete failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete"})
+		return
+	}
+	log.Info().Str("storageID", storageID).Str("filename", filename).Msg("agent-attachments: upload deleted")
 	c.Status(http.StatusNoContent)
+	c.Writer.WriteHeaderNow()
 }
 
-// DeleteAgentAttachment is a temporary shim — Task 6 rewrites this.
 func (h *Handlers) DeleteAgentAttachment(c *gin.Context) {
 	inner := &attachmentsHandler{userDataDir: h.server.Cfg().UserDataDir}
 	inner.DeleteAttachment(c)
