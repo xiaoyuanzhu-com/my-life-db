@@ -1,6 +1,7 @@
 package api
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -58,5 +59,48 @@ func TestValidStorageID(t *testing.T) {
 	}
 	if validStorageID(strings.Repeat("a", 200)) {
 		t.Error("excessively long must be invalid")
+	}
+}
+
+func TestUniqueFilename_NoCollision(t *testing.T) {
+	dir := t.TempDir()
+	got := uniqueFilename(dir, "report.html")
+	if got != "report.html" {
+		t.Fatalf("got %q want report.html", got)
+	}
+}
+
+func TestUniqueFilename_WithCollision(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "report.html"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := uniqueFilename(dir, "report.html")
+	if got != "report-1.html" {
+		t.Fatalf("got %q want report-1.html", got)
+	}
+}
+
+func TestUniqueFilename_MultipleCollisions(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"report.html", "report-1.html", "report-2.html"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := uniqueFilename(dir, "report.html")
+	if got != "report-3.html" {
+		t.Fatalf("got %q want report-3.html", got)
+	}
+}
+
+func TestUniqueFilename_NoExtension(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "README"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := uniqueFilename(dir, "README")
+	if got != "README-1" {
+		t.Fatalf("got %q want README-1", got)
 	}
 }
