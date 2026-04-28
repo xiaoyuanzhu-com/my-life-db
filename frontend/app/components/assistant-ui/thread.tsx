@@ -58,10 +58,19 @@ import { useSkills, useMCPServers, useToggleMCPServer } from "~/hooks/use-agent-
 // Create the AssistantMessage with our ACP tool renderers baked in
 const AcpAssistantMessage = createAssistantMessage(acpToolsConfig);
 
-export const Thread: FC = () => {
+type ThreadProps = {
+  onAttachmentsStorageIdChange?: (storageId: string | null) => void
+}
+
+export const Thread: FC<ThreadProps> = ({ onAttachmentsStorageIdChange }) => {
   const { pendingPermissions, hasActiveSession, historyLoadError, sessionError } = useAgentContext();
   const hasSession = useAuiState((s) => !s.thread.isEmpty);
   const isRunning = useAuiState((s) => s.thread.isRunning);
+  const attachments = useAgentAttachments();
+
+  useEffect(() => {
+    onAttachmentsStorageIdChange?.(attachments.storageId)
+  }, [attachments.storageId, onAttachmentsStorageIdChange])
 
   // Show loading when we have an active session but messages haven't loaded into the store yet.
   // Covers both "WS connecting" and "WS connected, replay in progress".

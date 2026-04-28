@@ -22,6 +22,7 @@ interface AgentChatProps {
    */
   sessionId: string
   className?: string
+  onAttachmentsStorageIdChange?: (storageId: string | null) => void
 }
 
 /**
@@ -32,10 +33,11 @@ interface AgentChatProps {
 export function AgentChat({
   sessionId,
   className,
+  onAttachmentsStorageIdChange,
 }: AgentChatProps) {
   return (
     <div className={cn("flex flex-col h-full bg-background", className)}>
-      <Thread />
+      <Thread onAttachmentsStorageIdChange={onAttachmentsStorageIdChange} />
     </div>
   )
 }

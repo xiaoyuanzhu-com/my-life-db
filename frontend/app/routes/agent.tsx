@@ -239,6 +239,12 @@ export default function AgentPage() {
   // Track previous activeSessionId so handlers can choose push vs replace
   // (push when entering from list, replace when switching between sessions).
   const prevActiveSessionIdRef = useRef<string | null>(activeSessionId)
+  // Track the latest storageId minted by the draft attachment hook so we can
+  // include it in the session-create POST without prop-drilling state.
+  const draftStorageIdRef = useRef<string | null>(null)
+  const handleAttachmentsStorageIdChange = useCallback((storageId: string | null) => {
+    draftStorageIdRef.current = storageId
+  }, [])
   useEffect(() => {
     prevActiveSessionIdRef.current = activeSessionId
   }, [activeSessionId])
@@ -815,6 +821,7 @@ export default function AgentPage() {
         permissionMode: effectiveMode || undefined,
         agentType: newSessionAgentType,
         model: effectiveModel || undefined,
+        storageId: draftStorageIdRef.current ?? undefined,
       })
 
       if (!response.ok) {
@@ -1090,6 +1097,7 @@ export default function AgentPage() {
               <AgentChat
                 sessionId={activeSessionId}
                 className="flex-1"
+                onAttachmentsStorageIdChange={handleAttachmentsStorageIdChange}
               />
             </div>
           </div>
@@ -1291,12 +1299,14 @@ export default function AgentPage() {
                 <AgentChat
                   sessionId={activeSessionId}
                   className="flex-1"
+                  onAttachmentsStorageIdChange={handleAttachmentsStorageIdChange}
                 />
               ) : (
                 <AgentChat
                   key={`new-${newSessionComposerKey}`}
                   sessionId=""
                   className="flex-1 agent-bg"
+                  onAttachmentsStorageIdChange={handleAttachmentsStorageIdChange}
                 />
               )}
             </div>
@@ -1313,11 +1323,13 @@ export default function AgentPage() {
             <AgentChat
               sessionId={activeSessionId}
               className="flex-1"
+              onAttachmentsStorageIdChange={handleAttachmentsStorageIdChange}
             />
           ) : (
             <AgentChat
               sessionId=""
               className="flex-1 agent-bg"
+              onAttachmentsStorageIdChange={handleAttachmentsStorageIdChange}
             />
           )}
         </div>
@@ -1356,6 +1368,7 @@ export default function AgentPage() {
           <AgentChat
             sessionId={activeSessionId}
             className="flex-1"
+            onAttachmentsStorageIdChange={handleAttachmentsStorageIdChange}
           />
         </div>
       ) : sessionSidebar && showNewSessionMobile ? (
@@ -1373,6 +1386,7 @@ export default function AgentPage() {
             key={`new-${newSessionComposerKey}`}
             sessionId=""
             className="flex-1"
+            onAttachmentsStorageIdChange={handleAttachmentsStorageIdChange}
           />
         </div>
       ) : sessionSidebar ? (
@@ -1410,6 +1424,7 @@ export default function AgentPage() {
         <AgentChat
           sessionId=""
           className="flex-1 agent-bg"
+          onAttachmentsStorageIdChange={handleAttachmentsStorageIdChange}
         />
       )}
     </div>
