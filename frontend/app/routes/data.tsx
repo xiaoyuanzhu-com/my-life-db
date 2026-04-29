@@ -130,7 +130,7 @@ function DataContent() {
   }, [setSearchParams]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
-  const { results: searchResults, isSearching, search, clear: clearSearch } = useSearch();
+  const { results: searchResults, search, clear: clearSearch } = useSearch();
 
   useUploadNotifications();
 

@@ -42,6 +42,7 @@ export function useVoiceInput(options?: UseVoiceInputOptions): VoiceInputControl
     rawTranscript,
     partialSentence,
     recordedAudio,
+    isRefining,
     startRecording,
     stopRecording
   } = useRealtimeASR({
@@ -68,6 +69,7 @@ export function useVoiceInput(options?: UseVoiceInputOptions): VoiceInputControl
       partial: partialSentence
     },
     recordedAudio,
+    isRefining,
     start,
     stop
   };

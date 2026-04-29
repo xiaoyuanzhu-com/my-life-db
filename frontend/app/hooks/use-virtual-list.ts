@@ -403,7 +403,6 @@ export function useVirtualList(options: VirtualListOptions): VirtualListRange {
   // getKey's identity changes whenever filteredMessages gets a new reference,
   // but this effect only needs to run when count changes. The ref gives the
   // effect body access to the latest getKey without triggering re-execution.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
     // Skip if render-phase prepend detection already adjusted the range.
     // The count-change effect would otherwise override the shifted range with

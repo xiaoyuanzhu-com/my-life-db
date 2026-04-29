@@ -18,7 +18,9 @@ import { Maximize2 } from "lucide-react";
 import { PreviewFullscreen } from "~/components/agent/preview-fullscreen";
 import { getHighlighter, LIGHT_THEME, DARK_THEME } from "~/lib/markdown/shiki";
 
-const HtmlRenderer: FC<SyntaxHighlighterProps> = ({ code: htmlCode }) => {
+type RendererProps = Pick<SyntaxHighlighterProps, "node" | "language" | "code">;
+
+const HtmlRenderer: FC<RendererProps> = ({ code: htmlCode }) => {
   const [fullscreen, setFullscreen] = useState(false);
   return (
     <>
@@ -61,7 +63,7 @@ const mermaidConfig = {
 
 let mermaidInitialized = false;
 
-const MermaidRenderer: FC<SyntaxHighlighterProps> = ({ code: chart }) => {
+const MermaidRenderer: FC<RendererProps> = ({ code: chart }) => {
   const isIncomplete = useIsCodeFenceIncomplete();
   const [svg, setSvg] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
@@ -115,7 +117,7 @@ const MermaidRenderer: FC<SyntaxHighlighterProps> = ({ code: chart }) => {
   );
 };
 
-const CodeRenderer: FC<SyntaxHighlighterProps> = ({ code, language }) => {
+const CodeRenderer: FC<RendererProps> = ({ code, language }) => {
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
   const codeRef = useRef(code);
   const langRef = useRef(language);

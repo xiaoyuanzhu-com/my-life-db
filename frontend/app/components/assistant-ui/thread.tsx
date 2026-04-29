@@ -11,7 +11,6 @@ import {
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
 import { Switch } from "~/components/ui/switch";
-import { Popover, PopoverContent } from "~/components/ui/popover";
 import {
   AuiIf,
   ComposerPrimitive,
@@ -109,9 +108,11 @@ export const Thread: FC<ThreadProps> = ({ onAttachmentsStorageIdChange, existing
         )}
         <InitialScrollToBottom />
 
-        <ThreadPrimitive.Messages className="mx-auto w-full max-w-(--thread-max-width)">
-          {() => <ThreadMessage />}
-        </ThreadPrimitive.Messages>
+        <div className="mx-auto w-full max-w-(--thread-max-width)">
+          <ThreadPrimitive.Messages>
+            {() => <ThreadMessage />}
+          </ThreadPrimitive.Messages>
+        </div>
 
         {isRunning && pendingPermissions.size === 0 && <AgentWIP />}
 
@@ -394,8 +395,9 @@ const DraftPersistenceSync: FC = () => {
     } else {
       hasRestoredRef.current = true;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- composerRuntime
-    // accessed via ref; adding it here causes the race condition this fixes.
+    // composerRuntime accessed via ref; adding it here causes a race condition.
+    // inst is also a stable per-instance id used only for logging.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey]);
 
   // Persist as-you-type. Suppressed until the restore phase completes and
@@ -603,12 +605,12 @@ const ComposerOptionsMenu: FC<{
   } = useAgentContext()
   const hasActiveSession = !!sessionId
 
-  // Stable render order: model → mode → everything else (by category)
-  const CONFIG_ORDER: Record<string, number> = { model: 0, mode: 1 }
   const sortedOptions = useMemo(() => {
+    // Stable render order: model → mode → everything else (by category)
+    const order: Record<string, number> = { model: 0, mode: 1 }
     if (!configOptions) return []
     return [...configOptions].sort((a, b) =>
-      (CONFIG_ORDER[a.category] ?? 2) - (CONFIG_ORDER[b.category] ?? 2)
+      (order[a.category] ?? 2) - (order[b.category] ?? 2)
     )
   }, [configOptions])
 

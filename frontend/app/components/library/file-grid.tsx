@@ -38,8 +38,8 @@ export function FileGrid({
   onFileRenamed,
   onFileMoved: _onFileMoved,
   createFolderTrigger,
-  onUploadFile,
-  onUploadFolder,
+  onUploadFile: _onUploadFile,
+  onUploadFolder: _onUploadFolder,
   currentPath: controlledPath,
   onNavigate: controlledNavigate,
 }: FileGridProps) {
@@ -283,10 +283,6 @@ export function FileGrid({
   }, [loadChildren, tErr]);
 
   const navigateTo = controlledNavigate ?? setInternalPath;
-
-  const handleNavigate = (path: string) => {
-    navigateTo(path);
-  };
 
   const handleItemClick = (node: FileNode, fullPath: string) => {
     if (node.type === 'folder') {

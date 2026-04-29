@@ -161,7 +161,6 @@ export function ImageToolRenderer({
   // result so we can see what the agent CLI delivered. The marker is OUR
   // contract — its absence is a backend/CLI bug, not a frontend bug.
   if (isComplete && !info && hasResult) {
-    // eslint-disable-next-line no-console
     console.warn("[image-tool] [mylifedb-image] marker not found in result", { toolName, result })
   }
 

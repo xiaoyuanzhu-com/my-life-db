@@ -23,13 +23,13 @@ const RECONNECT_MAX_MS = 60_000;
 /**
  * Simple debounce function
  */
-function debounce<T extends (...args: unknown[]) => void>(
-  fn: T,
+function debounce<TArgs extends unknown[]>(
+  fn: (...args: TArgs) => void,
   delay: number
-): { (...args: Parameters<T>): void; cancel: () => void } {
+): { (...args: TArgs): void; cancel: () => void } {
   let timeoutId: NodeJS.Timeout | null = null;
 
-  const debounced = (...args: Parameters<T>) => {
+  const debounced = (...args: TArgs) => {
     if (timeoutId) {
       clearTimeout(timeoutId);
     }

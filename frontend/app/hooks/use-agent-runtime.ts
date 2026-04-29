@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useMemo, useRef, useState } from "react"
 import { useExternalStoreRuntime } from "@assistant-ui/react"
 import type {
   ThreadMessageLike,
@@ -18,7 +18,6 @@ import {
   type PermissionRequestFrame,
   type PermissionOption,
   type ErrorFrame,
-  type ToolCallFields,
 } from "./use-agent-websocket"
 import { isSkippedXmlContent } from "~/lib/session-message-utils"
 
@@ -86,7 +85,7 @@ export interface SessionMeta {
   availableModels?: AvailableModel[]
   /** Raw configOptions from the ACP agent (Codex uses these for model, reasoning_effort, etc.) */
   configOptions?: ConfigOption[]
-  commands?: unknown[]
+  commands?: Array<{ name: string; description?: string }>
 }
 
 export interface PlanEntry {
@@ -889,7 +888,7 @@ export function useAgentRuntime(options: {
 
         case "available_commands_update": {
           // ACP native frame: field is availableCommands
-          const commands = frame.availableCommands as unknown[] | undefined
+          const commands = frame.availableCommands as Array<{ name: string; description?: string }> | undefined
           if (commands) {
             setSessionMeta((prev) => ({ ...prev, commands }))
           }
@@ -962,7 +961,7 @@ export function useAgentRuntime(options: {
           break
       }
     },
-    [nextId]
+    [nextId, diagLog, sessionId]
   )
 
   // ── WebSocket Connection ──────────────────────────────────────────
@@ -1039,6 +1038,7 @@ export function useAgentRuntime(options: {
   const adapter: ExternalStoreAdapter<ThreadMessageLike> = useMemo(
     () => ({
       messages: rootMessages,
+      convertMessage: (m) => m,
       isRunning,
       onNew: async (message) => {
         // Extract text from the AppendMessage content parts
@@ -1155,7 +1155,7 @@ export function useAgentRuntime(options: {
         },
       } : {}),
     }),
-    [rootMessages, isRunning, sendPrompt, sendCancel, sendKill, onSend, sessions, activeSessionId, onSwitchToThread, onSwitchToNewThread, onRenameThread, onArchiveThread, onUnarchiveThread, onDeleteThread]
+    [rootMessages, isRunning, sendPrompt, sendCancel, sendKill, onSend, sessions, activeSessionId, onSwitchToThread, onSwitchToNewThread, onRenameThread, onArchiveThread, onUnarchiveThread, onDeleteThread, diagLog, nextId, sessionId]
   )
 
   // ── Runtime ───────────────────────────────────────────────────────

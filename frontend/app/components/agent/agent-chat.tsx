@@ -33,7 +33,7 @@ interface AgentChatProps {
  * it shows the empty state with the composer.
  */
 export function AgentChat({
-  sessionId,
+  sessionId: _sessionId,
   className,
   onAttachmentsStorageIdChange,
   existingStorageId,
