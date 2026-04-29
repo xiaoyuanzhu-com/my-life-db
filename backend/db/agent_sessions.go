@@ -125,10 +125,12 @@ func ListAgentSessions(includeArchived bool, cursor int64, limit int) ([]AgentSe
 }
 
 // UpdateAgentSessionTitle updates the title for a session.
+// Does NOT bump updated_at — renaming is metadata, not activity, and shouldn't
+// reorder the session in the sidebar.
 func UpdateAgentSessionTitle(sessionID, title string) error {
 	_, err := Run(
-		`UPDATE agent_sessions SET title = ?, updated_at = ? WHERE session_id = ?`,
-		title, NowMs(), sessionID,
+		`UPDATE agent_sessions SET title = ? WHERE session_id = ?`,
+		title, sessionID,
 	)
 	return err
 }
@@ -144,22 +146,21 @@ func TouchAgentSession(sessionID string) error {
 
 // ── Archive operations ───────────────────────────────────────────────────────
 
-// ArchiveAgentSession marks a session as archived
+// ArchiveAgentSession marks a session as archived. Does NOT bump updated_at —
+// archiving is metadata, not activity.
 func ArchiveAgentSession(sessionID string) error {
 	_, err := Run(
-		`UPDATE agent_sessions SET archived_at = ?, updated_at = ?
-		 WHERE session_id = ?`,
-		NowMs(), NowMs(), sessionID,
+		`UPDATE agent_sessions SET archived_at = ? WHERE session_id = ?`,
+		NowMs(), sessionID,
 	)
 	return err
 }
 
-// UnarchiveAgentSession removes the archived mark from a session
+// UnarchiveAgentSession removes the archived mark. Does NOT bump updated_at.
 func UnarchiveAgentSession(sessionID string) error {
 	_, err := Run(
-		`UPDATE agent_sessions SET archived_at = NULL, updated_at = ?
-		 WHERE session_id = ?`,
-		NowMs(), sessionID,
+		`UPDATE agent_sessions SET archived_at = NULL WHERE session_id = ?`,
+		sessionID,
 	)
 	return err
 }

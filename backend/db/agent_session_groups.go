@@ -98,7 +98,7 @@ func DeleteAgentSessionGroup(id string) error {
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(`UPDATE agent_sessions SET group_id = NULL, updated_at = ? WHERE group_id = ?`, NowMs(), id); err != nil {
+	if _, err := tx.Exec(`UPDATE agent_sessions SET group_id = NULL WHERE group_id = ?`, id); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM agent_session_groups WHERE id = ?`, id); err != nil {
@@ -135,35 +135,37 @@ func ReorderAgentSessionGroups(orderedIDs []string) error {
 // SetAgentSessionGroup assigns a session to a group, or clears the assignment
 // when groupID is "". The caller is expected to pre-validate that groupID
 // (when non-empty) refers to an existing group.
+//
+// Does NOT bump updated_at — moving a session between groups is metadata,
+// not activity, and shouldn't reorder it in the sidebar.
 func SetAgentSessionGroup(sessionID, groupID string) error {
 	if groupID == "" {
 		_, err := Run(
-			`UPDATE agent_sessions SET group_id = NULL, updated_at = ? WHERE session_id = ?`,
-			NowMs(), sessionID,
+			`UPDATE agent_sessions SET group_id = NULL WHERE session_id = ?`,
+			sessionID,
 		)
 		return err
 	}
 	_, err := Run(
-		`UPDATE agent_sessions SET group_id = ?, updated_at = ? WHERE session_id = ?`,
-		groupID, NowMs(), sessionID,
+		`UPDATE agent_sessions SET group_id = ? WHERE session_id = ?`,
+		groupID, sessionID,
 	)
 	return err
 }
 
 // SetAgentSessionPinned pins (now) or unpins (NULL) a session.
-// Pinning bumps updated_at so the session surfaces in pagination.
+// Does NOT bump updated_at — pinning is metadata, not activity.
 func SetAgentSessionPinned(sessionID string, pinned bool) error {
-	now := NowMs()
 	if !pinned {
 		_, err := Run(
-			`UPDATE agent_sessions SET pinned_at = NULL, updated_at = ? WHERE session_id = ?`,
-			now, sessionID,
+			`UPDATE agent_sessions SET pinned_at = NULL WHERE session_id = ?`,
+			sessionID,
 		)
 		return err
 	}
 	_, err := Run(
-		`UPDATE agent_sessions SET pinned_at = ?, updated_at = ? WHERE session_id = ?`,
-		now, now, sessionID,
+		`UPDATE agent_sessions SET pinned_at = ? WHERE session_id = ?`,
+		NowMs(), sessionID,
 	)
 	return err
 }
