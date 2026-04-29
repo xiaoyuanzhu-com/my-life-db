@@ -3,16 +3,7 @@ import { useNavigate, useParams, useLocation, useSearchParams } from 'react-rout
 import { useTranslation } from 'react-i18next'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import { AgentSidebar } from '~/components/agent/agent-sidebar'
-import {
-  type AgentSessionGroup,
-  createAgentSessionGroup,
-  deleteAgentSessionGroup,
-  listAgentSessionGroups,
-  renameAgentSessionGroup,
-  reorderAgentSessionGroups,
-  setAgentSessionGroup,
-  setAgentSessionPinned,
-} from '~/lib/agent-groups'
+import { setAgentSessionPinned } from '~/lib/agent-groups'
 import { type AgentType } from '~/components/agent/agent-type-selector'
 import type { ConfigOption } from '~/hooks/use-agent-runtime'
 import { AgentChat } from '~/components/agent/agent-chat'
@@ -246,7 +237,6 @@ export default function AgentPage() {
   const sidebarView: SidebarView = isAutoRoute ? 'agents' : 'sessions'
   const activeSessionId = urlSessionId ?? null
   const [sessions, setSessions] = useState<Session[]>([])
-  const [groups, setGroups] = useState<AgentSessionGroup[]>([])
   const [loading, setLoading] = useState(true)
   const touchStartX = useRef<number>(0)
   const touchEndX = useRef<number>(0)
@@ -907,75 +897,6 @@ export default function AgentPage() {
     }
   }
 
-  // ── Groups: load + mutations ─────────────────────────────────────────────
-
-  const refreshGroups = useCallback(async () => {
-    try {
-      const list = await listAgentSessionGroups()
-      setGroups(list)
-    } catch (err) {
-      console.error('Failed to load groups:', err)
-    }
-  }, [])
-
-  useEffect(() => {
-    refreshGroups()
-  }, [refreshGroups])
-
-  const handleCreateGroup = useCallback(async (name: string): Promise<AgentSessionGroup | null> => {
-    try {
-      const g = await createAgentSessionGroup(name)
-      setGroups((prev) => [...prev, g])
-      return g
-    } catch (err) {
-      console.error('Failed to create group:', err)
-      return null
-    }
-  }, [])
-
-  const handleRenameGroup = useCallback(async (id: string, name: string) => {
-    setGroups((prev) => prev.map((g) => (g.id === id ? { ...g, name } : g)))
-    try {
-      await renameAgentSessionGroup(id, name)
-    } catch (err) {
-      console.error('Failed to rename group:', err)
-      void refreshGroups()
-    }
-  }, [refreshGroups])
-
-  const handleDeleteGroup = useCallback(async (id: string) => {
-    // Optimistic: clear locally + refresh from server.
-    setGroups((prev) => prev.filter((g) => g.id !== id))
-    setSessions((prev) => prev.map((s) => (s.groupId === id ? { ...s, groupId: null } : s)))
-    try {
-      await deleteAgentSessionGroup(id)
-    } catch (err) {
-      console.error('Failed to delete group:', err)
-      void refreshGroups()
-    }
-  }, [refreshGroups])
-
-  const handleReorderGroups = useCallback(async (ids: string[]) => {
-    // Optimistic local reorder is already applied in AgentSidebar; persist here.
-    try {
-      await reorderAgentSessionGroups(ids)
-      // Refresh sort_order values from server so subsequent renders are stable.
-      void refreshGroups()
-    } catch (err) {
-      console.error('Failed to reorder groups:', err)
-      void refreshGroups()
-    }
-  }, [refreshGroups])
-
-  const handleMoveSession = useCallback(async (sessionId: string, groupId: string | null) => {
-    setSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, groupId } : s)))
-    try {
-      await setAgentSessionGroup(sessionId, groupId)
-    } catch (err) {
-      console.error('Failed to move session:', err)
-    }
-  }, [])
-
   const handlePinSession = useCallback(async (sessionId: string, pinned: boolean) => {
     const now = Date.now()
     setSessions((prev) =>
@@ -987,11 +908,6 @@ export default function AgentPage() {
       console.error('Failed to pin/unpin session:', err)
     }
   }, [])
-
-  const handleCreateGroupAndMove = useCallback(async (sessionId: string, name: string) => {
-    const g = await handleCreateGroup(name)
-    if (g) await handleMoveSession(sessionId, g.id)
-  }, [handleCreateGroup, handleMoveSession])
 
   const unarchiveSession = async (sessionId: string) => {
     try {
@@ -1357,7 +1273,6 @@ export default function AgentPage() {
               ) : (
                 <AgentSidebar
                   sessions={visibleSessions}
-                  groups={groups}
                   activeSessionId={activeSessionId}
                   sessionStates={sessionStates}
                   sessionSources={sessionSources}
@@ -1371,12 +1286,6 @@ export default function AgentPage() {
                   onArchiveSession={archiveSession}
                   onUnarchiveSession={unarchiveSession}
                   onPinSession={handlePinSession}
-                  onMoveSession={handleMoveSession}
-                  onCreateGroup={handleCreateGroup}
-                  onCreateGroupAndMove={handleCreateGroupAndMove}
-                  onRenameGroup={handleRenameGroup}
-                  onDeleteGroup={handleDeleteGroup}
-                  onReorderGroups={handleReorderGroups}
                 />
               )}
             </div>
@@ -1527,7 +1436,6 @@ export default function AgentPage() {
             ) : (
               <AgentSidebar
                 sessions={visibleSessions}
-                groups={groups}
                 activeSessionId={activeSessionId}
                 sessionStates={sessionStates}
                 sessionSources={sessionSources}
@@ -1541,12 +1449,6 @@ export default function AgentPage() {
                 onArchiveSession={archiveSession}
                 onUnarchiveSession={unarchiveSession}
                 onPinSession={handlePinSession}
-                onMoveSession={handleMoveSession}
-                onCreateGroup={handleCreateGroup}
-                onCreateGroupAndMove={handleCreateGroupAndMove}
-                onRenameGroup={handleRenameGroup}
-                onDeleteGroup={handleDeleteGroup}
-                onReorderGroups={handleReorderGroups}
               />
             )}
           </div>

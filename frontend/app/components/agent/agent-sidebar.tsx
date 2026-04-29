@@ -1,87 +1,56 @@
 /**
- * AgentSidebar — grouped session list for the user-tab path on /agent.
+ * AgentSidebar — flat session list with pin-on-top and time-based sections.
  *
  * Bypasses @assistant-ui/react's ThreadListPrimitive (which is a flat list with
- * no group concept) and renders rows directly. The visual style mirrors the
+ * no section concept) and renders rows directly. The visual style mirrors the
  * existing ThreadListItem so this drops in as a replacement.
  *
  * Layout:
- *   [Pinned]                         ← virtual section, pinned across all groups
+ *   Pinned          ← virtual section, only when there are pinned sessions
  *     • session
- *   [Group: <name>]    ⠿ [more]      ← drag handle + per-group menu (rename / delete)
+ *   Today           ← time-based buckets, only rendered when non-empty
  *     • session
- *   [Ungrouped]
+ *   Yesterday
  *     • session
- *   [+ Add group]
+ *   Last 7 days
+ *     • session
+ *   Last 30 days
+ *     • session
+ *   Earlier
+ *     • session
  *
- * Each section header is collapsible (state persisted in localStorage).
- * "+ Add group" appends an inline empty group at the bottom in rename mode.
+ * Backend group metadata is intentionally ignored here; sessions still carry
+ * groupId from the API but the sidebar no longer surfaces it.
  */
 
 import { type FC, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArchiveIcon,
   ArchiveRestoreIcon,
-  ChevronDownIcon,
-  FolderIcon,
-  GripVerticalIcon,
   Loader2Icon,
   MoreHorizontalIcon,
   PencilIcon,
   PinIcon,
   PinOffIcon,
-  PlusIcon,
-  Trash2Icon,
 } from 'lucide-react'
-import {
-  DndContext,
-  type DragEndEvent,
-  KeyboardSensor,
-  PointerSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core'
-import {
-  SortableContext,
-  arrayMove,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
 
 import { Button } from '~/components/ui/button'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '~/components/ui/alert-dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '~/components/ui/dropdown-menu'
 import { Input } from '~/components/ui/input'
 import { cn } from '~/lib/utils'
-import type { AgentSessionGroup } from '~/lib/agent-groups'
 
 type SessionState = 'idle' | 'working' | 'unread' | 'archived'
 
 export interface SidebarSession {
   id: string
   title: string
-  groupId?: string | null
+  lastActivity: number
   pinnedAt?: number | null
   source?: 'user' | 'auto'
   agentName?: string
@@ -89,7 +58,6 @@ export interface SidebarSession {
 
 export interface AgentSidebarProps {
   sessions: SidebarSession[]
-  groups: AgentSessionGroup[]
   activeSessionId?: string | null
 
   // Per-row maps (parity with ThreadList props)
@@ -98,7 +66,7 @@ export interface AgentSidebarProps {
   sessionAgentNames?: Record<string, string>
   sessionTriggerLabels?: Record<string, string>
 
-  // Pagination (last group / ungrouped section's bottom hosts the sentinel)
+  // Pagination — sentinel sits at the very bottom of the scroll area.
   hasMore?: boolean
   isLoadingMore?: boolean
   onLoadMore?: () => void
@@ -109,44 +77,39 @@ export interface AgentSidebarProps {
   onArchiveSession: (id: string) => Promise<void> | void
   onUnarchiveSession: (id: string) => Promise<void> | void
   onPinSession: (id: string, pinned: boolean) => Promise<void> | void
-  onMoveSession: (id: string, groupId: string | null) => Promise<void> | void
-
-  // Group-level actions
-  onCreateGroup: (name: string) => Promise<AgentSessionGroup | null>
-  onCreateGroupAndMove?: (sessionId: string, name: string) => Promise<void>
-  onRenameGroup: (id: string, name: string) => Promise<void> | void
-  onDeleteGroup: (id: string) => Promise<void> | void
-  onReorderGroups: (ids: string[]) => Promise<void> | void
 }
 
-// ── Collapse state (persisted) ────────────────────────────────────────────────
+// ── Time bucketing ────────────────────────────────────────────────────────────
 
-const COLLAPSE_KEY = 'agent-sidebar-collapsed-groups'
-// Sentinel keys for the two virtual sections; UUIDs never collide.
-const PINNED_KEY = '__pinned__'
-const UNGROUPED_KEY = '__ungrouped__'
+type TimeBucket = 'today' | 'yesterday' | 'last7' | 'last30' | 'earlier'
 
-function loadCollapsed(): Record<string, boolean> {
-  if (typeof window === 'undefined') return {}
-  try {
-    const raw = window.localStorage.getItem(COLLAPSE_KEY)
-    if (!raw) return {}
-    const parsed = JSON.parse(raw)
-    if (parsed && typeof parsed === 'object') return parsed as Record<string, boolean>
-  } catch { /* ignore */ }
-  return {}
+const BUCKET_ORDER: TimeBucket[] = ['today', 'yesterday', 'last7', 'last30', 'earlier']
+
+const BUCKET_LABEL: Record<TimeBucket, string> = {
+  today: 'Today',
+  yesterday: 'Yesterday',
+  last7: 'Last 7 days',
+  last30: 'Last 30 days',
+  earlier: 'Earlier',
 }
 
-function saveCollapsed(state: Record<string, boolean>) {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.setItem(COLLAPSE_KEY, JSON.stringify(state))
-  } catch { /* ignore */ }
+function bucketFor(activity: number, now: number): TimeBucket {
+  const startOfToday = new Date(now)
+  startOfToday.setHours(0, 0, 0, 0)
+  const today = startOfToday.getTime()
+  const yesterday = today - 24 * 60 * 60 * 1000
+  const sevenDaysAgo = today - 7 * 24 * 60 * 60 * 1000
+  const thirtyDaysAgo = today - 30 * 24 * 60 * 60 * 1000
+
+  if (activity >= today) return 'today'
+  if (activity >= yesterday) return 'yesterday'
+  if (activity >= sevenDaysAgo) return 'last7'
+  if (activity >= thirtyDaysAgo) return 'last30'
+  return 'earlier'
 }
 
 export const AgentSidebar: FC<AgentSidebarProps> = ({
   sessions,
-  groups,
   activeSessionId,
   sessionStates,
   sessionSources,
@@ -160,34 +123,25 @@ export const AgentSidebar: FC<AgentSidebarProps> = ({
   onArchiveSession,
   onUnarchiveSession,
   onPinSession,
-  onMoveSession,
-  onCreateGroup,
-  onCreateGroupAndMove,
-  onRenameGroup,
-  onDeleteGroup,
-  onReorderGroups,
 }) => {
-  // Bucket sessions: pinned (across all groups), per-group, ungrouped.
-  // A pinned session also appears ONLY in the Pinned section to avoid duplicate rows.
-  const { pinned, byGroup, ungrouped } = useMemo(() => {
+  // Bucket sessions: pinned (across all time), then by `lastActivity` time bucket.
+  // A pinned session appears ONLY in the Pinned section to avoid duplicate rows.
+  const { pinned, byBucket } = useMemo(() => {
+    const now = Date.now()
     const pinned: SidebarSession[] = []
-    const byGroup = new Map<string, SidebarSession[]>()
-    const ungrouped: SidebarSession[] = []
+    const byBucket = new Map<TimeBucket, SidebarSession[]>()
     for (const s of sessions) {
       if (s.pinnedAt) {
         pinned.push(s)
         continue
       }
-      if (s.groupId) {
-        const list = byGroup.get(s.groupId) ?? []
-        list.push(s)
-        byGroup.set(s.groupId, list)
-      } else {
-        ungrouped.push(s)
-      }
+      const b = bucketFor(s.lastActivity, now)
+      const list = byBucket.get(b) ?? []
+      list.push(s)
+      byBucket.set(b, list)
     }
     pinned.sort((a, b) => (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0))
-    return { pinned, byGroup, ungrouped }
+    return { pinned, byBucket }
   }, [sessions])
 
   // Sentinel for infinite-scroll lives at the very bottom of the scroll area.
@@ -205,146 +159,38 @@ export const AgentSidebar: FC<AgentSidebarProps> = ({
     return () => observer.disconnect()
   }, [hasMore, isLoadingMore, onLoadMore])
 
-  // Drag-to-reorder groups. Local order state is mirrored from `groups` and
-  // updated optimistically; the server is told via onReorderGroups.
-  const [localGroupOrder, setLocalGroupOrder] = useState<string[]>(() => groups.map((g) => g.id))
-  useEffect(() => {
-    setLocalGroupOrder(groups.map((g) => g.id))
-  }, [groups])
-  const orderedGroups = useMemo(() => {
-    const lookup = new Map(groups.map((g) => [g.id, g] as const))
-    return localGroupOrder.map((id) => lookup.get(id)).filter(Boolean) as AgentSessionGroup[]
-  }, [groups, localGroupOrder])
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  )
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event
-    if (!over || active.id === over.id) return
-    const oldIndex = localGroupOrder.indexOf(String(active.id))
-    const newIndex = localGroupOrder.indexOf(String(over.id))
-    if (oldIndex < 0 || newIndex < 0) return
-    const next = arrayMove(localGroupOrder, oldIndex, newIndex)
-    setLocalGroupOrder(next)
-    void onReorderGroups(next)
-  }
-
-  // Collapse state — keyed by group id, plus PINNED_KEY/UNGROUPED_KEY for
-  // virtual sections. Persisted to localStorage; default = expanded.
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(loadCollapsed)
-  const toggleCollapsed = (key: string) => {
-    setCollapsed((prev) => {
-      const next = { ...prev, [key]: !prev[key] }
-      saveCollapsed(next)
-      return next
-    })
-  }
-
-  // Inline draft group — when set, an empty group section renders at the
-  // bottom of the list with the rename input active. Submitting creates the
-  // group (and, in 'move' mode, moves a session into it).
-  const [draftGroup, setDraftGroup] = useState<{ mode: 'add' | 'move'; sessionId?: string } | null>(null)
-  const submitDraftGroup = async (name: string) => {
-    if (!draftGroup) return
-    const trimmed = name.trim()
-    if (!trimmed) {
-      setDraftGroup(null)
-      return
-    }
-    if (draftGroup.mode === 'move' && draftGroup.sessionId && onCreateGroupAndMove) {
-      await onCreateGroupAndMove(draftGroup.sessionId, trimmed)
-    } else {
-      await onCreateGroup(trimmed)
-    }
-    setDraftGroup(null)
-  }
-
-  // From a session row, "Add group..." opens the inline draft with move-mode.
-  const onAddGroupAndMoveFromRow = onCreateGroupAndMove
-    ? (sessionId: string) => setDraftGroup({ mode: 'move', sessionId })
-    : undefined
-
   return (
     <div className="aui-root flex flex-1 min-h-0 flex-col gap-0.5 overflow-y-auto">
       {pinned.length > 0 && (
-        <div className="flex flex-col gap-0.5">
-          <SectionHeader
-            title="Pinned"
-            collapsed={!!collapsed[PINNED_KEY]}
-            onToggle={() => toggleCollapsed(PINNED_KEY)}
-          />
-          {!collapsed[PINNED_KEY] &&
-            pinned.map((s) => (
-              <SessionRow
-                key={s.id}
-                session={s}
-                groups={groups}
-                activeSessionId={activeSessionId}
-                sessionStates={sessionStates}
-                sessionSources={sessionSources}
-                sessionAgentNames={sessionAgentNames}
-                sessionTriggerLabels={sessionTriggerLabels}
-                onSelectSession={onSelectSession}
-                onRenameSession={onRenameSession}
-                onArchiveSession={onArchiveSession}
-                onUnarchiveSession={onUnarchiveSession}
-                onPinSession={onPinSession}
-                onMoveSession={onMoveSession}
-                onAddGroupAndMove={onAddGroupAndMoveFromRow}
-              />
-            ))}
-        </div>
-      )}
-
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={orderedGroups.map((g) => g.id)} strategy={verticalListSortingStrategy}>
-          {orderedGroups.map((g) => (
-            <SortableGroupSection
-              key={g.id}
-              group={g}
-              sessions={byGroup.get(g.id) ?? []}
-              groups={groups}
+        <Section title="Pinned">
+          {pinned.map((s) => (
+            <SessionRow
+              key={s.id}
+              session={s}
               activeSessionId={activeSessionId}
               sessionStates={sessionStates}
               sessionSources={sessionSources}
               sessionAgentNames={sessionAgentNames}
               sessionTriggerLabels={sessionTriggerLabels}
-              collapsed={!!collapsed[g.id]}
-              onToggleCollapse={() => toggleCollapsed(g.id)}
               onSelectSession={onSelectSession}
               onRenameSession={onRenameSession}
               onArchiveSession={onArchiveSession}
               onUnarchiveSession={onUnarchiveSession}
               onPinSession={onPinSession}
-              onMoveSession={onMoveSession}
-              onAddGroupAndMove={onAddGroupAndMoveFromRow}
-              onRenameGroup={onRenameGroup}
-              onDeleteGroup={onDeleteGroup}
             />
           ))}
-        </SortableContext>
-      </DndContext>
+        </Section>
+      )}
 
-      {ungrouped.length > 0 && (
-        <div className="flex flex-col gap-0.5">
-          {/* Hide the Ungrouped header when it's the only section — no need
-              to label "Ungrouped" if there's nothing else to contrast with. */}
-          {(orderedGroups.length > 0 || pinned.length > 0) && (
-            <SectionHeader
-              title="Ungrouped"
-              collapsed={!!collapsed[UNGROUPED_KEY]}
-              onToggle={() => toggleCollapsed(UNGROUPED_KEY)}
-            />
-          )}
-          {(!collapsed[UNGROUPED_KEY] || (orderedGroups.length === 0 && pinned.length === 0)) &&
-            ungrouped.map((s) => (
+      {BUCKET_ORDER.map((b) => {
+        const list = byBucket.get(b)
+        if (!list || list.length === 0) return null
+        return (
+          <Section key={b} title={BUCKET_LABEL[b]}>
+            {list.map((s) => (
               <SessionRow
                 key={s.id}
                 session={s}
-                groups={groups}
                 activeSessionId={activeSessionId}
                 sessionStates={sessionStates}
                 sessionSources={sessionSources}
@@ -355,33 +201,11 @@ export const AgentSidebar: FC<AgentSidebarProps> = ({
                 onArchiveSession={onArchiveSession}
                 onUnarchiveSession={onUnarchiveSession}
                 onPinSession={onPinSession}
-                onMoveSession={onMoveSession}
-                onAddGroupAndMove={onAddGroupAndMoveFromRow}
               />
             ))}
-        </div>
-      )}
-
-      {/* Inline draft group — appears below all existing sections */}
-      {draftGroup && (
-        <DraftGroupSection
-          onSubmit={submitDraftGroup}
-          onCancel={() => setDraftGroup(null)}
-        />
-      )}
-
-      {/* Bottom: add-group button + scroll sentinel. Hidden while drafting
-          to avoid two "Add group" affordances stacked on top of each other. */}
-      {!draftGroup && (
-        <button
-          type="button"
-          onClick={() => setDraftGroup({ mode: 'add' })}
-          className="flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors mt-1"
-        >
-          <PlusIcon className="size-3.5" />
-          Add group
-        </button>
-      )}
+          </Section>
+        )
+      })}
 
       <div ref={sentinelRef} className="shrink-0 h-1" />
       {isLoadingMore && (
@@ -393,284 +217,21 @@ export const AgentSidebar: FC<AgentSidebarProps> = ({
   )
 }
 
-// ─── Section header (shared by Pinned, Ungrouped, and groups) ─────────────────
-//
-// Layout: [drag-slot 20px] [chevron+title button] [menu]. The drag-slot is
-// always rendered (even empty) so the title text aligns horizontally across
-// section types. Click on the chevron+title toggles collapse.
+// ─── Section wrapper ──────────────────────────────────────────────────────────
 
-interface SectionHeaderProps {
-  title: string
-  collapsed: boolean
-  onToggle: () => void
-  // Group-only:
-  dragHandle?: React.ReactNode
-  menu?: React.ReactNode
-  renaming?: boolean
-  renameInput?: React.ReactNode
-}
-
-const SectionHeader: FC<SectionHeaderProps> = ({
-  title, collapsed, onToggle, dragHandle, menu, renaming, renameInput,
-}) => (
-  <div className="group/header flex h-7 items-center gap-1 px-1 text-[11px] font-bold uppercase tracking-wider text-foreground">
-    <div className="size-5 shrink-0 flex items-center justify-center">
-      {dragHandle ?? null}
+const Section: FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+  <div className="flex flex-col gap-0.5 mt-3 first:mt-0">
+    <div className="px-2.5 pb-0.5 text-[11px] font-medium text-muted-foreground/70">
+      {title}
     </div>
-    {renaming ? (
-      <div className="flex flex-1 min-w-0 items-center gap-1">
-        <ChevronDownIcon
-          className={cn(
-            'size-3 shrink-0 text-muted-foreground transition-transform',
-            collapsed && '-rotate-90',
-          )}
-        />
-        {renameInput}
-      </div>
-    ) : (
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex flex-1 min-w-0 items-center gap-1 text-left"
-      >
-        <ChevronDownIcon
-          className={cn(
-            'size-3 shrink-0 text-muted-foreground transition-transform',
-            collapsed && '-rotate-90',
-          )}
-        />
-        <span className="truncate" title={title}>
-          {title}
-        </span>
-      </button>
-    )}
-    {menu}
+    {children}
   </div>
 )
-
-// ─── Sortable group section ───────────────────────────────────────────────────
-
-interface GroupSectionProps {
-  group: AgentSessionGroup
-  sessions: SidebarSession[]
-  groups: AgentSessionGroup[]
-  activeSessionId?: string | null
-  sessionStates?: Record<string, SessionState>
-  sessionSources?: Record<string, string>
-  sessionAgentNames?: Record<string, string>
-  sessionTriggerLabels?: Record<string, string>
-  collapsed: boolean
-  onToggleCollapse: () => void
-  onSelectSession: (id: string) => void
-  onRenameSession: (id: string, title: string) => Promise<void> | void
-  onArchiveSession: (id: string) => Promise<void> | void
-  onUnarchiveSession: (id: string) => Promise<void> | void
-  onPinSession: (id: string, pinned: boolean) => Promise<void> | void
-  onMoveSession: (id: string, groupId: string | null) => Promise<void> | void
-  onAddGroupAndMove?: (sessionId: string) => void
-  onRenameGroup: (id: string, name: string) => Promise<void> | void
-  onDeleteGroup: (id: string) => Promise<void> | void
-}
-
-const SortableGroupSection: FC<GroupSectionProps> = (props) => {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: props.group.id,
-  })
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.6 : 1,
-  }
-
-  const [confirmDelete, setConfirmDelete] = useState(false)
-  const [renaming, setRenaming] = useState(false)
-  const [renameValue, setRenameValue] = useState(props.group.name)
-
-  const submitRename = async () => {
-    const next = renameValue.trim()
-    if (next && next !== props.group.name) {
-      await props.onRenameGroup(props.group.id, next)
-    }
-    setRenaming(false)
-  }
-
-  const dragHandle = (
-    <button
-      type="button"
-      {...attributes}
-      {...listeners}
-      className="size-5 cursor-grab opacity-0 group-hover/header:opacity-100 transition-opacity text-muted-foreground hover:text-foreground active:cursor-grabbing flex items-center justify-center"
-      aria-label="Drag to reorder group"
-    >
-      <GripVerticalIcon className="size-3.5" />
-    </button>
-  )
-
-  const menu = (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="mr-1 size-6 p-0 opacity-0 group-hover/header:opacity-100 data-[state=open]:opacity-100"
-        >
-          <MoreHorizontalIcon className="size-3.5" />
-          <span className="sr-only">Group options</span>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-32">
-        <DropdownMenuItem
-          onSelect={() => {
-            setRenameValue(props.group.name)
-            setRenaming(true)
-          }}
-        >
-          <PencilIcon className="size-4" />
-          Rename
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() => setConfirmDelete(true)}
-          className="text-destructive focus:text-destructive"
-        >
-          <Trash2Icon className="size-4" />
-          Delete
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-
-  const renameInput = (
-    <Input
-      autoFocus
-      value={renameValue}
-      onChange={(e) => setRenameValue(e.target.value)}
-      onBlur={submitRename}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') submitRename()
-        else if (e.key === 'Escape') {
-          setRenameValue(props.group.name)
-          setRenaming(false)
-        }
-      }}
-      className="h-6 px-1.5 text-[11px] uppercase tracking-wider font-bold"
-    />
-  )
-
-  return (
-    <div ref={setNodeRef} style={style} className="flex flex-col gap-0.5">
-      <SectionHeader
-        title={props.group.name}
-        collapsed={props.collapsed}
-        onToggle={props.onToggleCollapse}
-        dragHandle={dragHandle}
-        menu={menu}
-        renaming={renaming}
-        renameInput={renameInput}
-      />
-
-      {!props.collapsed && (
-        <>
-          {props.sessions.map((s) => (
-            <SessionRow
-              key={s.id}
-              session={s}
-              groups={props.groups}
-              activeSessionId={props.activeSessionId}
-              sessionStates={props.sessionStates}
-              sessionSources={props.sessionSources}
-              sessionAgentNames={props.sessionAgentNames}
-              sessionTriggerLabels={props.sessionTriggerLabels}
-              onSelectSession={props.onSelectSession}
-              onRenameSession={props.onRenameSession}
-              onArchiveSession={props.onArchiveSession}
-              onUnarchiveSession={props.onUnarchiveSession}
-              onPinSession={props.onPinSession}
-              onMoveSession={props.onMoveSession}
-              onAddGroupAndMove={props.onAddGroupAndMove}
-            />
-          ))}
-          {props.sessions.length === 0 && (
-            <div className="px-2.5 py-1 text-[11px] text-muted-foreground/60 italic">No sessions</div>
-          )}
-        </>
-      )}
-
-      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete group "{props.group.name}"?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Sessions in this group will move back to Ungrouped. Sessions are not deleted.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => {
-                void props.onDeleteGroup(props.group.id)
-                setConfirmDelete(false)
-              }}
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
-  )
-}
-
-// ─── Inline draft group placeholder ───────────────────────────────────────────
-
-const DraftGroupSection: FC<{
-  onSubmit: (name: string) => void | Promise<void>
-  onCancel: () => void
-}> = ({ onSubmit, onCancel }) => {
-  const [value, setValue] = useState('')
-  const submittedRef = useRef(false)
-
-  // Submit guards against double-fire (Enter + onBlur both reach here when the
-  // user presses Enter — Enter triggers submit, then the input loses focus).
-  const submit = async () => {
-    if (submittedRef.current) return
-    submittedRef.current = true
-    await onSubmit(value)
-  }
-
-  return (
-    <div className="flex flex-col gap-0.5">
-      <div className="group/header flex h-7 items-center gap-1 px-1 text-[11px] font-bold uppercase tracking-wider text-foreground">
-        <div className="size-5 shrink-0" />
-        <ChevronDownIcon className="size-3 shrink-0 text-muted-foreground" />
-        <Input
-          autoFocus
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onBlur={() => void submit()}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              void submit()
-            } else if (e.key === 'Escape') {
-              e.preventDefault()
-              submittedRef.current = true
-              onCancel()
-            }
-          }}
-          placeholder="New group name"
-          className="h-6 flex-1 min-w-0 px-1.5 text-[11px] uppercase tracking-wider font-bold"
-        />
-      </div>
-    </div>
-  )
-}
 
 // ─── Session row ──────────────────────────────────────────────────────────────
 
 interface SessionRowProps {
   session: SidebarSession
-  groups: AgentSessionGroup[]
   activeSessionId?: string | null
   sessionStates?: Record<string, SessionState>
   sessionSources?: Record<string, string>
@@ -681,13 +242,10 @@ interface SessionRowProps {
   onArchiveSession: (id: string) => Promise<void> | void
   onUnarchiveSession: (id: string) => Promise<void> | void
   onPinSession: (id: string, pinned: boolean) => Promise<void> | void
-  onMoveSession: (id: string, groupId: string | null) => Promise<void> | void
-  onAddGroupAndMove?: (sessionId: string) => void
 }
 
 const SessionRow: FC<SessionRowProps> = ({
   session,
-  groups,
   activeSessionId,
   sessionStates,
   sessionSources,
@@ -698,8 +256,6 @@ const SessionRow: FC<SessionRowProps> = ({
   onArchiveSession,
   onUnarchiveSession,
   onPinSession,
-  onMoveSession,
-  onAddGroupAndMove,
 }) => {
   const isActive = session.id === activeSessionId
   const sessionState = sessionStates?.[session.id]
@@ -711,7 +267,6 @@ const SessionRow: FC<SessionRowProps> = ({
   const useAutoLayout = isAuto && !!triggerLabel
   const isPinned = !!session.pinnedAt
 
-  // Inline rename
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState(session.title)
   useEffect(() => setRenameValue(session.title), [session.title])
@@ -837,40 +392,6 @@ const SessionRow: FC<SessionRowProps> = ({
             {isPinned ? <PinOffIcon className="size-4" /> : <PinIcon className="size-4" />}
             {isPinned ? 'Unpin' : 'Pin'}
           </DropdownMenuItem>
-
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>
-              <FolderIcon className="size-4" />
-              Move to group
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="min-w-44">
-              <DropdownMenuItem
-                disabled={!session.groupId}
-                onSelect={() => void onMoveSession(session.id, null)}
-              >
-                Ungrouped
-              </DropdownMenuItem>
-              {groups.length > 0 && <DropdownMenuSeparator />}
-              {groups.map((g) => (
-                <DropdownMenuItem
-                  key={g.id}
-                  disabled={g.id === session.groupId}
-                  onSelect={() => void onMoveSession(session.id, g.id)}
-                >
-                  {g.name}
-                </DropdownMenuItem>
-              ))}
-              {onAddGroupAndMove && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onSelect={() => onAddGroupAndMove(session.id)}>
-                    <PlusIcon className="size-4" />
-                    Add group…
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
 
           <DropdownMenuSeparator />
           {isArchived ? (
