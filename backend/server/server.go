@@ -345,6 +345,13 @@ http_headers = { "x-litellm-customer-id" = %q }
 		// built per-session in agent_manager.CreateSession so the X-MLD-Storage-Id
 		// header and HTML-render path can carry the storage id.
 		s.agentClient = agentsdk.NewClient(agentsdk.SessionConfig{}, ccAgent, codexAgent, qwenAgent, geminiAgent, opencodeAgent)
+
+		// Configure each agent CLI to keep session transcripts forever.
+		// Must run after the settings.json overwrites above, since some agents
+		// share files (~/.gemini/settings.json, ~/.qwen/settings.json) and
+		// retention is layered on via read-merge-write.
+		agentsdk.EnsureRetentionConfigs()
+
 		s.agentClient.StartPool(ctx, agentsdk.AgentClaudeCode, 3)
 
 		log.Info().
