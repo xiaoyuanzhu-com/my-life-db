@@ -220,7 +220,7 @@ export const AgentSidebar: FC<AgentSidebarProps> = ({
 // ─── Section wrapper ──────────────────────────────────────────────────────────
 
 const Section: FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
-  <div className="flex flex-col gap-0.5 mt-3 first:mt-0">
+  <div className="flex flex-col gap-0.5 mt-5 first:mt-0">
     <div className="px-2.5 pb-0.5 text-[11px] font-medium text-muted-foreground/70">
       {title}
     </div>
@@ -353,12 +353,6 @@ const SessionRow: FC<SessionRowProps> = ({
             </>
           )}
           <span className="w-2 shrink-0 flex items-center ml-1">
-            {isPinned && !showDot && (
-              <PinIcon
-                className="size-2.5 text-muted-foreground/70"
-                aria-label="Pinned"
-              />
-            )}
             {showDot && (
               <span
                 className={cn(
