@@ -86,7 +86,7 @@ export const Thread: FC<ThreadProps> = ({ onAttachmentsStorageIdChange, existing
     <ThreadPrimitive.Root
       className="aui-root aui-thread-root @container flex h-full flex-col bg-background"
       style={{
-        ["--thread-max-width" as string]: "44rem",
+        ["--thread-max-width" as string]: "56rem",
         ["--composer-radius" as string]: "12px",
         ["--composer-padding" as string]: "8px",
       }}
@@ -114,13 +114,17 @@ export const Thread: FC<ThreadProps> = ({ onAttachmentsStorageIdChange, existing
           </ThreadPrimitive.Messages>
         </div>
 
-        {isRunning && pendingPermissions.size === 0 && <AgentWIP />}
+        {isRunning && pendingPermissions.size === 0 && (
+          <div className="mx-auto w-full max-w-(--thread-max-width)">
+            <AgentWIP />
+          </div>
+        )}
 
         <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer sticky bottom-0 mx-auto flex w-full max-w-(--thread-max-width) flex-col overflow-visible">
           <ThreadScrollToBottom />
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
-      <div className="mx-auto flex w-full max-w-(--thread-max-width) flex-col px-2 md:px-16 pb-4 md:pb-6">
+      <div className="mx-auto flex w-full max-w-(--thread-max-width) flex-col pb-4 md:pb-6">
         <Composer onAttachmentsStorageIdChange={onAttachmentsStorageIdChange} existingStorageId={existingStorageId} />
       </div>
     </ThreadPrimitive.Root>
