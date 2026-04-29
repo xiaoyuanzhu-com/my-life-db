@@ -90,18 +90,18 @@ func ErrorResult(msg string) Result {
 
 type ctxKey string
 
-const ctxKeyMLDSessionID ctxKey = "mldSessionID"
+const ctxKeyMLDStorageID ctxKey = "mldStorageID"
 
-// WithSessionID returns ctx carrying the per-session storage id. The MCP
-// HTTP handler calls this when the request bears an X-MLD-Session-Id header
+// WithStorageID returns ctx carrying the per-session storage id. The MCP
+// HTTP handler calls this when the request bears an X-MLD-Storage-Id header
 // so tool implementations can resolve a per-session destination directory.
-func WithSessionID(ctx context.Context, sid string) context.Context {
-	return context.WithValue(ctx, ctxKeyMLDSessionID, sid)
+func WithStorageID(ctx context.Context, sid string) context.Context {
+	return context.WithValue(ctx, ctxKeyMLDStorageID, sid)
 }
 
-// SessionIDFromContext returns the storage id stashed by WithSessionID,
+// StorageIDFromContext returns the storage id stashed by WithStorageID,
 // or "" if none.
-func SessionIDFromContext(ctx context.Context) string {
-	sid, _ := ctx.Value(ctxKeyMLDSessionID).(string)
+func StorageIDFromContext(ctx context.Context) string {
+	sid, _ := ctx.Value(ctxKeyMLDStorageID).(string)
 	return sid
 }

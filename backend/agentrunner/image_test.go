@@ -941,8 +941,8 @@ func TestWriteImageFromResponse_RequiresStorageID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when StorageID empty")
 	}
-	if !strings.Contains(err.Error(), "StorageID") && !strings.Contains(err.Error(), "X-MLD-Session-Id") {
-		t.Fatalf("error should mention StorageID or X-MLD-Session-Id, got: %v", err)
+	if !strings.Contains(err.Error(), "StorageID") && !strings.Contains(err.Error(), "X-MLD-Storage-Id") {
+		t.Fatalf("error should mention StorageID or X-MLD-Storage-Id, got: %v", err)
 	}
 }
 

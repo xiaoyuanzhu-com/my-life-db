@@ -322,18 +322,18 @@ func TestMCP_Auth_WrongHeaderRejected(t *testing.T) {
 	}
 }
 
-func TestHandleMCP_PassesSessionIDIntoContext(t *testing.T) {
+func TestHandleMCP_PassesStorageIDIntoContext(t *testing.T) {
 	var seen string
 	h := NewMCPHandler(New(Config{}), "")
 	h.ImageGen = func(ctx context.Context, req ImageGenRequest) (*ImageGenResult, error) {
-		seen = mcp.SessionIDFromContext(ctx)
+		seen = mcp.StorageIDFromContext(ctx)
 		return &ImageGenResult{AbsPath: "/tmp/x.png", RelPath: "x.png", Bytes: 1}, nil
 	}
 	r := newTestRouter(h)
 
 	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"generate_image","arguments":{"prompt":"hi"}}}`
 	req := httptest.NewRequest("POST", "/mcp", strings.NewReader(body))
-	req.Header.Set("X-MLD-Session-Id", "sid-from-header")
+	req.Header.Set("X-MLD-Storage-Id", "sid-from-header")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -342,6 +342,6 @@ func TestHandleMCP_PassesSessionIDIntoContext(t *testing.T) {
 		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
 	}
 	if seen != "sid-from-header" {
-		t.Fatalf("ctx session id = %q, want sid-from-header", seen)
+		t.Fatalf("ctx storage id = %q, want sid-from-header", seen)
 	}
 }

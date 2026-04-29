@@ -49,7 +49,7 @@ func RegisterTools(reg *mcp.Registry, runner *Runner, opts *ToolOptions) {
 				BaseURL:     cfg.AgentBaseURL,
 				APIKey:      cfg.AgentAPIKey,
 				UserDataDir: cfg.UserDataDir,
-				StorageID:   mcp.SessionIDFromContext(ctx),
+				StorageID:   mcp.StorageIDFromContext(ctx),
 			}, req)
 		}
 	}
@@ -61,7 +61,7 @@ func RegisterTools(reg *mcp.Registry, runner *Runner, opts *ToolOptions) {
 				BaseURL:     cfg.AgentBaseURL,
 				APIKey:      cfg.AgentAPIKey,
 				UserDataDir: cfg.UserDataDir,
-				StorageID:   mcp.SessionIDFromContext(ctx),
+				StorageID:   mcp.StorageIDFromContext(ctx),
 			}, req)
 		}
 	}

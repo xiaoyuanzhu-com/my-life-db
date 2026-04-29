@@ -519,9 +519,9 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 // installed into .mcp.json at server startup (see skills.InstallClientConfig)
 // so it flows through the same path as user-added servers; its localhost URL
 // is detected by the internal-prefix check below and the runtime-only
-// Authorization + X-MLD-Session-Id headers are injected here (those aren't
+// Authorization + X-MLD-Storage-Id headers are injected here (those aren't
 // stored in .mcp.json since the token rotates per backend startup and the
-// session id is per-session).
+// storage id is per-session).
 func (m *AgentManager) buildSessionMcpServers(storageID string) []acp.McpServer {
 	cfg := m.srv.Cfg()
 	mcpToken := m.srv.MCPToken()
@@ -577,7 +577,7 @@ func specToAcpMcpServer(s mcptools.ServerSpec, internalPrefix, mcpToken, storage
 		if strings.HasPrefix(s.URL, internalPrefix) {
 			headers = append(headers,
 				acp.HttpHeader{Name: "Authorization", Value: "Bearer " + mcpToken},
-				acp.HttpHeader{Name: "X-MLD-Session-Id", Value: storageID},
+				acp.HttpHeader{Name: "X-MLD-Storage-Id", Value: storageID},
 			)
 		}
 		return acp.McpServer{

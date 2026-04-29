@@ -342,7 +342,7 @@ http_headers = { "x-litellm-customer-id" = %q }
 		}
 
 		// SystemPrompt and McpServers are intentionally empty here — both are
-		// built per-session in agent_manager.CreateSession so the X-MLD-Session-Id
+		// built per-session in agent_manager.CreateSession so the X-MLD-Storage-Id
 		// header and HTML-render path can carry the storage id.
 		s.agentClient = agentsdk.NewClient(agentsdk.SessionConfig{}, ccAgent, codexAgent, qwenAgent, geminiAgent, opencodeAgent)
 		s.agentClient.StartPool(ctx, agentsdk.AgentClaudeCode, 3)
@@ -382,7 +382,7 @@ http_headers = { "x-litellm-customer-id" = %q }
 	// Register the built-in MCP server in <dataDir>/.mcp.json. That file is the
 	// source of truth for both the composer UI and per-session McpServers
 	// passed to ACP — built-in flows through the same path as user-added
-	// servers; runtime-only headers (Authorization, X-MLD-Session-Id) are
+	// servers; runtime-only headers (Authorization, X-MLD-Storage-Id) are
 	// injected at session-creation time, not stored in the file.
 	skills.InstallClientConfig(cfg.UserDataDir, cfg.Port)
 

@@ -256,7 +256,7 @@ func validateConfig(gc ImageGenConfig) error {
 		return fmt.Errorf("UserDataDir not set")
 	}
 	if gc.StorageID == "" {
-		return fmt.Errorf("StorageID not set (X-MLD-Session-Id header missing on MCP request)")
+		return fmt.Errorf("StorageID not set (X-MLD-Storage-Id header missing on MCP request)")
 	}
 	return nil
 }
