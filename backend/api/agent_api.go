@@ -178,6 +178,7 @@ func (h *Handlers) GetAgentSessions(c *gin.Context) {
 			"createdAt":    s.CreatedAt,
 			"lastActivity": s.UpdatedAt,
 			"source":       s.Source,
+			"storageId":    s.StorageID,
 		}
 		if s.AgentName != "" {
 			entry["agentName"] = s.AgentName
@@ -242,6 +243,7 @@ func (h *Handlers) GetAgentSession(c *gin.Context) {
 		"createdAt":    session.CreatedAt,
 		"lastActivity": session.UpdatedAt,
 		"source":       session.Source,
+		"storageId":    session.StorageID,
 	}
 	if session.AgentName != "" {
 		resp["agentName"] = session.AgentName

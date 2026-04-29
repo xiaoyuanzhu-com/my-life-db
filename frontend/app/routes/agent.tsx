@@ -53,6 +53,7 @@ interface Session {
   agentName?: string
   triggerKind?: string
   triggerData?: Record<string, unknown>
+  storageId?: string // Per-session storage folder id; used to scope subsequent uploads
 }
 
 // Build a short, per-run label describing what fired an auto session.
@@ -659,6 +660,7 @@ export default function AgentPage() {
         agentName: data.agentName,
         triggerKind: data.triggerKind,
         triggerData: data.triggerData,
+        storageId: data.storageId,
       }
       setSessions((prev) => {
         if (prev.some((s) => s.id === session.id)) return prev
@@ -839,6 +841,7 @@ export default function AgentPage() {
         sessionState: 'idle',
         permissionMode: effectiveMode || 'default',
         agentType: session.agentType ?? newSessionAgentType,
+        storageId: session.storageId,
       }
 
       setSessions((prevSessions) => {
@@ -1098,6 +1101,7 @@ export default function AgentPage() {
                 sessionId={activeSessionId}
                 className="flex-1"
                 onAttachmentsStorageIdChange={handleAttachmentsStorageIdChange}
+                existingStorageId={effectiveActiveSession?.storageId ?? null}
               />
             </div>
           </div>
@@ -1300,6 +1304,7 @@ export default function AgentPage() {
                   sessionId={activeSessionId}
                   className="flex-1"
                   onAttachmentsStorageIdChange={handleAttachmentsStorageIdChange}
+                  existingStorageId={effectiveActiveSession?.storageId ?? null}
                 />
               ) : (
                 <AgentChat
@@ -1324,6 +1329,7 @@ export default function AgentPage() {
               sessionId={activeSessionId}
               className="flex-1"
               onAttachmentsStorageIdChange={handleAttachmentsStorageIdChange}
+              existingStorageId={effectiveActiveSession?.storageId ?? null}
             />
           ) : (
             <AgentChat
@@ -1369,6 +1375,7 @@ export default function AgentPage() {
             sessionId={activeSessionId}
             className="flex-1"
             onAttachmentsStorageIdChange={handleAttachmentsStorageIdChange}
+            existingStorageId={effectiveActiveSession?.storageId ?? null}
           />
         </div>
       ) : sessionSidebar && showNewSessionMobile ? (

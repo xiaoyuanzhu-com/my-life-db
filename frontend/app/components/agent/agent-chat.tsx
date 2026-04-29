@@ -23,6 +23,8 @@ interface AgentChatProps {
   sessionId: string
   className?: string
   onAttachmentsStorageIdChange?: (storageId: string | null) => void
+  /** Persisted storageId for an existing session; uploads stay in this folder. */
+  existingStorageId?: string | null
 }
 
 /**
@@ -34,10 +36,11 @@ export function AgentChat({
   sessionId,
   className,
   onAttachmentsStorageIdChange,
+  existingStorageId,
 }: AgentChatProps) {
   return (
     <div className={cn("flex flex-col h-full bg-background", className)}>
-      <Thread onAttachmentsStorageIdChange={onAttachmentsStorageIdChange} />
+      <Thread onAttachmentsStorageIdChange={onAttachmentsStorageIdChange} existingStorageId={existingStorageId} />
     </div>
   )
 }

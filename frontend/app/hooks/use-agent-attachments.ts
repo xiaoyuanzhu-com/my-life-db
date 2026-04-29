@@ -5,10 +5,13 @@
  * the XHR lifecycle (including abort on remove) and fires a server-side
  * DELETE when a chip is removed or the hook unmounts with pending chips.
  *
- * The first upload in a draft establishes a storageId (returned by the
- * backend). Subsequent uploads in the same draft pass that storageId back
- * so all files for the draft land in the same per-session folder. The
- * storageId is cleared when the composer calls clear() after a send.
+ * Storage scoping:
+ *   - For an EXISTING session, the caller passes `initialStorageId` so every
+ *     upload (including across multiple turns) lands in the same per-session
+ *     folder. clear() resets back to that id rather than null.
+ *   - For a NEW draft (no `initialStorageId`), the first upload mints a
+ *     storageId from the backend; subsequent uploads in the same draft
+ *     reuse it; clear() resets to null so the next draft starts fresh.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react"
@@ -29,14 +32,23 @@ export interface StagedAttachment {
   state: AttachmentState
 }
 
-export function useAgentAttachments() {
+export function useAgentAttachments(opts: { initialStorageId?: string | null } = {}) {
+  const initial = opts.initialStorageId ?? null
   const [items, setItems] = useState<StagedAttachment[]>([])
-  const [storageId, setStorageId] = useState<string | null>(null)
-  const storageIdRef = useRef<string | null>(null)
+  const [storageId, setStorageId] = useState<string | null>(initial)
+  const storageIdRef = useRef<string | null>(initial)
   storageIdRef.current = storageId
   const abortersRef = useRef(new Map<string, AbortController>())
   const itemsRef = useRef<StagedAttachment[]>([])
   itemsRef.current = items
+
+  // Sync storageId when the caller switches sessions without remounting.
+  // Skipped if the same instance is just transitioning between turns within
+  // the same session (initial unchanged).
+  useEffect(() => {
+    setStorageId(initial)
+    storageIdRef.current = initial
+  }, [initial])
 
   const addFiles = useCallback(async (files: File[]) => {
     for (const file of files) {
@@ -124,9 +136,12 @@ export function useAgentAttachments() {
     abortersRef.current.forEach((ac) => ac.abort())
     abortersRef.current.clear()
     setItems([])
-    storageIdRef.current = null
-    setStorageId(null)
-  }, [])
+    // Reset to the caller-provided id (existing session) or null (new draft).
+    // Existing-session storageId stays stable across turns so every upload
+    // lands in the session's single storage folder.
+    storageIdRef.current = initial
+    setStorageId(initial)
+  }, [initial])
 
   /** Ready attachments, in order — used by the composer on send. */
   const readyAttachments = items.flatMap((it) =>

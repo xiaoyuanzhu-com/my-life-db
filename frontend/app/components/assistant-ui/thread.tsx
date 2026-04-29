@@ -66,9 +66,12 @@ const AcpAssistantMessage = createAssistantMessage(acpToolsConfig);
 
 type ThreadProps = {
   onAttachmentsStorageIdChange?: (storageId: string | null) => void
+  /** When rendering for an existing session, the session's persisted
+   *  storageId so subsequent uploads stay in the same folder. */
+  existingStorageId?: string | null
 }
 
-export const Thread: FC<ThreadProps> = ({ onAttachmentsStorageIdChange }) => {
+export const Thread: FC<ThreadProps> = ({ onAttachmentsStorageIdChange, existingStorageId }) => {
   const { pendingPermissions, hasActiveSession, historyLoadError, sessionError } = useAgentContext();
   const hasSession = useAuiState((s) => !s.thread.isEmpty);
   const isRunning = useAuiState((s) => s.thread.isRunning);
@@ -117,7 +120,7 @@ export const Thread: FC<ThreadProps> = ({ onAttachmentsStorageIdChange }) => {
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
       <div className="mx-auto flex w-full max-w-(--thread-max-width) flex-col px-2 md:px-16 pb-4 md:pb-6">
-        <Composer onAttachmentsStorageIdChange={onAttachmentsStorageIdChange} />
+        <Composer onAttachmentsStorageIdChange={onAttachmentsStorageIdChange} existingStorageId={existingStorageId} />
       </div>
     </ThreadPrimitive.Root>
   );
@@ -675,8 +678,9 @@ const ComposerOptionsMenu: FC<{
 
 type ComposerProps = {
   onAttachmentsStorageIdChange?: (storageId: string | null) => void
+  existingStorageId?: string | null
 }
-const Composer: FC<ComposerProps> = ({ onAttachmentsStorageIdChange }) => {
+const Composer: FC<ComposerProps> = ({ onAttachmentsStorageIdChange, existingStorageId }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasTouch = useHasTouch();
@@ -696,7 +700,7 @@ const Composer: FC<ComposerProps> = ({ onAttachmentsStorageIdChange }) => {
   const composerIsEmpty = useAuiState((s) => s.composer.isEmpty);
   const composerRuntime = useComposerRuntime();
   const aui = useAui();
-  const attachments = useAgentAttachments();
+  const attachments = useAgentAttachments({ initialStorageId: existingStorageId ?? null });
 
   useEffect(() => {
     onAttachmentsStorageIdChange?.(attachments.storageId)
