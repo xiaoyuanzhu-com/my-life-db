@@ -11,6 +11,7 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
+	"github.com/xiaoyuanzhu-com/my-life-db/mcptools"
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 	"github.com/xiaoyuanzhu-com/my-life-db/server"
 )
@@ -513,23 +514,97 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 	}, nil
 }
 
-// buildSessionMcpServers returns the per-session MCP server config including
-// the X-MLD-Session-Id header that scopes mylifedb-builtin tool calls to a
-// specific session storage directory.
+// buildSessionMcpServers reads <dataDir>/.mcp.json and converts every enabled
+// entry into the ACP McpServer wire shape. The built-in mylifedb server is
+// installed into .mcp.json at server startup (see skills.InstallClientConfig)
+// so it flows through the same path as user-added servers; its localhost URL
+// is detected by the internal-prefix check below and the runtime-only
+// Authorization + X-MLD-Session-Id headers are injected here (those aren't
+// stored in .mcp.json since the token rotates per backend startup and the
+// session id is per-session).
 func (m *AgentManager) buildSessionMcpServers(storageID string) []acp.McpServer {
+	cfg := m.srv.Cfg()
 	mcpToken := m.srv.MCPToken()
-	port := m.srv.Cfg().Port
-	return []acp.McpServer{
-		{
+	internalPrefix := fmt.Sprintf("http://localhost:%d/api/", cfg.Port)
+
+	specs, err := mcptools.AllSpecs(cfg.UserDataDir)
+	if err != nil {
+		log.Warn().Err(err).Msg("read .mcp.json for session MCP servers failed")
+		return nil
+	}
+
+	out := make([]acp.McpServer, 0, len(specs))
+	for _, s := range specs {
+		if s.Disabled {
+			continue
+		}
+		srv, err := specToAcpMcpServer(s, internalPrefix, mcpToken, storageID)
+		if err != nil {
+			log.Warn().Err(err).Str("server", s.Name).Msg("skipping invalid MCP server entry")
+			continue
+		}
+		out = append(out, srv)
+	}
+	return out
+}
+
+// specToAcpMcpServer converts a parsed mcptools.ServerSpec into the ACP wire
+// shape. For HTTP servers whose URL points at our own backend (matched by
+// internalPrefix), runtime-only auth + session headers are appended after any
+// user-provided headers.
+func specToAcpMcpServer(s mcptools.ServerSpec, internalPrefix, mcpToken, storageID string) (acp.McpServer, error) {
+	typ := s.Type
+	if typ == "" {
+		switch {
+		case s.URL != "":
+			typ = "http"
+		case s.Command != "":
+			typ = "stdio"
+		default:
+			return acp.McpServer{}, fmt.Errorf("server %q has neither url nor command", s.Name)
+		}
+	}
+
+	switch typ {
+	case "http":
+		if s.URL == "" {
+			return acp.McpServer{}, fmt.Errorf("http server %q missing url", s.Name)
+		}
+		headers := make([]acp.HttpHeader, 0, len(s.Headers)+2)
+		for k, v := range s.Headers {
+			headers = append(headers, acp.HttpHeader{Name: k, Value: v})
+		}
+		if strings.HasPrefix(s.URL, internalPrefix) {
+			headers = append(headers,
+				acp.HttpHeader{Name: "Authorization", Value: "Bearer " + mcpToken},
+				acp.HttpHeader{Name: "X-MLD-Session-Id", Value: storageID},
+			)
+		}
+		return acp.McpServer{
 			Http: &acp.McpServerHttpInline{
-				Name: "mylifedb-builtin",
-				Type: "http",
-				Url:  fmt.Sprintf("http://localhost:%d/api/mcp", port),
-				Headers: []acp.HttpHeader{
-					{Name: "Authorization", Value: "Bearer " + mcpToken},
-					{Name: "X-MLD-Session-Id", Value: storageID},
-				},
+				Name:    s.Name,
+				Type:    "http",
+				Url:     s.URL,
+				Headers: headers,
 			},
-		},
+		}, nil
+	case "stdio":
+		if s.Command == "" {
+			return acp.McpServer{}, fmt.Errorf("stdio server %q missing command", s.Name)
+		}
+		env := make([]acp.EnvVariable, 0, len(s.Env))
+		for k, v := range s.Env {
+			env = append(env, acp.EnvVariable{Name: k, Value: v})
+		}
+		return acp.McpServer{
+			Stdio: &acp.McpServerStdio{
+				Name:    s.Name,
+				Command: s.Command,
+				Args:    s.Args,
+				Env:     env,
+			},
+		}, nil
+	default:
+		return acp.McpServer{}, fmt.Errorf("server %q has unsupported type %q", s.Name, typ)
 	}
 }

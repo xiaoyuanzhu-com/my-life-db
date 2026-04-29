@@ -120,30 +120,6 @@ func Install(dataDir string) {
 	}
 }
 
-// legacyAllowlistEntries are tool-permission strings written by older MyLifeDB
-// versions that no longer exist after the MCP refactor. Removed from
-// settings.local.json on every merge so they don't linger as dead allows.
-// Add to this list when a tool is renamed or removed; entries can be deleted
-// once they're old enough that no live install still has them.
-var legacyAllowlistEntries = []string{
-	// Pre-refactor split-server names (replaced by mylifedb-builtin).
-	"mcp__mylifedb-agent__validateAgent",
-	"mcp__explore__createPost",
-	"mcp__explore__deletePost",
-	"mcp__explore__listPosts",
-	"mcp__explore__addComment",
-	"mcp__explore__addTags",
-	// Pre-snake-case tool names (renamed for parity with popular MCP servers).
-	"mcp__mylifedb-builtin__validateAgent",
-	"mcp__mylifedb-builtin__generateImage",
-	"mcp__mylifedb-builtin__editImage",
-	"mcp__mylifedb-builtin__createPost",
-	"mcp__mylifedb-builtin__deletePost",
-	"mcp__mylifedb-builtin__listPosts",
-	"mcp__mylifedb-builtin__addComment",
-	"mcp__mylifedb-builtin__addTags",
-}
-
 // legacyMCPServers are .mcp.json server keys written by older MyLifeDB versions.
 // Pruned on every install so .mcp.json doesn't accumulate stale entries while
 // leaving anything the user added themselves untouched.
@@ -152,23 +128,15 @@ var legacyMCPServers = []string{
 	"mylifedb-agent",
 }
 
-// InstallClientConfig writes Claude Code client-discovery files into the user's
-// data directory so that CLI sessions started inside USER_DATA_DIR connect to
-// MyLifeDB's MCP server without any manual setup. Two files are managed:
-//
-//   - <dataDir>/.mcp.json — registers the mylifedb-builtin MCP server at the
-//     configured port. Merged so user-added servers survive; legacy MyLifeDB
-//     keys are pruned.
-//   - <dataDir>/.claude/settings.local.json — adds MyLifeDB's MCP tool names
-//     (passed in `allowlist`, derived from the live registry) to
-//     permissions.allow. Merged so user-added entries survive; legacy
-//     MyLifeDB-prefixed entries are pruned.
-//
-// `allowlist` should be a slice of `mcp__<server>__<tool>` strings, typically
-// from `mcp.Registry.AllowlistEntries()`.
-func InstallClientConfig(dataDir string, port int, allowlist []string) {
+// InstallClientConfig writes <dataDir>/.mcp.json so the built-in mylifedb
+// MCP server is registered alongside any user-added servers. The same file is
+// the source of truth for the composer UI and for buildSessionMcpServers,
+// which converts every enabled entry into ACP McpServer wire shape at session
+// creation. The mylifedb-builtin entry is merged: user-added servers survive,
+// legacy MyLifeDB keys are pruned, and `disabled` flags toggled from the UI
+// are preserved across restarts.
+func InstallClientConfig(dataDir string, port int) {
 	installMCPJSON(dataDir, port)
-	mergeAllowlist(dataDir, allowlist)
 }
 
 func installMCPJSON(dataDir string, port int) {
@@ -220,77 +188,3 @@ func installMCPJSON(dataDir string, port int) {
 	log.Debug().Str("path", path).Msg(".mcp.json installed")
 }
 
-func mergeAllowlist(dataDir string, allowlist []string) {
-	path := filepath.Join(dataDir, ".claude", "settings.local.json")
-
-	// Read any existing settings so we preserve user-added entries.
-	var settings map[string]any
-	if existing, err := os.ReadFile(path); err == nil {
-		if err := json.Unmarshal(existing, &settings); err != nil {
-			log.Warn().Err(err).Str("path", path).Msg("existing settings.local.json is invalid JSON, rewriting from scratch")
-			settings = nil
-		}
-	}
-	if settings == nil {
-		settings = map[string]any{}
-	}
-
-	perms, _ := settings["permissions"].(map[string]any)
-	if perms == nil {
-		perms = map[string]any{}
-		settings["permissions"] = perms
-	}
-
-	// Normalize existing allow list into a set so we only append missing entries
-	// and keep the file diff-friendly across restarts. Drop legacy MyLifeDB
-	// entries so old per-server tool names don't linger after a rename.
-	// User-added entries (anything not in the legacy list and not in the live
-	// allowlist) are preserved untouched.
-	legacy := map[string]bool{}
-	for _, s := range legacyAllowlistEntries {
-		legacy[s] = true
-	}
-	existing, _ := perms["allow"].([]any)
-	present := map[string]bool{}
-	filtered := existing[:0]
-	changed := false
-	for _, v := range existing {
-		if s, ok := v.(string); ok && legacy[s] {
-			changed = true
-			continue
-		}
-		filtered = append(filtered, v)
-		if s, ok := v.(string); ok {
-			present[s] = true
-		}
-	}
-	existing = filtered
-	for _, tool := range allowlist {
-		if !present[tool] {
-			existing = append(existing, tool)
-			present[tool] = true
-			changed = true
-		}
-	}
-	perms["allow"] = existing
-
-	if !changed {
-		log.Debug().Str("path", path).Msg("settings.local.json allow-list already up to date")
-		return
-	}
-
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		log.Error().Err(err).Str("path", path).Msg("failed to create .claude directory")
-		return
-	}
-	body, err := json.MarshalIndent(settings, "", "  ")
-	if err != nil {
-		log.Error().Err(err).Msg("failed to marshal settings.local.json")
-		return
-	}
-	if err := os.WriteFile(path, append(body, '\n'), 0644); err != nil {
-		log.Error().Err(err).Str("path", path).Msg("failed to write settings.local.json")
-		return
-	}
-	log.Debug().Str("path", path).Msg("settings.local.json allow-list merged")
-}

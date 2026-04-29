@@ -98,9 +98,8 @@ func New(cfg *Config) (*Server, error) {
 	// Install bundled skills for agent discovery
 	skills.Install(cfg.UserDataDir)
 
-	// Note: skills.InstallClientConfig (writes .mcp.json + settings.local.json)
-	// is deferred until after the MCP registry is populated below, so the
-	// allowlist is derived from the live tool set rather than a hardcoded list.
+	// Note: skills.InstallClientConfig (writes .mcp.json) runs after the MCP
+	// registry is populated below.
 
 	// 1.5. Initialize explore service
 	s.explore = explore.NewService(cfg.UserDataDir)
@@ -380,11 +379,12 @@ http_headers = { "x-litellm-customer-id" = %q }
 	explore.RegisterTools(mcpRegistry, s.explore)
 	s.mcpServer = mcppkg.NewServer(mcpRegistry, s.mcpToken)
 
-	// Now that the registry is populated, install Claude Code client-discovery
-	// files (.mcp.json + settings.local.json) into the data dir. Allowlist is
-	// derived from the live registry — adding a tool no longer requires a
-	// matching edit in skills.go.
-	skills.InstallClientConfig(cfg.UserDataDir, cfg.Port, mcpRegistry.AllowlistEntries())
+	// Register the built-in MCP server in <dataDir>/.mcp.json. That file is the
+	// source of truth for both the composer UI and per-session McpServers
+	// passed to ACP — built-in flows through the same path as user-added
+	// servers; runtime-only headers (Authorization, X-MLD-Session-Id) are
+	// injected at session-creation time, not stored in the file.
+	skills.InstallClientConfig(cfg.UserDataDir, cfg.Port)
 
 	// 1.10. Initialize MCP tools cache. Probes registered MCP servers in
 	// .mcp.json on first request and caches the result; invalidated by

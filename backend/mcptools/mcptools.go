@@ -260,20 +260,47 @@ func (c *Cache) probe(ctx context.Context, name string) ([]Tool, error) {
 // readServerSpec parses .mcp.json and returns the spec for one server.
 // Returns os.ErrNotExist if the server is missing. Tolerates extra fields.
 func readServerSpec(dataDir, name string) (ServerSpec, error) {
-	raw, err := os.ReadFile(filepath.Join(dataDir, ".mcp.json"))
+	doc, err := readMCPDoc(dataDir)
 	if err != nil {
 		return ServerSpec{}, err
+	}
+	cfg, ok := doc[name]
+	if !ok {
+		return ServerSpec{}, fmt.Errorf("server %q not found in .mcp.json", name)
+	}
+	return parseServerEntry(name, cfg), nil
+}
+
+// AllSpecs reads every server entry from .mcp.json and returns them. Returns
+// os.ErrNotExist if the file is missing. Disabled servers are included with
+// the Disabled flag set; callers filter as needed.
+func AllSpecs(dataDir string) ([]ServerSpec, error) {
+	doc, err := readMCPDoc(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ServerSpec, 0, len(doc))
+	for name, cfg := range doc {
+		out = append(out, parseServerEntry(name, cfg))
+	}
+	return out, nil
+}
+
+func readMCPDoc(dataDir string) (map[string]map[string]any, error) {
+	raw, err := os.ReadFile(filepath.Join(dataDir, ".mcp.json"))
+	if err != nil {
+		return nil, err
 	}
 	var doc struct {
 		MCPServers map[string]map[string]any `json:"mcpServers"`
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil {
-		return ServerSpec{}, fmt.Errorf("parse .mcp.json: %w", err)
+		return nil, fmt.Errorf("parse .mcp.json: %w", err)
 	}
-	cfg, ok := doc.MCPServers[name]
-	if !ok {
-		return ServerSpec{}, fmt.Errorf("server %q not found in .mcp.json", name)
-	}
+	return doc.MCPServers, nil
+}
+
+func parseServerEntry(name string, cfg map[string]any) ServerSpec {
 	spec := ServerSpec{Name: name}
 	if v, ok := cfg["type"].(string); ok {
 		spec.Type = v
@@ -310,7 +337,7 @@ func readServerSpec(dataDir, name string) (ServerSpec, error) {
 			}
 		}
 	}
-	return spec, nil
+	return spec
 }
 
 // JSON-RPC 2.0 wire types. Kept minimal — we only need request, response, and
