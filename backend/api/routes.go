@@ -152,6 +152,13 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		agentRoutes.POST("/sessions/:id/share", h.ShareAgentSession)
 		agentRoutes.DELETE("/sessions/:id/share", h.UnshareAgentSession)
 
+		// Session groups (sidebar organization)
+		agentRoutes.GET("/groups", h.ListAgentSessionGroups)
+		agentRoutes.POST("/groups", h.CreateAgentSessionGroup)
+		agentRoutes.PUT("/groups/order", h.ReorderAgentSessionGroups)
+		agentRoutes.PATCH("/groups/:id", h.UpdateAgentSessionGroup)
+		agentRoutes.DELETE("/groups/:id", h.DeleteAgentSessionGroup)
+
 		// Per-session attachments for agent prompts (1 GiB cap per file).
 		// Files stage under USER_DATA_DIR/sessions/<storageId>/uploads/<filename>.
 		// The storageId is minted by the first upload (returned in the response) and

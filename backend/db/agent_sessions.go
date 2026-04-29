@@ -10,18 +10,20 @@ import (
 
 // AgentSessionRecord represents a full agent session row.
 type AgentSessionRecord struct {
-	SessionID   string `json:"sessionId"`
-	AgentType   string `json:"agentType"`
-	WorkingDir  string `json:"workingDir"`
-	Title       string `json:"title"`
-	Source      string `json:"source"`      // "user" or "auto"
-	AgentName   string `json:"agentName"`   // agent folder name (for auto sessions)
-	TriggerKind string `json:"triggerKind"` // e.g. "cron.tick", "file.created" (auto sessions)
-	TriggerData string `json:"triggerData"` // JSON-encoded hooks.Payload.Data (auto sessions)
-	StorageID   string `json:"storageId"`
-	CreatedAt   int64  `json:"createdAt"`
-	UpdatedAt   int64  `json:"updatedAt"`
-	ArchivedAt  *int64 `json:"archivedAt,omitempty"`
+	SessionID   string  `json:"sessionId"`
+	AgentType   string  `json:"agentType"`
+	WorkingDir  string  `json:"workingDir"`
+	Title       string  `json:"title"`
+	Source      string  `json:"source"`      // "user" or "auto"
+	AgentName   string  `json:"agentName"`   // agent folder name (for auto sessions)
+	TriggerKind string  `json:"triggerKind"` // e.g. "cron.tick", "file.created" (auto sessions)
+	TriggerData string  `json:"triggerData"` // JSON-encoded hooks.Payload.Data (auto sessions)
+	StorageID   string  `json:"storageId"`
+	GroupID     *string `json:"groupId,omitempty"`
+	PinnedAt    *int64  `json:"pinnedAt,omitempty"`
+	CreatedAt   int64   `json:"createdAt"`
+	UpdatedAt   int64   `json:"updatedAt"`
+	ArchivedAt  *int64  `json:"archivedAt,omitempty"`
 }
 
 // CreateAgentSession inserts a new agent session record.
@@ -52,12 +54,13 @@ func CreateAgentSession(sessionID, agentType, workingDir, title, source, agentNa
 // GetAgentSession retrieves a single session record.
 func GetAgentSession(sessionID string) (*AgentSessionRecord, error) {
 	var r AgentSessionRecord
-	var archivedAt sql.NullInt64
+	var archivedAt, pinnedAt sql.NullInt64
+	var groupID sql.NullString
 	err := GetDB().QueryRow(
-		`SELECT session_id, agent_type, working_dir, title, source, agent_name, trigger_kind, trigger_data, storage_id, created_at, updated_at, archived_at
+		`SELECT session_id, agent_type, working_dir, title, source, agent_name, trigger_kind, trigger_data, storage_id, group_id, pinned_at, created_at, updated_at, archived_at
 		 FROM agent_sessions WHERE session_id = ?`,
 		sessionID,
-	).Scan(&r.SessionID, &r.AgentType, &r.WorkingDir, &r.Title, &r.Source, &r.AgentName, &r.TriggerKind, &r.TriggerData, &r.StorageID, &r.CreatedAt, &r.UpdatedAt, &archivedAt)
+	).Scan(&r.SessionID, &r.AgentType, &r.WorkingDir, &r.Title, &r.Source, &r.AgentName, &r.TriggerKind, &r.TriggerData, &r.StorageID, &groupID, &pinnedAt, &r.CreatedAt, &r.UpdatedAt, &archivedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -67,6 +70,12 @@ func GetAgentSession(sessionID string) (*AgentSessionRecord, error) {
 	if archivedAt.Valid {
 		r.ArchivedAt = &archivedAt.Int64
 	}
+	if groupID.Valid {
+		r.GroupID = &groupID.String
+	}
+	if pinnedAt.Valid {
+		r.PinnedAt = &pinnedAt.Int64
+	}
 	return &r, nil
 }
 
@@ -74,7 +83,7 @@ func GetAgentSession(sessionID string) (*AgentSessionRecord, error) {
 // cursor is the updated_at value of the last item from the previous page (0 for first page).
 // limit is the max number of results to return (0 for no limit).
 func ListAgentSessions(includeArchived bool, cursor int64, limit int) ([]AgentSessionRecord, error) {
-	query := `SELECT session_id, agent_type, working_dir, title, source, agent_name, trigger_kind, trigger_data, storage_id, created_at, updated_at, archived_at
+	query := `SELECT session_id, agent_type, working_dir, title, source, agent_name, trigger_kind, trigger_data, storage_id, group_id, pinned_at, created_at, updated_at, archived_at
 		 FROM agent_sessions`
 
 	var conditions []string
@@ -99,10 +108,17 @@ func ListAgentSessions(includeArchived bool, cursor int64, limit int) ([]AgentSe
 
 	return Select(query, params, func(rows *sql.Rows) (AgentSessionRecord, error) {
 		var r AgentSessionRecord
-		var archivedAt sql.NullInt64
-		err := rows.Scan(&r.SessionID, &r.AgentType, &r.WorkingDir, &r.Title, &r.Source, &r.AgentName, &r.TriggerKind, &r.TriggerData, &r.StorageID, &r.CreatedAt, &r.UpdatedAt, &archivedAt)
+		var archivedAt, pinnedAt sql.NullInt64
+		var groupID sql.NullString
+		err := rows.Scan(&r.SessionID, &r.AgentType, &r.WorkingDir, &r.Title, &r.Source, &r.AgentName, &r.TriggerKind, &r.TriggerData, &r.StorageID, &groupID, &pinnedAt, &r.CreatedAt, &r.UpdatedAt, &archivedAt)
 		if archivedAt.Valid {
 			r.ArchivedAt = &archivedAt.Int64
+		}
+		if groupID.Valid {
+			r.GroupID = &groupID.String
+		}
+		if pinnedAt.Valid {
+			r.PinnedAt = &pinnedAt.Int64
 		}
 		return r, err
 	})

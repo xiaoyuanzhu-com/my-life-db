@@ -180,6 +180,12 @@ func (h *Handlers) GetAgentSessions(c *gin.Context) {
 			"source":       s.Source,
 			"storageId":    s.StorageID,
 		}
+		if s.GroupID != nil {
+			entry["groupId"] = *s.GroupID
+		}
+		if s.PinnedAt != nil {
+			entry["pinnedAt"] = *s.PinnedAt
+		}
 		if s.AgentName != "" {
 			entry["agentName"] = s.AgentName
 		}
@@ -245,6 +251,12 @@ func (h *Handlers) GetAgentSession(c *gin.Context) {
 		"source":       session.Source,
 		"storageId":    session.StorageID,
 	}
+	if session.GroupID != nil {
+		resp["groupId"] = *session.GroupID
+	}
+	if session.PinnedAt != nil {
+		resp["pinnedAt"] = *session.PinnedAt
+	}
 	if session.AgentName != "" {
 		resp["agentName"] = session.AgentName
 	}
@@ -260,22 +272,74 @@ func (h *Handlers) GetAgentSession(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// UpdateAgentSession updates session metadata (title).
+// UpdateAgentSession updates session metadata: title, group assignment, and
+// pin state. Each field is independently optional — only fields whose pointers
+// are non-nil are applied. (For Title, an empty pointer is also a no-op.)
+//
 // PATCH /api/agent/sessions/:id
+//
+//	body: {
+//	  "title":   "..."          (string, optional)
+//	  "groupId": "..." | null    (string|null, optional)
+//	  "pinned":  true|false      (bool, optional)
+//	}
 func (h *Handlers) UpdateAgentSession(c *gin.Context) {
 	sessionID := c.Param("id")
 
+	// Use json.RawMessage / pointer fields so we can distinguish "absent" from
+	// "explicit null" — needed for groupId where null = move to ungrouped.
 	var req struct {
-		Title string `json:"title"`
+		Title   *string `json:"title"`
+		GroupID *string `json:"groupId"`
+		Pinned  *bool   `json:"pinned"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
+	// Capture which keys were present so a `"groupId": null` clears the group
+	// while an absent `groupId` is a no-op. ShouldBindJSON alone can't tell
+	// them apart for *string, so we re-parse the raw body for key detection.
+	rawBody, _ := c.GetRawData()
+	if err := json.Unmarshal(rawBody, &req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	var keys map[string]json.RawMessage
+	_ = json.Unmarshal(rawBody, &keys)
 
-	if req.Title != "" {
-		if err := db.UpdateAgentSessionTitle(sessionID, req.Title); err != nil {
+	if req.Title != nil && *req.Title != "" {
+		if err := db.UpdateAgentSessionTitle(sessionID, *req.Title); err != nil {
 			log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to update session title")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update session"})
+			return
+		}
+	}
+
+	if _, hasGroupID := keys["groupId"]; hasGroupID {
+		groupID := ""
+		if req.GroupID != nil {
+			groupID = *req.GroupID
+		}
+		if groupID != "" {
+			// Validate that the target group exists, otherwise the update is silently a no-op.
+			g, err := db.GetAgentSessionGroup(groupID)
+			if err != nil {
+				log.Error().Err(err).Str("groupId", groupID).Msg("failed to look up group")
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update session"})
+				return
+			}
+			if g == nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "group not found"})
+				return
+			}
+		}
+		if err := db.SetAgentSessionGroup(sessionID, groupID); err != nil {
+			log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to set session group")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update session"})
+			return
+		}
+	}
+
+	if req.Pinned != nil {
+		if err := db.SetAgentSessionPinned(sessionID, *req.Pinned); err != nil {
+			log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to set session pinned")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update session"})
 			return
 		}
