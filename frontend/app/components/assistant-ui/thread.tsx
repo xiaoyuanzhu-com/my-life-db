@@ -49,6 +49,7 @@ import { SlashCommandPopover } from "~/components/agent/slash-command-popover";
 import { FileTagPopover } from "~/components/agent/file-tag-popover";
 import { ChangedFilesPopover } from "~/components/agent/changed-files-popover";
 import { useAgentContext } from "~/components/agent/agent-context";
+import { useFeatureFlags } from "~/contexts/feature-flags-context";
 import { AttachmentStrip } from "~/components/agent/attachment-strip";
 import { useAgentAttachments } from "~/hooks/use-agent-attachments";
 import { Paperclip } from "lucide-react";
@@ -72,6 +73,7 @@ type ThreadProps = {
 
 export const Thread: FC<ThreadProps> = ({ onAttachmentsStorageIdChange, existingStorageId }) => {
   const { pendingPermissions, hasActiveSession, historyLoadError, sessionError } = useAgentContext();
+  const { hybridTopInset } = useFeatureFlags();
   const hasSession = useAuiState((s) => !s.thread.isEmpty);
   const isRunning = useAuiState((s) => s.thread.isRunning);
 
@@ -94,6 +96,18 @@ export const Thread: FC<ThreadProps> = ({ onAttachmentsStorageIdChange, existing
       <ThreadPrimitive.Viewport
         autoScroll
         className="aui-thread-viewport relative flex flex-1 flex-col overflow-x-hidden overflow-y-scroll scroll-smooth pt-4"
+        // When rendered inside the iOS hybrid shell, the SwiftUI navigation
+        // bar (44pt inline) overlays the WebView (which uses .ignoresSafeArea).
+        // Push the message list down past the status bar (`--native-sat`) +
+        // the nav bar height, preserving the original 1rem breathing room.
+        style={
+          hybridTopInset
+            ? {
+                paddingTop:
+                  "calc(var(--native-sat, env(safe-area-inset-top, 0px)) + 44px + 1rem)",
+              }
+            : undefined
+        }
       >
         {isLoadingSession ? (
           <ThreadLoading />

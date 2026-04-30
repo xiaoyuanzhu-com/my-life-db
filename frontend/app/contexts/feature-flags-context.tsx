@@ -15,11 +15,18 @@ export interface FeatureFlags {
   sessionSidebar: boolean
   /** Show "New session" buttons. Default: true */
   sessionCreateNew: boolean
+  /**
+   * Add top padding to the agent session message list so the first message
+   * sits below a native title bar that overlays the WebView (iOS hybrid
+   * shell). Default: false (browser).
+   */
+  hybridTopInset: boolean
 }
 
 const defaultFlags: FeatureFlags = {
   sessionSidebar: true,
   sessionCreateNew: true,
+  hybridTopInset: false,
 }
 
 /** Read flags from window.__featureFlags, falling back to defaults. */
@@ -34,6 +41,7 @@ function resolveFlags(): FeatureFlags {
   return {
     sessionSidebar: raw.sessionSidebar ?? defaultFlags.sessionSidebar,
     sessionCreateNew: raw.sessionCreateNew ?? defaultFlags.sessionCreateNew,
+    hybridTopInset: raw.hybridTopInset ?? defaultFlags.hybridTopInset,
   }
 }
 
