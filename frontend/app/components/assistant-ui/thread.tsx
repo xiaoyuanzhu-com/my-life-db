@@ -122,14 +122,14 @@ export const Thread: FC<ThreadProps> = ({ onAttachmentsStorageIdChange, existing
         )}
         <InitialScrollToBottom />
 
-        <div className="mx-auto w-full max-w-(--thread-max-width) px-2 md:px-16">
+        <div className="mx-auto w-full max-w-(--thread-max-width) px-4 md:px-18">
           <ThreadPrimitive.Messages>
             {() => <ThreadMessage />}
           </ThreadPrimitive.Messages>
         </div>
 
         {isRunning && pendingPermissions.size === 0 && (
-          <div className="mx-auto w-full max-w-(--thread-max-width) px-2 md:px-16">
+          <div className="mx-auto w-full max-w-(--thread-max-width) px-4 md:px-18">
             <AgentWIP />
           </div>
         )}
