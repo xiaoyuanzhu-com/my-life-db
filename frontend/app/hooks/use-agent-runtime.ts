@@ -183,11 +183,15 @@ export function useAgentRuntime(options: {
   // Reset all per-session state when switching sessions
   const prevSessionIdRef = useRef(sessionId)
   if (prevSessionIdRef.current !== sessionId) {
+    const prevSessionId = prevSessionIdRef.current
     prevSessionIdRef.current = sessionId
     // If we have a pending optimistic message (new session just created),
     // preserve it so the user sees their message + working indicator
     // while the WS connects and frames arrive.
     const pendingText = pendingOptimisticRef.current
+    console.info(
+      `[agent-diag] [${sessionId || "new"}] sessionId-changed prev=${prevSessionId || "new"} new=${sessionId || "new"} hasPendingOptimistic=${!!pendingText} pendingLen=${pendingText?.length ?? 0}`,
+    )
     if (pendingText) {
       pendingOptimisticRef.current = null
       setMessages([{
@@ -966,7 +970,7 @@ export function useAgentRuntime(options: {
 
   // ── WebSocket Connection ──────────────────────────────────────────
 
-  const { connected, sendPrompt, sendCancel, sendKill, sendPermissionResponse, sendSetMode, sendSetModel, sendSetConfigOption } =
+  const { connected, sendPrompt, sendCancel, sendKill, sendPermissionResponse, sendSetMode, sendSetModel, sendSetConfigOption, getReadyState, getBufferedAmount } =
     useAgentWebSocket({
       sessionId,
       token,
@@ -1035,8 +1039,21 @@ export function useAgentRuntime(options: {
 
   // ── ExternalStoreAdapter ──────────────────────────────────────────
 
+  // Counts how many times the adapter useMemo body re-runs. The
+  // ExternalStoreRuntime *replaces* its inner runtime when this rebuilds —
+  // refs into the previous runtime (eg. composerRuntime captured by
+  // DraftPersistenceSync) become stale. If a setText / clear / send race
+  // ever stems from a runtime swap, we need this counter to correlate.
+  const adapterRebuildCountRef = useRef(0)
+
   const adapter: ExternalStoreAdapter<ThreadMessageLike> = useMemo(
-    () => ({
+    () => {
+      adapterRebuildCountRef.current += 1
+      const rebuildSeq = adapterRebuildCountRef.current
+      console.info(
+        `[agent-diag] [${sessionId || "new"}] adapter:rebuild seq=${rebuildSeq} msgCount=${rootMessages.length} isRunning=${isRunning}`,
+      )
+      return ({
       messages: rootMessages,
       convertMessage: (m) => m,
       isRunning,
@@ -1046,6 +1063,26 @@ export function useAgentRuntime(options: {
           (p): p is { type: "text"; text: string } => p.type === "text"
         )
         const text = textParts.map((p) => p.text).join("\n")
+        const textPreview = text.length > 80 ? `${text.slice(0, 80)}…(${text.length})` : text
+        const partTypes = message.content.map((p) => p.type).join(",")
+        diagLog("onNew:enter", {
+          branch: onSend ? "new-session" : "ws",
+          textLen: text.length,
+          textTrimLen: text.trim().length,
+          textPreview,
+          partTypes,
+          partCount: message.content.length,
+          wsReady: getReadyState(),
+          wsBuffered: getBufferedAmount(),
+          wsConnected: connected,
+        })
+        if (!text.trim()) {
+          diagLog("onNew:dropped-empty", {
+            textLen: text.length,
+            partCount: message.content.length,
+          })
+          return
+        }
         if (text.trim()) {
           if (onSend) {
             // Persist to localStorage so the text survives failures / page refresh.
@@ -1071,28 +1108,55 @@ export function useAgentRuntime(options: {
             // effect can race (composerRuntime ref changes when the adapter
             // rebuilds) and put the just-sent text back into the composer.
             localStorage.removeItem("agent-input:new-session")
+            diagLog("onNew:new-session-dispatch", { textLen: text.length, textPreview })
             // Fire and handle failure — if session creation fails, restore
             // the text back into the composer so the user doesn't lose it.
-            Promise.resolve(onSend(text)).catch(() => {
-              pendingOptimisticRef.current = null
-              setMessages([])
-              setIsRunning(false)
-              setPendingComposerText(text)
-            })
+            Promise.resolve(onSend(text))
+              .then(() => {
+                diagLog("onNew:new-session-resolved", { textLen: text.length })
+              })
+              .catch((err) => {
+                diagLog("onNew:new-session-failed", {
+                  textLen: text.length,
+                  textPreview,
+                  error: err instanceof Error ? err.message : String(err),
+                })
+                pendingOptimisticRef.current = null
+                setMessages([])
+                setIsRunning(false)
+                setPendingComposerText(text)
+              })
           } else {
             // Persist to localStorage before sending
             localStorage.setItem(`agent-input:${sessionId}`, text)
             // Try to send via WS — if not connected, restore to composer
+            const wsReadyBefore = getReadyState()
+            const wsBufferedBefore = getBufferedAmount()
             const sent = sendPrompt(text)
+            const wsReadyAfter = getReadyState()
+            const wsBufferedAfter = getBufferedAmount()
             diagLog("onNew:send", {
               sent,
+              textLen: text.length,
+              textPreview,
+              wsReadyBefore,
+              wsReadyAfter,
+              wsBufferedBefore,
+              wsBufferedAfter,
+              wsConnected: connected,
               wasRunning: isRunningRef.current,
               msgCount: messagesRef.current.length,
               lastMsgRole: messagesRef.current[messagesRef.current.length - 1]?.role,
               lastMsgStatus: messagesRef.current[messagesRef.current.length - 1]?.status?.type,
             })
             if (!sent) {
-              diagLog("onNew:send-failed", { reason: "WS not connected" })
+              diagLog("onNew:send-failed", {
+                reason: "WS not connected",
+                wsReady: wsReadyBefore,
+                wsConnected: connected,
+                textLen: text.length,
+                textPreview,
+              })
               setPendingComposerText(text)
               return
             }
@@ -1154,8 +1218,9 @@ export function useAgentRuntime(options: {
           },
         },
       } : {}),
-    }),
-    [rootMessages, isRunning, sendPrompt, sendCancel, sendKill, onSend, sessions, activeSessionId, onSwitchToThread, onSwitchToNewThread, onRenameThread, onArchiveThread, onUnarchiveThread, onDeleteThread, diagLog, nextId, sessionId]
+    })
+    },
+    [rootMessages, isRunning, sendPrompt, sendCancel, sendKill, onSend, sessions, activeSessionId, onSwitchToThread, onSwitchToNewThread, onRenameThread, onArchiveThread, onUnarchiveThread, onDeleteThread, diagLog, nextId, sessionId, getReadyState, getBufferedAmount, connected]
   )
 
   // ── Runtime ───────────────────────────────────────────────────────
@@ -1176,8 +1241,9 @@ export function useAgentRuntime(options: {
   )
 
   const clearPendingComposerText = useCallback(() => {
+    diagLog("pendingComposerText:clear")
     setPendingComposerText(null)
-  }, [])
+  }, [diagLog])
 
   return {
     runtime,

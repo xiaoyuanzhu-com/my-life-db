@@ -147,11 +147,31 @@ export function useAgentWebSocket({
   const onFrameRef = useRef(onFrame)
   onFrameRef.current = onFrame
 
+  // Stable getters for diagnostics — let callers (use-agent-runtime) read
+  // the live ws state at the moment they trigger a send, instead of relying
+  // on the React `connected` boolean which can lag behind an actual close.
+  const getReadyState = useCallback((): number => {
+    return wsRef.current?.readyState ?? -1
+  }, [])
+  const getBufferedAmount = useCallback((): number => {
+    return wsRef.current?.bufferedAmount ?? 0
+  }, [])
+
   const send = useCallback((msg: Record<string, unknown>): boolean => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ ...msg, sessionId }))
+    const ws = wsRef.current
+    const ready = ws?.readyState ?? -1
+    const buffered = ws?.bufferedAmount ?? 0
+    const msgType = String(msg.type ?? "?")
+    if (ws && ready === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ ...msg, sessionId }))
+      console.info(
+        `[ws-send] [${sessionId}] type=${msgType} success=true ready=${ready} bufferedBefore=${buffered} bufferedAfter=${ws.bufferedAmount}`,
+      )
       return true
     }
+    console.info(
+      `[ws-send] [${sessionId}] type=${msgType} success=false ready=${ready} buffered=${buffered} (wsRef=${ws ? "set" : "null"})`,
+    )
     return false
   }, [sessionId])
 
@@ -206,14 +226,26 @@ export function useAgentWebSocket({
       ws = thisWs
       wsRef.current = thisWs
 
+      console.info(
+        `[ws-conn] [${sessionId}] connecting url=${url.replace(/token=[^&]+/, "token=***")}`,
+      )
+
       thisWs.onopen = () => {
-        if (wsRef.current !== thisWs) return
+        const stale = wsRef.current !== thisWs
+        console.info(
+          `[ws-conn] [${sessionId}] open stale=${stale} ready=${thisWs.readyState}`,
+        )
+        if (stale) return
         setConnected(true)
         reconnectDelay = 1000 // reset on successful connect
       }
 
-      thisWs.onclose = () => {
-        if (wsRef.current === thisWs) {
+      thisWs.onclose = (ev) => {
+        const isCurrent = wsRef.current === thisWs
+        console.info(
+          `[ws-conn] [${sessionId}] close isCurrent=${isCurrent} code=${ev.code} reason="${ev.reason}" wasClean=${ev.wasClean} unmounted=${unmounted} nextDelay=${unmounted ? 0 : reconnectDelay}`,
+        )
+        if (isCurrent) {
           setConnected(false)
           wsRef.current = null
         }
@@ -224,6 +256,12 @@ export function useAgentWebSocket({
             connect()
           }, reconnectDelay)
         }
+      }
+
+      thisWs.onerror = (ev) => {
+        console.info(
+          `[ws-conn] [${sessionId}] error ready=${thisWs.readyState} type=${ev.type}`,
+        )
       }
 
       thisWs.onmessage = (event) => {
@@ -247,5 +285,5 @@ export function useAgentWebSocket({
     }
   }, [sessionId, token, enabled])
 
-  return { connected, sendPrompt, sendCancel, sendKill, sendPermissionResponse, sendSetMode, sendSetModel, sendSetConfigOption }
+  return { connected, sendPrompt, sendCancel, sendKill, sendPermissionResponse, sendSetMode, sendSetModel, sendSetConfigOption, getReadyState, getBufferedAmount }
 }

@@ -386,9 +386,19 @@ const DraftPersistenceSync: FC = () => {
     );
     if (draft) {
       const timer = setTimeout(() => {
+        // Capture composer's CURRENT text right before we overwrite it. If
+        // it's non-empty, the deferred restore is potentially stomping on
+        // user input — a "false restore" — and we want to know.
+        const currentText = composerRef.current.getState().text ?? "";
+        const stomp = currentText.length > 0 && currentText !== draft;
         console.info(
-          `[draft-sync] [${inst}] SETTEXT(localStorage) key=${storageKey} draftLen=${draft.length} draft="${trunc(draft)}"`,
+          `[draft-sync] [${inst}] SETTEXT(localStorage) key=${storageKey} draftLen=${draft.length} draft="${trunc(draft)}" currentLen=${currentText.length} stomp=${stomp}`,
         );
+        if (stomp) {
+          console.warn(
+            `[draft-sync] [${inst}] SETTEXT(localStorage) STOMP — overwriting non-empty composer key=${storageKey} currentLen=${currentText.length} draftLen=${draft.length}`,
+          );
+        }
         composerRef.current.setText(draft);
         hasRestoredRef.current = true;
       }, 0);
@@ -407,24 +417,40 @@ const DraftPersistenceSync: FC = () => {
   // Persist as-you-type. Suppressed until the restore phase completes and
   // when storageKey just changed (text may be stale from the previous session).
   const activeKeyRef = useRef(storageKey);
+  // Track prev length so the persist log shows the transition (e.g. 132 → 0).
+  const prevPersistLenRef = useRef(text.length);
   useEffect(() => {
+    const prevLen = prevPersistLenRef.current;
+    prevPersistLenRef.current = text.length;
     if (!hasRestoredRef.current) {
       console.info(
-        `[draft-sync] [${inst}] persist SKIPPED (not yet restored) key=${storageKey} textLen=${text.length}`,
+        `[draft-sync] [${inst}] persist SKIPPED (not yet restored) key=${storageKey} prevLen=${prevLen} textLen=${text.length}`,
       );
       return;
     }
     if (activeKeyRef.current !== storageKey) {
       console.info(
-        `[draft-sync] [${inst}] persist SKIPPED (key changed) activeKey=${activeKeyRef.current} newKey=${storageKey}`,
+        `[draft-sync] [${inst}] persist SKIPPED (key changed) activeKey=${activeKeyRef.current} newKey=${storageKey} prevLen=${prevLen} textLen=${text.length}`,
       );
       activeKeyRef.current = storageKey;
       return;
     }
     if (text) {
+      const prevStored = localStorage.getItem(storageKey);
       localStorage.setItem(storageKey, text);
+      console.info(
+        `[draft-sync] [${inst}] persist SET key=${storageKey} prevLen=${prevLen} textLen=${text.length} prevStoredLen=${prevStored?.length ?? 0}`,
+      );
     } else {
+      // CRITICAL: this is the moment the localStorage recovery breadcrumb is
+      // destroyed. If text just dropped from N → 0 here without an explicit
+      // send-clear, recovery falls back to pendingComposerText only — and if
+      // that ALSO doesn't fire, the user's draft is lost.
+      const prevStored = localStorage.getItem(storageKey);
       localStorage.removeItem(storageKey);
+      console.warn(
+        `[draft-sync] [${inst}] persist REMOVE (text=='') key=${storageKey} prevLen=${prevLen} prevStoredLen=${prevStored?.length ?? 0} — DRAFT BREADCRUMB WIPED`,
+      );
     }
   }, [text, storageKey, inst]);
 
@@ -432,11 +458,13 @@ const DraftPersistenceSync: FC = () => {
   useEffect(() => {
     if (pendingComposerText && clearPendingComposerText) {
       console.info(
-        `[draft-sync] [${inst}] SETTEXT(pendingComposerText) len=${pendingComposerText.length} text="${trunc(pendingComposerText)}"`,
+        `[draft-sync] [${inst}] SETTEXT(pendingComposerText) len=${pendingComposerText.length} text="${trunc(pendingComposerText)}" hasRestored=${hasRestoredRef.current} key=${storageKey} liveCount=${dsLiveInstanceCount}`,
       );
       composerRef.current.setText(pendingComposerText);
       clearPendingComposerText();
     }
+    // storageKey intentionally omitted — only used for diagnostic context.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingComposerText, clearPendingComposerText, inst]);
 
   return null;
