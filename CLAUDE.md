@@ -418,6 +418,8 @@ Shared / automation environment where sessions can collide. Use git worktrees wi
 
 The user typically has a development server running. Check before starting a new one.
 
+**If you start a test server/process to verify something, kill it before reporting the task done.** `kill $PID` inside a subshell often only kills the shell wrapper — `go run` compiles and execs a separate binary that gets reparented to init when the wrapper dies. Always verify cleanup with both `ps -eo pid,ppid,command | grep my-life-db` AND `lsof -nP -iTCP:12345 -sTCP:LISTEN` before claiming the test is done. The user has had to remind me to clean up multiple times.
+
 ## Design Preferences
 
 - **Minimal Borders**: Keep the UI clean with few dividers and borders.
