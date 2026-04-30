@@ -15,6 +15,7 @@ import FileView from "./routes/file.$";
 import Explore from "./routes/explore";
 import Agent from "./routes/agent";
 import Me from "./routes/me";
+import ConnectAuthorize from "./routes/connect.authorize";
 
 export const routes: RouteObject[] = [
   {
@@ -60,6 +61,10 @@ export const routes: RouteObject[] = [
       {
         path: "me/*",
         Component: Me,
+      },
+      {
+        path: "connect/authorize",
+        Component: ConnectAuthorize,
       },
     ],
   },

@@ -21,6 +21,16 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		// If a third-party app has authenticated via a MyLifeDB Connect
+		// bearer token, the ConnectAuthMiddleware has already validated it
+		// and stamped the gin context. Treat that as "authenticated" for
+		// owner-level routes that the app's scope happens to permit; the
+		// scope check (RequireConnectScope) runs at the route level.
+		if IsConnectAuthenticated(c) {
+			c.Next()
+			return
+		}
+
 		// Check authentication based on mode
 		if auth.IsOAuthEnabled() {
 			if !validateOAuthToken(c) {

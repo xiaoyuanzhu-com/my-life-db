@@ -26,6 +26,11 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		public.GET("/share/:token", h.GetSharedSession)
 		public.GET("/share/:token/messages", h.GetSharedSessionMessages)
 
+		// Connect public preview — the consent UI uses this to render the
+		// "App X wants permissions Y" screen before the user is asked to
+		// approve. Read-only; does not mint tokens or grants.
+		public.GET("/connect/authorize/preview", h.ConnectAuthorizePreview)
+
 		// Single MCP endpoint — hosts every MyLifeDB tool (validate_agent,
 		// generate_image, edit_image, create_post, list_posts, ...). Auth: the
 		// server's internal MCP token is enforced when callers send an
@@ -124,7 +129,23 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 
 		// ASR routes
 		api.POST("/asr", h.ASRHandler)
+
+		// MyLifeDB Connect — owner-side management of third-party apps.
+		// (The OAuth dance itself uses /connect/* below; these endpoints
+		// power the Settings → Connected Apps panel.)
+		api.POST("/connect/consent", h.ConnectConsent)
+		api.GET("/connect/clients", h.ConnectListClients)
+		api.DELETE("/connect/clients/:id", h.ConnectRevokeClient)
+		api.GET("/connect/clients/:id/audit", h.ConnectClientAudit)
 	}
+
+	// MyLifeDB Connect — OAuth 2.1 endpoints exposed at the top level so
+	// third-party apps can hardcode them (and the well-known discovery doc
+	// lives at the conventional path). All public; PKCE replaces the client
+	// secret on /connect/token.
+	r.POST("/connect/token", h.ConnectToken)
+	r.POST("/connect/revoke", h.ConnectRevoke)
+	r.GET("/.well-known/oauth-authorization-server", h.ConnectMetadata)
 
 	// WebSocket routes - need auth but registered on main router
 	// Apply auth middleware individually
@@ -189,9 +210,19 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 
 	// Explore MCP endpoint — registered in public group (see above)
 
-	// Raw file serving - protected
-	r.GET("/raw/*path", wsAuth, h.ServeRawFile)
-	r.PUT("/raw/*path", wsAuth, h.SaveRawFile)
+	// Raw file serving — protected. Three middlewares run in order:
+	//
+	//   1. ConnectAuthMiddleware  — if a valid Connect bearer token is
+	//      attached, attach it to the request context; if it's invalid,
+	//      reject here. No-op for owner-session traffic.
+	//   2. wsAuth (AuthMiddleware) — owner-session check; passes through
+	//      automatically when (1) already authenticated the request.
+	//   3. RequireConnectScope     — for Connect-authenticated callers,
+	//      check that the resolved scope satisfies the path; pass-through
+	//      for owner-session callers.
+	connectAuth := h.ConnectAuthMiddleware()
+	r.GET("/raw/*path", connectAuth, wsAuth, h.RequireConnectScope("files.read"), h.ServeRawFile)
+	r.PUT("/raw/*path", connectAuth, wsAuth, h.RequireConnectScope("files.write"), h.SaveRawFile)
 
 	// SQLAR file serving - protected
 	r.GET("/sqlar/*path", wsAuth, h.ServeSqlarFile)

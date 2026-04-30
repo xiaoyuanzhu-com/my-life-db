@@ -13,6 +13,7 @@ import { useAuth } from "~/contexts/auth-context";
 import type { UserSettings } from "~/lib/config/settings";
 import { api } from "~/lib/api";
 import { DataSourcesTab } from "~/components/settings/data-sources-tab";
+import { ConnectedAppsTab } from "~/components/settings/connected-apps-tab";
 
 interface ModelOption {
   id: string;
@@ -232,6 +233,7 @@ function SettingsContent() {
     { label: t('tabs.vendors', 'Vendors'), value: "vendors", path: "/me/vendors" },
     { label: t('tabs.digest', 'Digest'), value: "digest", path: "/me/digest" },
     { label: t('tabs.dataSources', 'Data Sources'), value: "data-sources", path: "/me/data-sources" },
+    { label: t('tabs.connectedApps', 'Connected Apps'), value: "connected-apps", path: "/me/connected-apps" },
     { label: t('tabs.stats', 'Stats'), value: "stats", path: "/me/stats" },
   ];
 
@@ -625,8 +627,13 @@ function SettingsContent() {
           <DataSourcesTab />
         )}
 
+        {/* Connected Apps Tab */}
+        {activeTab === "connected-apps" && (
+          <ConnectedAppsTab />
+        )}
+
         {/* Save Button */}
-        {activeTab !== "stats" && activeTab !== "data-sources" && (
+        {activeTab !== "stats" && activeTab !== "data-sources" && activeTab !== "connected-apps" && (
           <div className="flex items-center justify-end gap-3 pt-6">
             {saveMessage && (
               <div className="flex items-center gap-2">
