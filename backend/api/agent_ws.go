@@ -87,7 +87,14 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 	}
 	defer persistReadState()
 
-	// Mark session as read on connect
+	// Mark session as read on connect.
+	//
+	// Do NOT pre-seed seenResultCount here. The write loop replays the full
+	// rawMessages history (cursor=0) and increments seenResultCount once per
+	// turn.complete frame it delivers — including the historical ones. Storing
+	// rc here would double-count: seenResultCount would end up at ~2*rc, and
+	// the deferred persistReadState would push lastRead beyond ResultCount,
+	// permanently masking the "unread" state for every future turn.
 	sessionState.Mu.RLock()
 	rc := sessionState.ResultCount
 	sessionState.Mu.RUnlock()
@@ -98,7 +105,6 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 		} else {
 			h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "read")
 		}
-		seenResultCount.Store(int32(rc))
 	}
 
 	// Send session.info before registering so the frontend knows active/processing
