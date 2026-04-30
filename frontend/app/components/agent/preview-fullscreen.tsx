@@ -8,6 +8,7 @@
  * - Body scroll locked while open
  */
 import { useEffect, useCallback } from "react"
+import { useTranslation } from "react-i18next"
 import { createPortal } from "react-dom"
 import { Minimize2 } from "lucide-react"
 
@@ -19,6 +20,7 @@ interface PreviewFullscreenProps {
 }
 
 export function PreviewFullscreen({ html, onClose }: PreviewFullscreenProps) {
+  const { t } = useTranslation('agent');
   // Lock body scroll while open
   useEffect(() => {
     const prev = document.body.style.overflow
@@ -83,13 +85,13 @@ export function PreviewFullscreen({ html, onClose }: PreviewFullscreenProps) {
         className="preview-fullscreen-iframe"
         srcDoc={srcdoc}
         sandbox="allow-scripts allow-same-origin"
-        title="Preview fullscreen"
+        title={t('preview.fullscreen')}
       />
       <button
         type="button"
         className="preview-fullscreen-collapse"
         onClick={onClose}
-        title="Exit fullscreen"
+        title={t('preview.exit')}
       >
         <Minimize2 className="h-3.5 w-3.5" />
       </button>

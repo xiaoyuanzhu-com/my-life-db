@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FileX, Download } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { TextEditor } from '~/components/text-editor';
@@ -30,6 +31,7 @@ function getFileType(contentType: string, filename: string): 'text' | 'image' | 
 }
 
 export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialEditedContent }: FileViewerProps) {
+  const { t } = useTranslation('data');
   const [fileData, setFileData] = useState<FileData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -282,7 +284,7 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
         {fileType === 'unknown' && (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-4">
             <FileX className="w-12 h-12" />
-            <p>Cannot preview this file type</p>
+            <p>{t('library.cannotPreview')}</p>
             <Button onClick={handleDownload}>
               <Download className="w-4 h-4 mr-2" />
               Download to view

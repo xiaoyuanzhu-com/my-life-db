@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pin, X } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import type { PinnedItem } from '~/types/pin';
@@ -10,6 +11,7 @@ interface PinnedTagsProps {
 }
 
 export function PinnedTags({ onTagClick, onRefresh }: PinnedTagsProps) {
+  const { t } = useTranslation('data');
   const [pinnedItems, setPinnedItems] = useState<PinnedItem[]>([]);
 
   const loadPinnedItems = useCallback(async () => {
@@ -71,7 +73,7 @@ export function PinnedTags({ onTagClick, onRefresh }: PinnedTagsProps) {
               "hover:bg-primary/20",
               "transition-opacity duration-150"
             )}
-            aria-label="Unpin"
+            aria-label={t('library.unpin')}
           >
             <X className="h-3 w-3 text-primary" />
           </button>

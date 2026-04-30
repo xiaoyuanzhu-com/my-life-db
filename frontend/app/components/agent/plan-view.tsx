@@ -7,6 +7,7 @@
  * - Completed items: strikethrough + muted
  * - Proper font-mono styling matching the rest of the UI
  */
+import { useTranslation } from "react-i18next"
 import { cn } from "~/lib/utils"
 import { MessageDot } from "./message-dot"
 import type { PlanEntry } from "~/hooks/use-agent-runtime"
@@ -43,6 +44,7 @@ function StatusIcon({ status }: { status: PlanEntry["status"] }) {
 }
 
 export function PlanView({ entries, className }: PlanViewProps) {
+  const { t } = useTranslation('agent');
   if (entries.length === 0) return null
 
   const priorities = entries.map(e => e.priority).filter(Boolean)
@@ -53,7 +55,7 @@ export function PlanView({ entries, className }: PlanViewProps) {
       {/* Header */}
       <div className="flex items-start gap-2 mb-2">
         <MessageDot type="system" />
-        <span className="font-semibold text-foreground">Tasks</span>
+        <span className="font-semibold text-foreground">{t('plan.tasks')}</span>
       </div>
 
       {/* Plan items with tree connectors */}

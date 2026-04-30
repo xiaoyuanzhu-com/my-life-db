@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Button } from "~/components/ui/button";
 import { Skeleton } from "~/components/ui/skeleton";
 import {
@@ -82,13 +83,14 @@ export const ThreadList: FC<ThreadListProps> = ({ activeSessionId, sessionStates
 
 
 const ThreadListSkeleton: FC = () => {
+  const { t } = useTranslation('agent');
   return (
     <div className="flex flex-col gap-1">
       {Array.from({ length: 5 }, (_, i) => (
         <div
           key={i}
           role="status"
-          aria-label="Loading threads"
+          aria-label={t('thread.loadingThreads')}
           className="aui-thread-list-skeleton-wrapper flex h-9 items-center px-3"
         >
           <Skeleton className="aui-thread-list-skeleton h-4 w-full" />
@@ -190,6 +192,7 @@ const ThreadListItem: FC<{ activeSessionId?: string | null; sessionStates?: Reco
 };
 
 const ThreadListItemMore: FC<{ isArchived?: boolean }> = ({ isArchived }) => {
+  const { t } = useTranslation('agent');
   const aui = useAui();
   const handleUnarchive = () => aui.threadListItem().unarchive();
 
@@ -202,7 +205,7 @@ const ThreadListItemMore: FC<{ isArchived?: boolean }> = ({ isArchived }) => {
           className="aui-thread-list-item-more mr-1.5 size-6 p-0 opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:bg-accent data-[state=open]:opacity-100 group-data-active:opacity-100"
         >
           <MoreHorizontalIcon className="size-4" />
-          <span className="sr-only">More options</span>
+          <span className="sr-only">{t('thread.moreOptions')}</span>
         </Button>
       </ThreadListItemMorePrimitive.Trigger>
       <ThreadListItemMorePrimitive.Content

@@ -160,7 +160,7 @@ function ShareButton({ session, onUpdate }: { session: Session; onUpdate: (s: Pa
         size="icon"
         className="h-8 w-8"
         onClick={() => setOpen(true)}
-        title="Share session"
+        title={t('sidebar.shareSession')}
       >
         <Share2 className={cn('h-4 w-4', isShared && 'text-primary')} />
       </Button>
@@ -1136,7 +1136,7 @@ export default function AgentPage() {
             size="icon"
             className="h-7 w-7"
             onClick={() => setIsSidebarCollapsed(true)}
-            title="Collapse sidebar"
+            title={t('sidebar.collapse')}
           >
             <PanelLeftClose className="h-4 w-4" />
           </Button>
@@ -1199,7 +1199,7 @@ export default function AgentPage() {
                 navigate('/agent')
                 setShowNewSessionMobile(true)
               }}
-              title="New session"
+              title={t('sidebar.newSession')}
             >
               <Plus className="h-4 w-4" />
             </Button>
@@ -1210,7 +1210,7 @@ export default function AgentPage() {
             size="icon"
             className="h-7 w-7"
             onClick={handleCreateAgentWithAI}
-            title="New auto agent"
+            title={t('sidebar.newAutoAgent')}
           >
             <Plus className="h-4 w-4" />
           </Button>
@@ -1304,7 +1304,7 @@ export default function AgentPage() {
                   size="icon"
                   className="absolute top-2 left-2 z-20 h-8 w-8"
                   onClick={() => setIsSidebarCollapsed(false)}
-                  title="Expand sidebar"
+                  title={t('sidebar.expand')}
                 >
                   <PanelLeftOpen className="h-4 w-4" />
                 </Button>

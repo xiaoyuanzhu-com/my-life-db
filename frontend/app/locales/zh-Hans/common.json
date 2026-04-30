@@ -1,12 +1,32 @@
 {
   "nav": {
     "data": "数据",
-    "agent": "智能体",
-    "explore": "探索",
+    "agent": "助手",
+    "explore": "发现",
     "me": "我"
   },
   "auth": {
     "signIn": "登录"
+  },
+  "actions": {
+    "cancel": "取消",
+    "save": "保存",
+    "close": "关闭",
+    "discard": "放弃",
+    "add": "添加",
+    "refresh": "刷新",
+    "search": "搜索",
+    "retry": "重试"
+  },
+  "states": {
+    "loading": "加载中…",
+    "loadingMore": "加载更多…",
+    "error": "错误"
+  },
+  "footer": {
+    "github": "GitHub 仓库",
+    "discord": "加入 Discord",
+    "settings": "设置"
   },
   "errorBoundary": {
     "oops": "出错了！",

@@ -1,5 +1,6 @@
 import { X, Circle } from 'lucide-react';
 import { cn } from '~/lib/utils';
+import { useTranslation } from 'react-i18next';
 
 interface ModalCloseButtonProps {
   onClick: () => void;
@@ -8,6 +9,7 @@ interface ModalCloseButtonProps {
 }
 
 export function ModalCloseButton({ onClick, className, isDirty }: ModalCloseButtonProps) {
+  const { t } = useTranslation('common');
   return (
     <button
       onClick={onClick}
@@ -21,7 +23,7 @@ export function ModalCloseButton({ onClick, className, isDirty }: ModalCloseButt
         'touch-manipulation',
         className
       )}
-      aria-label="Close"
+      aria-label={t('actions.close')}
     >
       {isDirty ? (
         <Circle className="w-4 h-4 fill-current" />

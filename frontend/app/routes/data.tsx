@@ -114,7 +114,7 @@ function SearchResultsGrid({
 }
 
 function DataContent() {
-  const { t } = useTranslation('data');
+  const { t } = useTranslation(['data', 'common']);
   const { openModal } = useModalNavigation();
   const [searchParams, setSearchParams] = useSearchParams();
   const currentPath = searchParams.get("path") || "";
@@ -246,7 +246,7 @@ function DataContent() {
       }
     } catch (error) {
       console.error("Failed to upload dropped files:", error);
-      toast.error(`Failed to upload files: ${error instanceof Error ? error.message : "Unknown error"}`);
+      toast.error(t('upload.filesFailed', { error: error instanceof Error ? error.message : "Unknown error" }));
     }
   }, [currentPath]);
 
@@ -274,7 +274,7 @@ function DataContent() {
       await uploadManager.enqueueBatch(batch);
     } catch (error) {
       console.error("Failed to upload files:", error);
-      toast.error(`Failed to upload files: ${error instanceof Error ? error.message : "Unknown error"}`);
+      toast.error(t('upload.filesFailed', { error: error instanceof Error ? error.message : "Unknown error" }));
     }
     e.target.value = "";
   };
@@ -300,7 +300,7 @@ function DataContent() {
       await uploadManager.enqueueBatch(batch);
     } catch (error) {
       console.error("Failed to upload folder:", error);
-      toast.error(`Failed to upload folder: ${error instanceof Error ? error.message : "Unknown error"}`);
+      toast.error(t('upload.folderFailed', { error: error instanceof Error ? error.message : "Unknown error" }));
     }
     e.target.value = "";
   };
@@ -378,7 +378,7 @@ function DataContent() {
             variant="ghost"
             size="icon"
             onClick={handleSearchToggle}
-            aria-label="Search"
+            aria-label={t('common:actions.search')}
             tabIndex={searchExpanded ? -1 : 0}
             className={cn(
               "absolute inset-0 transition-opacity duration-100 ease-out",
@@ -419,7 +419,7 @@ function DataContent() {
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Add">
+            <Button variant="ghost" size="icon" aria-label={t('common:actions.add')}>
               <Plus className="h-5 w-5" />
             </Button>
           </DropdownMenuTrigger>

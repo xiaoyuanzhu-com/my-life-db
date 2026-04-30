@@ -1,5 +1,6 @@
 import { Fragment } from 'react';
 import { X, Circle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface OpenedFile {
   path: string;
@@ -15,6 +16,7 @@ interface FileTabsProps {
 }
 
 export function FileTabs({ files, activeFile, dirtyFiles, onTabChange, onTabClose }: FileTabsProps) {
+  const { t } = useTranslation('data');
   const handleTabClick = (path: string) => {
     onTabChange(path);
   };
@@ -62,7 +64,7 @@ export function FileTabs({ files, activeFile, dirtyFiles, onTabChange, onTabClos
             <button
               className="hover:bg-accent rounded p-0.5 transition-colors shrink-0"
               onClick={(e) => handleCloseClick(e, file.path)}
-              aria-label="Close tab"
+              aria-label={t('library.closeTab')}
             >
               {dirtyFiles?.has(file.path) ? (
                 <Circle className="w-3 h-3 fill-current" />

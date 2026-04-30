@@ -9,6 +9,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
+import i18n from '~/lib/i18n/config';
 import type { PendingInboxItem } from '~/lib/send-queue/types';
 
 interface UseUploadNotificationsOptions {
@@ -108,7 +109,7 @@ export function useUploadNotifications(options: UseUploadNotificationsOptions = 
           }
         }
 
-        toast.error(`Upload failed: ${item.filename}`, {
+        toast.error(i18n.t('data:upload.failedFile', { filename: item.filename }), {
           description: `${item.errorMessage}${retryInfo}`,
           duration: 5000,
         });
@@ -134,9 +135,9 @@ export function useUploadNotifications(options: UseUploadNotificationsOptions = 
           const count = completedCountRef.current;
           if (count > 0) {
             if (count === 1) {
-              toast.success('Upload complete', { duration: 3000 });
+              toast.success(i18n.t('data:upload.complete'), { duration: 3000 });
             } else {
-              toast.success(`${count} uploads complete`, { duration: 3000 });
+              toast.success(i18n.t('data:upload.completeMany', { count }), { duration: 3000 });
             }
             completedCountRef.current = 0;
             batchTotalRef.current = 0;
@@ -152,7 +153,7 @@ export function useUploadNotifications(options: UseUploadNotificationsOptions = 
     if (batchTotal > 1 && activeUploadsRef.current.size > 0) {
       const uploaded = completedCountRef.current;
       const label = batchLabelRef.current;
-      toast.loading(`${label} — uploading ${uploaded}/${batchTotal}`, {
+      toast.loading(i18n.t('data:upload.batchProgress', { label, uploaded, total: batchTotal }), {
         id: PROGRESS_TOAST_ID,
         duration: Infinity,
       });
@@ -208,11 +209,11 @@ export function useUploadNotifications(options: UseUploadNotificationsOptions = 
  */
 export function showUploadStartToast(filename: string, count?: number) {
   if (count && count > 1) {
-    toast.info(`Uploading ${count} files...`, {
+    toast.info(i18n.t('data:upload.uploadingMany', { count }), {
       duration: 2000,
     });
   } else {
-    toast.info(`Uploading ${filename}...`, {
+    toast.info(i18n.t('data:upload.uploadingOne', { filename }), {
       duration: 2000,
     });
   }

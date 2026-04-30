@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FileCard } from './FileCard';
 import type { SearchResponse, SearchResultItem } from '~/types/api';
 import { ModalNavigationProvider } from '~/contexts/modal-navigation-context';
@@ -26,6 +27,7 @@ export function SearchResults({
   semanticError,
   onLocateInFeed,
 }: SearchResultsProps) {
+  const { t } = useTranslation('data');
   // Track accumulated results from each source (for pagination)
   const [accumulatedKeyword, setAccumulatedKeyword] = useState<SearchResultItem[]>([]);
   const [accumulatedSemantic, setAccumulatedSemantic] = useState<SearchResultItem[]>([]);
@@ -377,7 +379,7 @@ export function SearchResults({
 
           {!hasResults && showEmptyState && (
             <div className="flex flex-1 items-center justify-center min-h-full">
-              <p className="text-sm text-muted-foreground">No related files</p>
+              <p className="text-sm text-muted-foreground">{t('search.noRelated')}</p>
             </div>
           )}
 
@@ -386,7 +388,7 @@ export function SearchResults({
               {(isLoadingMore || loadMoreError) && (
                 <div className="py-2 text-center text-xs">
                   {isLoadingMore && (
-                    <p className="text-muted-foreground">Loading older results…</p>
+                    <p className="text-muted-foreground">{t('search.loadingOlder')}</p>
                   )}
                   {loadMoreError && (
                     <div className="flex flex-col items-center gap-2 text-destructive">

@@ -8,7 +8,10 @@
     "placeholder": "搜索文件…",
     "searching": "搜索中…",
     "failed": "搜索失败：{{error}}",
-    "noResults": "未找到结果"
+    "noResults": "未找到结果",
+    "noRelated": "没有相关文件",
+    "loadingOlder": "加载更早结果…",
+    "label": "搜索中"
   },
   "actions": {
     "uploadFile": "上传文件",
@@ -35,5 +38,90 @@
       "finance": "财务",
       "productivity": "效率"
     }
+  },
+  "inbox": {
+    "failedToLoad": "加载收件箱失败：{{error}}",
+    "empty": "收件箱为空",
+    "offline": "离线模式 — 显示缓存数据",
+    "loading": "加载收件箱…"
+  },
+  "omni": {
+    "addFile": "添加文件",
+    "saveAudio": "保存音频",
+    "stopRecording": "停止录音",
+    "stop": "停止",
+    "startVoiceInput": "开始语音输入",
+    "dropFiles": "将文件拖放到此"
+  },
+  "recording": {
+    "complete": "录音完成",
+    "close": "关闭",
+    "noTranscript": "暂无转录",
+    "generatingSummary": "正在生成摘要…",
+    "recording": "录音中"
+  },
+  "library": {
+    "emptyFolder": "空文件夹",
+    "cannotPreview": "无法预览此文件类型",
+    "folderNamePlaceholder": "文件夹名称",
+    "newFolderNamePlaceholder": "新文件夹名称",
+    "closeTab": "关闭标签页",
+    "details": "详情",
+    "detailsTooltip": "查看文件信息和摘要",
+    "cancelUpload": "取消上传",
+    "unpin": "取消置顶",
+    "foldersAppearHere": "文件夹将显示在这里"
+  },
+  "file": {
+    "metadata": {
+      "title": "文件信息",
+      "path": "路径",
+      "size": "大小",
+      "mimeType": "MIME 类型",
+      "sha256": "SHA-256 哈希",
+      "created": "创建时间",
+      "modified": "修改时间",
+      "empty": "文件为空。",
+      "cannotPreview": "此文件类型无法预览。",
+      "triggerDigest": "触发该文件的 AI 摘要处理"
+    },
+    "delete": {
+      "title": "删除 {{name}}？",
+      "description": "此操作不可撤销。文件和所有相关数据将被永久删除。",
+      "failed": "删除文件失败，请重试。"
+    },
+    "unsavedChanges": "有未保存的更改"
+  },
+  "digests": {
+    "title": "摘要",
+    "empty": "暂无摘要",
+    "rerunAll": "重新运行所有摘要",
+    "clickToRerun": "点击重新运行",
+    "cleanup": "清理",
+    "speechSummary": "语音识别摘要",
+    "loading": "加载摘要中…"
+  },
+  "explore": {
+    "empty": {
+      "title": "暂无内容。",
+      "description": "当助手通过 MCP 发布内容时，会显示在这里。"
+    }
+  },
+  "upload": {
+    "complete": "上传完成",
+    "completeMany": "已完成 {{count}} 项上传",
+    "uploadingMany": "正在上传 {{count}} 个文件…",
+    "uploadingOne": "正在上传 {{filename}}…",
+    "batchProgress": "{{label}} — 上传中 {{uploaded}}/{{total}}",
+    "failedFile": "上传失败：{{filename}}",
+    "filesFailed": "上传文件失败：{{error}}",
+    "folderFailed": "上传文件夹失败：{{error}}"
+  },
+  "errors": {
+    "renameFailed": "重命名失败",
+    "deleteFailed": "删除失败",
+    "extractFailed": "解压失败",
+    "createFolderFailed": "创建文件夹失败",
+    "moveFailed": "移动失败"
   }
 }

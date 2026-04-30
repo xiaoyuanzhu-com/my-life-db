@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { FolderOpen, Check, Clock } from 'lucide-react'
 import { cn } from '~/lib/utils'
 import { api } from '~/lib/api'
@@ -36,6 +37,7 @@ interface FolderPickerProps {
 }
 
 export function FolderPicker({ value, onChange, disabled = false, onChangedFilesClick }: FolderPickerProps) {
+  const { t } = useTranslation('agent');
   const [open, setOpen] = useState(false)
   const [basePath, setBasePath] = useState('')
   const [currentPath, setCurrentPath] = useState('') // path being browsed
@@ -239,7 +241,7 @@ export function FolderPicker({ value, onChange, disabled = false, onChangedFiles
 
           <div className="space-y-0.5">
             {options.length === 0 ? (
-              <div className="px-2 py-1.5 text-sm text-muted-foreground">No subfolders</div>
+              <div className="px-2 py-1.5 text-sm text-muted-foreground">{t('autoAgent.noSubfolders')}</div>
             ) : (
               options.map((folder) => {
                 const isParent = folder === parentPath

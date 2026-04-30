@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FolderClosed, Pencil, Trash2, Copy, Loader2, CircleAlert, Download, Upload, FolderUp, FolderPlus, PackageOpen } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import { api } from '~/lib/api';
@@ -63,6 +64,7 @@ export function GridItem({
   onUploadFolderTo,
   onNewFolderIn,
 }: GridItemProps) {
+  const { t } = useTranslation(['data', 'common']);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(getNodeName(node));
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -98,7 +100,7 @@ export function GridItem({
       const response = await api.post('/api/library/rename', { path: fullPath, newName: renameValue.trim() });
       if (!response.ok) {
         const error = await response.json();
-        alert(error.error || 'Failed to rename');
+        alert(error.error || t('data:errors.renameFailed'));
         return;
       }
       const result = await response.json();
@@ -106,7 +108,7 @@ export function GridItem({
       onRefresh();
     } catch (error) {
       console.error('Failed to rename:', error);
-      alert('Failed to rename');
+      alert(t('data:errors.renameFailed'));
     } finally {
       setIsRenaming(false);
     }
@@ -127,14 +129,14 @@ export function GridItem({
       const response = await api.delete(`/api/library/file?path=${encodeURIComponent(fullPath)}`);
       if (!response.ok) {
         const error = await response.json();
-        alert(error.error || 'Failed to delete');
+        alert(error.error || t('data:errors.deleteFailed'));
         return;
       }
       onFileDeleted?.(fullPath);
       onRefresh();
     } catch (error) {
       console.error('Failed to delete:', error);
-      alert('Failed to delete');
+      alert(t('data:errors.deleteFailed'));
     } finally {
       setIsDeleting(false);
       setShowDeleteDialog(false);
@@ -157,13 +159,13 @@ export function GridItem({
       const response = await api.post('/api/library/extract', { path: fullPath });
       if (!response.ok) {
         const error = await response.json();
-        alert(error.error || 'Failed to extract archive');
+        alert(error.error || t('data:errors.extractFailed'));
         return;
       }
       onRefresh();
     } catch (error) {
       console.error('Failed to extract:', error);
-      alert('Failed to extract archive');
+      alert(t('data:errors.extractFailed'));
     } finally {
       setIsExtracting(false);
     }
@@ -391,7 +393,7 @@ export function GridItem({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting}>{t('common:actions.cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} disabled={isDeleting}>
               {isDeleting ? 'Deleting...' : 'Delete'}
             </AlertDialogAction>

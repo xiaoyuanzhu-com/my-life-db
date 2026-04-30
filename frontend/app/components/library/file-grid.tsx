@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { FolderPlus } from 'lucide-react';
 import { api } from '~/lib/api';
@@ -62,6 +63,7 @@ export function FileGrid({
   const targetFileInputRef = useRef<HTMLInputElement>(null);
   const targetFolderInputRef = useRef<HTMLInputElement>(null);
   const uploadTargetPathRef = useRef<string>('');
+  const { t } = useTranslation(['data', 'common']);
   const tErr = useErrorMessage();
 
   // Reference to upload manager for cleanup
@@ -187,7 +189,7 @@ export function FileGrid({
       loadChildren(false);
     } catch (error) {
       console.error('Failed to create folder:', error);
-      alert('Failed to create folder');
+      alert(t('data:errors.createFolderFailed'));
     } finally {
       setIsCreatingFolder(false);
       setNewFolderName('');
@@ -232,7 +234,7 @@ export function FileGrid({
       await uploadManager.enqueueBatch(batch);
     } catch (error) {
       console.error('Failed to upload files:', error);
-      toast.error(`Failed to upload files: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(t('data:upload.filesFailed', { error: error instanceof Error ? error.message : 'Unknown error' }));
     }
 
     e.target.value = '';
@@ -264,7 +266,7 @@ export function FileGrid({
       await uploadManager.enqueueBatch(batch);
     } catch (error) {
       console.error('Failed to upload folder:', error);
-      toast.error(`Failed to upload folder: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(t('data:upload.folderFailed', { error: error instanceof Error ? error.message : 'Unknown error' }));
     }
 
     e.target.value = '';
@@ -285,7 +287,7 @@ export function FileGrid({
       loadChildren(false);
     } catch (error) {
       console.error('Failed to create folder:', error);
-      alert('Failed to create folder');
+      alert(t('data:errors.createFolderFailed'));
     }
   }, [loadChildren, tErr]);
 
@@ -351,11 +353,11 @@ export function FileGrid({
       <div className="flex-1 overflow-y-auto p-2">
         {isLoading && children.length === 0 ? (
           <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-            Loading...
+            {t('common:states.loading')}
           </div>
         ) : allNodes.length === 0 && !isCreatingFolder ? (
           <div className="flex flex-col items-center justify-center h-32 gap-2 text-sm text-muted-foreground">
-            <p>Empty folder</p>
+            <p>{t('data:library.emptyFolder')}</p>
           </div>
         ) : (
           <div
@@ -399,7 +401,7 @@ export function FileGrid({
                     onChange={(e) => setNewFolderName(e.target.value)}
                     onBlur={handleCreateFolder}
                     onKeyDown={handleNewFolderKeyDown}
-                    placeholder="Folder name"
+                    placeholder={t('data:library.folderNamePlaceholder')}
                     className="h-6 py-0 px-1 text-xs flex-1"
                   />
                 </div>
@@ -412,7 +414,7 @@ export function FileGrid({
                     onChange={(e) => setNewFolderName(e.target.value)}
                     onBlur={handleCreateFolder}
                     onKeyDown={handleNewFolderKeyDown}
-                    placeholder="Folder name"
+                    placeholder={t('data:library.folderNamePlaceholder')}
                     className="h-6 py-0 px-1 text-xs text-center"
                   />
                 </div>

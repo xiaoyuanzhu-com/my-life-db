@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface RecordingVisualizerProps {
   audioLevel: number; // 0-100 scale
@@ -9,6 +10,7 @@ interface RecordingVisualizerProps {
 }
 
 export function RecordingVisualizer({ audioLevel, duration, saveAudio = false, onSaveAudioChange, className = '' }: RecordingVisualizerProps) {
+  const { t } = useTranslation('data');
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Format duration as MM:SS
@@ -74,7 +76,7 @@ export function RecordingVisualizer({ audioLevel, duration, saveAudio = false, o
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span>
             <span className="relative inline-flex rounded-full h-3 w-3 bg-destructive"></span>
           </div>
-          <span className="text-muted-foreground font-medium">Recording</span>
+          <span className="text-muted-foreground font-medium">{t('recording.recording')}</span>
         </div>
 
         <div className="flex items-center gap-3">
@@ -87,7 +89,7 @@ export function RecordingVisualizer({ audioLevel, duration, saveAudio = false, o
                 onChange={(e) => onSaveAudioChange(e.target.checked)}
                 className="w-4 h-4 rounded border-border bg-background text-primary focus:ring-2 focus:ring-primary focus:ring-offset-2 cursor-pointer"
               />
-              <span className="text-xs text-muted-foreground select-none">Save Audio</span>
+              <span className="text-xs text-muted-foreground select-none">{t('omni.saveAudio')}</span>
             </label>
           )}
 

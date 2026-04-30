@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FileCard } from './FileCard';
 import { PendingFileCard } from './pending-file-card';
 import type { InboxResponse, InboxItem } from '~/types/api';
@@ -190,6 +191,7 @@ function parseCursorPath(cursor: string): string | null {
 }
 
 export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: InboxFeedProps) {
+  const { t } = useTranslation(['data', 'common']);
   // Page state - sparse map of loaded pages
   const [pages, setPages] = useState<Map<number, PageData>>(new Map());
   const [itemHeights, setItemHeights] = useState<Map<string, number>>(new Map());
@@ -798,7 +800,7 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
   if (error && visiblePendingItems.length === 0 && totalItems === 0) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-sm text-destructive">Failed to load inbox: {error}</p>
+        <p className="text-sm text-destructive">{t('data:inbox.failedToLoad', { error })}</p>
       </div>
     );
   }
@@ -807,7 +809,7 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
   if (totalItems === 0 && visiblePendingItems.length === 0 && !isInitialLoad && loadingPages.size === 0) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-sm text-muted-foreground">No items in inbox</p>
+        <p className="text-sm text-muted-foreground">{t('data:inbox.empty')}</p>
       </div>
     );
   }
@@ -821,14 +823,14 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
         {/* Offline/error banner when server unreachable but we have content to show */}
         {error && (totalItems > 0 || visiblePendingItems.length > 0) && (
           <div className="py-2 text-center bg-muted/50">
-            <p className="text-xs text-muted-foreground">Offline - showing cached data</p>
+            <p className="text-xs text-muted-foreground">{t('data:inbox.offline')}</p>
           </div>
         )}
 
         {/* Loading indicator at top */}
         {loadingPages.size > 0 && (
           <div className="py-4 text-center">
-            <p className="text-xs text-muted-foreground">Loading...</p>
+            <p className="text-xs text-muted-foreground">{t('common:states.loading')}</p>
           </div>
         )}
 
@@ -899,7 +901,7 @@ export function InboxFeed({ onRefresh, scrollToCursor, onScrollComplete }: Inbox
         {/* Initial loading state */}
         {isInitialLoad && loadingPages.size > 0 && (
           <div className="flex items-center justify-center h-full">
-            <p className="text-sm text-muted-foreground">Loading inbox...</p>
+            <p className="text-sm text-muted-foreground">{t('data:inbox.loading')}</p>
           </div>
         )}
       </div>

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Textarea } from '../ui/textarea';
 import { Button } from '../ui/button';
 import { Upload, Plus, Mic } from 'lucide-react';
@@ -46,6 +47,7 @@ export function OmniInput({
   maxHeight,
   clearSearchTrigger
 }: OmniInputProps) {
+  const { t } = useTranslation('data');
   // Local UI state
   const [content, setContent] = useState('');
   const [error, setError] = useState('');
@@ -313,7 +315,7 @@ export function OmniInput({
               size="sm"
               className="h-7 w-7 p-0 cursor-pointer"
               onClick={() => fileInputRef.current?.click()}
-              aria-label="Add file"
+              aria-label={t('omni.addFile')}
             >
               <Plus className="h-4 w-4" />
             </Button>
@@ -331,7 +333,7 @@ export function OmniInput({
                       onChange={(e) => setSaveAudio(e.target.checked)}
                       className="w-3 h-3 rounded border-border bg-background text-primary focus:ring-1 focus:ring-primary cursor-pointer"
                     />
-                    <span className="text-xs text-muted-foreground select-none">Save Audio</span>
+                    <span className="text-xs text-muted-foreground select-none">{t('omni.saveAudio')}</span>
                   </label>
                 </div>
               ) : searchStatus && (searchStatus.isSearching || searchStatus.hasNoResults || searchStatus.hasError || (searchStatus.resultCount && searchStatus.resultCount > 0)) ? (
@@ -352,14 +354,14 @@ export function OmniInput({
                 variant="destructive"
                 className="h-8 px-3 cursor-pointer gap-2"
                 onClick={voice.stop}
-                aria-label="Stop recording"
+                aria-label={t('omni.stopRecording')}
               >
                 <div className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
                 </div>
                 <Mic className="h-4 w-4" />
-                <span className="text-xs font-medium">Stop</span>
+                <span className="text-xs font-medium">{t('omni.stop')}</span>
               </Button>
             )}
 
@@ -380,7 +382,7 @@ export function OmniInput({
                 variant="ghost"
                 className="h-8 w-8 p-0 cursor-pointer"
                 onClick={voice.start}
-                aria-label="Start voice input"
+                aria-label={t('omni.startVoiceInput')}
               >
                 <Mic className="h-5 w-5" />
               </Button>
@@ -392,7 +394,7 @@ export function OmniInput({
             <div className="absolute inset-0 flex items-center justify-center bg-primary/5 rounded-xl pointer-events-none">
               <div className="text-center">
                 <Upload className="h-12 w-12 mx-auto mb-2 text-primary" />
-                <p className="text-sm font-medium text-primary">Drop files here</p>
+                <p className="text-sm font-medium text-primary">{t('omni.dropFiles')}</p>
               </div>
             </div>
           )}

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,6 +40,7 @@ export function DeleteConfirmDialog({
   onDeleted,
   onRestoreItem,
 }: DeleteConfirmDialogProps) {
+  const { t } = useTranslation(['data', 'common']);
   const handleConfirm = async () => {
     onOpenChange(false);
 
@@ -59,13 +61,13 @@ export function DeleteConfirmDialog({
       if (onRestoreItem) {
         // Optimistic mode: restore the item
         onRestoreItem();
-        alert('Failed to delete file. Please try again.');
+        alert(t('data:file.delete.failed'));
       } else if (onDeleted) {
         // onDeleted was called but no restore handler - just show error
-        alert('Failed to delete file. Please try again.');
+        alert(t('data:file.delete.failed'));
       } else {
         // Non-optimistic mode
-        alert('Failed to delete file. Please try again.');
+        alert(t('data:file.delete.failed'));
       }
     }
   };
@@ -74,13 +76,13 @@ export function DeleteConfirmDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete {fileName}?</AlertDialogTitle>
+          <AlertDialogTitle>{t('data:file.delete.title', { name: fileName })}</AlertDialogTitle>
           <AlertDialogDescription>
-            This action cannot be undone. This will permanently delete the file and all related data.
+            {t('data:file.delete.description')}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{t('common:actions.cancel')}</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleConfirm}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"

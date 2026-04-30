@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronRight, ChevronDown, Folder, Pencil, Trash2, FolderPlus, Copy, Loader2, CircleAlert, Download, Upload, FolderUp, PackageOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '~/lib/utils';
@@ -113,6 +114,7 @@ function TreeNode({
   const [isCreatingSubfolder, setIsCreatingSubfolder] = useState(false);
   const [subfolderName, setSubfolderName] = useState('');
   const subfolderInputRef = useRef<HTMLInputElement>(null);
+  const { t } = useTranslation(['data', 'common']);
   const tErr = useErrorMessage();
 
   // Compute full path from parent path and node name
@@ -227,7 +229,7 @@ function TreeNode({
       onRefresh();
     } catch (error) {
       console.error('Failed to rename:', error);
-      alert('Failed to rename');
+      alert(t('data:errors.renameFailed'));
     } finally {
       setIsRenaming(false);
     }
@@ -257,7 +259,7 @@ function TreeNode({
       onRefresh();
     } catch (error) {
       console.error('Failed to delete:', error);
-      alert('Failed to delete');
+      alert(t('data:errors.deleteFailed'));
     } finally {
       setIsDeleting(false);
       setShowDeleteDialog(false);
@@ -280,13 +282,13 @@ function TreeNode({
       const response = await api.post('/api/library/extract', { path: fullPath });
       if (!response.ok) {
         const error = await response.json();
-        alert(error.error || 'Failed to extract archive');
+        alert(error.error || t('data:errors.extractFailed'));
         return;
       }
       onRefresh();
     } catch (error) {
       console.error('Failed to extract:', error);
-      alert('Failed to extract archive');
+      alert(t('data:errors.extractFailed'));
     } finally {
       setIsExtracting(false);
     }
@@ -334,7 +336,7 @@ function TreeNode({
       loadChildren(false);
     } catch (error) {
       console.error('Failed to create folder:', error);
-      alert('Failed to create folder');
+      alert(t('data:errors.createFolderFailed'));
     } finally {
       setIsCreatingSubfolder(false);
       setSubfolderName('');
@@ -447,7 +449,7 @@ function TreeNode({
       onRefresh();
     } catch (error) {
       console.error('Failed to move:', error);
-      alert('Failed to move');
+      alert(t('data:errors.moveFailed'));
     }
 
     setDraggedItem(null);
@@ -598,7 +600,7 @@ function TreeNode({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting}>{t('common:actions.cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} disabled={isDeleting}>
               {isDeleting ? 'Deleting...' : 'Delete'}
             </AlertDialogAction>
@@ -611,7 +613,7 @@ function TreeNode({
         <div>
           {isLoading && children.length === 0 ? (
             <div className="text-xs text-muted-foreground px-2 py-1" style={{ paddingLeft: `${paddingLeft + 20}px` }}>
-              Loading...
+              {t('common:states.loading')}
             </div>
           ) : (
             <>
@@ -662,7 +664,7 @@ function TreeNode({
                     onBlur={handleCreateSubfolder}
                     onKeyDown={handleSubfolderKeyDown}
                     onClick={(e) => e.stopPropagation()}
-                    placeholder="New folder name"
+                    placeholder={t('data:library.folderNamePlaceholder')}
                     className="h-5 py-0 px-1 text-sm"
                   />
                 </div>
@@ -685,6 +687,7 @@ export function FileTree({
   onFileMoved,
   createFolderTrigger,
 }: FileTreeProps) {
+  const { t } = useTranslation(['data', 'common']);
   const [rootNodes, setRootNodes] = useState<FileNode[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
@@ -836,14 +839,14 @@ export function FileTree({
 
       if (!response.ok) {
         const error = await response.json();
-        alert(error.error || 'Failed to create folder');
+        alert(error.error || t('data:errors.createFolderFailed'));
         return;
       }
 
       loadRoot();
     } catch (error) {
       console.error('Failed to create folder:', error);
-      alert('Failed to create folder');
+      alert(t('data:errors.createFolderFailed'));
     } finally {
       setIsCreatingFolder(false);
       setNewFolderName('');
@@ -888,7 +891,7 @@ export function FileTree({
       await uploadManager.enqueueBatch(batch);
     } catch (error) {
       console.error('Failed to upload files:', error);
-      toast.error(`Failed to upload files: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(t('data:upload.filesFailed', { error: error instanceof Error ? error.message : 'Unknown error' }));
     }
 
     e.target.value = '';
@@ -920,7 +923,7 @@ export function FileTree({
       await uploadManager.enqueueBatch(batch);
     } catch (error) {
       console.error('Failed to upload folder:', error);
-      toast.error(`Failed to upload folder: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(t('data:upload.folderFailed', { error: error instanceof Error ? error.message : 'Unknown error' }));
     }
 
     e.target.value = '';
@@ -985,7 +988,7 @@ export function FileTree({
 
       if (!response.ok) {
         const error = await response.json();
-        alert(error.error || 'Failed to move');
+        alert(error.error || t('data:errors.moveFailed'));
         return;
       }
 
@@ -994,7 +997,7 @@ export function FileTree({
       loadRoot();
     } catch (error) {
       console.error('Failed to move:', error);
-      alert('Failed to move');
+      alert(t('data:errors.moveFailed'));
     }
 
     setDraggedItem(null);
@@ -1097,14 +1100,14 @@ export function FileTree({
       await uploadManager.enqueueBatch(batch);
     } catch (error) {
       console.error('[FileTree] Failed to upload files:', error);
-      alert(`Failed to upload files: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      alert(t('data:upload.filesFailed', { error: error instanceof Error ? error.message : 'Unknown error' }));
     }
   };
 
   if (isLoading) {
     return (
       <div className="p-4 text-sm text-muted-foreground">
-        Loading library...
+        {t('common:states.loading')}
       </div>
     );
   }
@@ -1137,7 +1140,7 @@ export function FileTree({
         >
           {rootNodes.length === 0 && !isCreatingFolder && pendingUploads.length === 0 ? (
             <div className="p-4 text-sm text-muted-foreground">
-              No files in library. Right-click to create a folder.
+              {t('data:library.foldersAppearHere')}
             </div>
           ) : (
             <>
@@ -1187,7 +1190,7 @@ export function FileTree({
                     onChange={(e) => setNewFolderName(e.target.value)}
                     onBlur={handleCreateFolder}
                     onKeyDown={handleNewFolderKeyDown}
-                    placeholder="New folder name"
+                    placeholder={t('data:library.folderNamePlaceholder')}
                     className="h-5 py-0 px-1 text-sm"
                   />
                 </div>

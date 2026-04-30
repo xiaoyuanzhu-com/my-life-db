@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { useFormatter } from "~/lib/i18n/use-formatter";
 import { useParams, useNavigate } from "react-router";
 import {
@@ -228,6 +229,7 @@ function DigestCard({ digest, onAudioSeek, onReset, isResetting }: DigestCardPro
 }
 
 export default function FileInfoPage() {
+  const { t } = useTranslation('data');
   const params = useParams();
   const navigate = useNavigate();
   const fmt = useFormatter();
@@ -520,11 +522,11 @@ export default function FileInfoPage() {
           <pre className="text-sm font-mono whitespace-pre-wrap break-words">{fileContent}</pre>
         </div>
       ) : (
-        <div className="px-6 py-8 text-sm text-muted-foreground">File is empty.</div>
+        <div className="px-6 py-8 text-sm text-muted-foreground">{t('file.metadata.empty')}</div>
       );
   } else {
     fileContentBody = (
-      <div className="px-6 py-8 text-sm text-muted-foreground">Preview not available for this file type.</div>
+      <div className="px-6 py-8 text-sm text-muted-foreground">{t('file.metadata.cannotPreview')}</div>
     );
   }
 
@@ -543,13 +545,13 @@ export default function FileInfoPage() {
 
         {/* File Metadata */}
         <section>
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">File Metadata</h2>
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">{t('file.metadata.title')}</h2>
           <div className="border rounded-lg p-6 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="flex items-start gap-3">
                 <FileText className="w-5 h-5 text-muted-foreground mt-0.5" />
                 <div>
-                  <div className="text-xs text-muted-foreground">Path</div>
+                  <div className="text-xs text-muted-foreground">{t('file.metadata.path')}</div>
                   <code className="text-sm">{file.path}</code>
                 </div>
               </div>
@@ -557,7 +559,7 @@ export default function FileInfoPage() {
               <div className="flex items-start gap-3">
                 <HardDrive className="w-5 h-5 text-muted-foreground mt-0.5" />
                 <div>
-                  <div className="text-xs text-muted-foreground">Size</div>
+                  <div className="text-xs text-muted-foreground">{t('file.metadata.size')}</div>
                   <div className="text-sm">{fmt.fileSize(file.size)}</div>
                 </div>
               </div>
@@ -565,7 +567,7 @@ export default function FileInfoPage() {
               <div className="flex items-start gap-3">
                 <FileText className="w-5 h-5 text-muted-foreground mt-0.5" />
                 <div>
-                  <div className="text-xs text-muted-foreground">MIME Type</div>
+                  <div className="text-xs text-muted-foreground">{t('file.metadata.mimeType')}</div>
                   <code className="text-sm">{file.mimeType || "unknown"}</code>
                 </div>
               </div>
@@ -574,7 +576,7 @@ export default function FileInfoPage() {
                 <div className="flex items-start gap-3">
                   <Hash className="w-5 h-5 text-muted-foreground mt-0.5" />
                   <div>
-                    <div className="text-xs text-muted-foreground">SHA-256 Hash</div>
+                    <div className="text-xs text-muted-foreground">{t('file.metadata.sha256')}</div>
                     <code className="text-xs break-all">{file.hash}</code>
                   </div>
                 </div>
@@ -583,7 +585,7 @@ export default function FileInfoPage() {
               <div className="flex items-start gap-3">
                 <Calendar className="w-5 h-5 text-muted-foreground mt-0.5" />
                 <div>
-                  <div className="text-xs text-muted-foreground">Created</div>
+                  <div className="text-xs text-muted-foreground">{t('file.metadata.created')}</div>
                   <div className="text-sm">{fmt.dateTime(file.createdAt)}</div>
                 </div>
               </div>
@@ -591,7 +593,7 @@ export default function FileInfoPage() {
               <div className="flex items-start gap-3">
                 <Clock className="w-5 h-5 text-muted-foreground mt-0.5" />
                 <div>
-                  <div className="text-xs text-muted-foreground">Modified</div>
+                  <div className="text-xs text-muted-foreground">{t('file.metadata.modified')}</div>
                   <div className="text-sm">{fmt.dateTime(file.modifiedAt)}</div>
                 </div>
               </div>
@@ -611,7 +613,7 @@ export default function FileInfoPage() {
                 onClick={handleDigest}
                 disabled={isDigesting}
                 className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium border rounded-lg hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Trigger AI digest processing for this file"
+                title={t('file.metadata.triggerDigest')}
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 {isDigesting ? "Processing..." : "Digest"}

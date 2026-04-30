@@ -1,5 +1,6 @@
 import { Info, FileText } from 'lucide-react';
 import { Link } from 'react-router';
+import { useTranslation } from 'react-i18next';
 
 interface FileFooterBarProps {
   filePath: string | null;
@@ -7,6 +8,7 @@ interface FileFooterBarProps {
 }
 
 export function FileFooterBar({ filePath, mimeType }: FileFooterBarProps) {
+  const { t } = useTranslation('data');
   if (!filePath) {
     return null;
   }
@@ -25,10 +27,10 @@ export function FileFooterBar({ filePath, mimeType }: FileFooterBarProps) {
       <Link
         to={infoUrl}
         className="flex items-center gap-1.5 hover:text-foreground transition-colors px-2 py-0.5 rounded hover:bg-accent"
-        title="View file information and digests"
+        title={t('library.detailsTooltip')}
       >
         <Info className="w-3.5 h-3.5" />
-        <span>Details</span>
+        <span>{t('library.details')}</span>
       </Link>
     </div>
   );

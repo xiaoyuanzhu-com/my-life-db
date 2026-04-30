@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   AlertCircle,
   CheckCircle2,
@@ -94,6 +95,7 @@ function StatusIcon({ status }: { status: DigestStageStatus }): React.ReactEleme
 }
 
 export function DigestsPanel({ file, className, audioSync }: DigestsPanelProps) {
+  const { t } = useTranslation('data');
   const [stages, setStages] = useState<DigestStage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [resettingDigester, setResettingDigester] = useState<string | null>(null);
@@ -192,7 +194,7 @@ export function DigestsPanel({ file, className, audioSync }: DigestsPanelProps) 
               onClick={() => stages.forEach((s) => handleResetDigest(s.key))}
               disabled={stages.some((s) => s.status === 'in-progress') || resettingDigester !== null}
               className="flex-shrink-0 p-0 bg-transparent border-none outline-none cursor-pointer hover:opacity-70 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Re-run all digests"
+              title={t('digests.rerunAll')}
             >
               {hasFailures && completedCount === 0 ? (
                 <XCircle className="h-4 w-4 text-muted-foreground" />
@@ -205,7 +207,7 @@ export function DigestsPanel({ file, className, audioSync }: DigestsPanelProps) 
               )}
             </button>
           )}
-          <h3 className="text-sm font-semibold">Digests</h3>
+          <h3 className="text-sm font-semibold">{t('digests.title')}</h3>
         </div>
       </div>
 
@@ -214,12 +216,12 @@ export function DigestsPanel({ file, className, audioSync }: DigestsPanelProps) 
         {isLoading ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
             <Loader2 className="h-8 w-8 mb-2 animate-spin" />
-            <p className="text-sm">Loading digests...</p>
+            <p className="text-sm">{t('digests.loading')}</p>
           </div>
         ) : stages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
             <Circle className="h-8 w-8 mb-2" />
-            <p className="text-sm">No digests available</p>
+            <p className="text-sm">{t('digests.empty')}</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -270,7 +272,7 @@ export function DigestsPanel({ file, className, audioSync }: DigestsPanelProps) 
                           <button
                             onClick={() => handleResetDigest(activeKey)}
                             className="flex-shrink-0 p-0 bg-transparent border-none outline-none cursor-pointer hover:opacity-70 transition-opacity"
-                            title="Click to re-run"
+                            title={t('digests.clickToRerun')}
                           >
                             <StatusIcon status={activeStatus} />
                           </button>
@@ -294,7 +296,7 @@ export function DigestsPanel({ file, className, audioSync }: DigestsPanelProps) 
                           ) : (
                             <StatusIcon status={cleanupStage!.status} />
                           )}
-                          <span>Cleanup</span>
+                          <span>{t('digests.cleanup')}</span>
                         </button>
                       )}
                       {/* Toggle for cleaned vs raw transcript (only when cleanup completed) */}
@@ -364,12 +366,12 @@ export function DigestsPanel({ file, className, audioSync }: DigestsPanelProps) 
                           <button
                             onClick={() => handleResetDigest('speech-recognition-summary')}
                             className="flex-shrink-0 p-0 bg-transparent border-none outline-none cursor-pointer hover:opacity-70 transition-opacity"
-                            title="Click to re-run"
+                            title={t('digests.clickToRerun')}
                           >
                             <StatusIcon status={summaryStage!.status} />
                           </button>
                         )}
-                        <span className="text-sm font-medium">Speech Recognition Summary</span>
+                        <span className="text-sm font-medium">{t('digests.speechSummary')}</span>
                       </div>
                       <div className="overflow-y-auto min-h-0 flex-1">
                         {summaryStage!.error && (

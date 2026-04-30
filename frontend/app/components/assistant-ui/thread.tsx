@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { TooltipIconButton } from "~/components/assistant-ui/tooltip-icon-button";
 import { Button } from "~/components/ui/button";
 import {
@@ -218,17 +219,19 @@ const InitialScrollToBottom: FC = () => {
 };
 
 const ThreadLoading: FC = () => {
+  const { t } = useTranslation('common');
   return (
     <div className="mx-auto my-auto flex w-full max-w-(--thread-max-width) grow flex-col items-center justify-center">
-      <p className="text-muted-foreground text-sm">Loading...</p>
+      <p className="text-muted-foreground text-sm">{t('states.loading')}</p>
     </div>
   );
 };
 
 const ThreadHistoryError: FC<{ message: string }> = ({ message }) => {
+  const { t } = useTranslation('agent');
   return (
     <div className="mx-auto my-auto flex w-full max-w-(--thread-max-width) grow flex-col items-center justify-center gap-2">
-      <p className="text-muted-foreground text-sm">Session history unavailable</p>
+      <p className="text-muted-foreground text-sm">{t('thread.sessionHistoryUnavailable')}</p>
       <p className="text-muted-foreground/60 text-xs max-w-sm text-center">{message}</p>
       <p className="text-muted-foreground/60 text-xs">You can still send a new message to continue this session.</p>
     </div>
@@ -236,9 +239,10 @@ const ThreadHistoryError: FC<{ message: string }> = ({ message }) => {
 };
 
 const ThreadSessionError: FC<{ message: string }> = ({ message }) => {
+  const { t } = useTranslation('agent');
   return (
     <div className="mx-auto my-auto flex w-full max-w-(--thread-max-width) grow flex-col items-center justify-center gap-2">
-      <p className="text-muted-foreground text-sm">Session failed</p>
+      <p className="text-muted-foreground text-sm">{t('thread.sessionFailed')}</p>
       <p className="text-muted-foreground/60 text-xs max-w-sm text-center break-words">{message}</p>
       <p className="text-muted-foreground/60 text-xs">You can start a new session or retry with a new message.</p>
     </div>
@@ -246,9 +250,10 @@ const ThreadSessionError: FC<{ message: string }> = ({ message }) => {
 };
 
 const ThreadWelcome: FC = () => {
+  const { t } = useTranslation('agent');
   return (
     <div className="aui-thread-welcome-root mx-auto my-auto flex w-full max-w-(--thread-max-width) grow flex-col items-center justify-center">
-      <p className="text-muted-foreground text-sm">Start a conversation</p>
+      <p className="text-muted-foreground text-sm">{t('thread.startConversation')}</p>
     </div>
   );
 };
@@ -257,6 +262,7 @@ const ThreadWelcome: FC = () => {
  * ComposerPrimitive.Cancel gates on canCancel which can be unreliable
  * with external store runtimes, so we bypass it entirely. */
 const StopButton: FC = () => {
+  const { t } = useTranslation('agent');
   const aui = useAui();
   return (
     <Button
@@ -264,7 +270,7 @@ const StopButton: FC = () => {
       variant="default"
       size="icon"
       className="aui-composer-cancel size-8 rounded-full"
-      aria-label="Stop generating"
+      aria-label={t('thread.stopGenerating')}
       onClick={() => aui.thread().cancelRun()}
     >
       <SquareIcon className="aui-composer-cancel-icon size-3 fill-current" />
@@ -294,7 +300,7 @@ const SendButton: FC<{
       variant="default"
       size="icon"
       className="aui-composer-send size-8 rounded-full"
-      aria-label="Send message"
+      aria-label={tooltip}
       disabled={!canSend}
       onClick={onSend}
     >
@@ -488,6 +494,7 @@ const MCPServerRow: FC<{
   server: MCPServerEntry
   onToggleDisabled: (disabled: boolean) => void
 }> = ({ server, onToggleDisabled }) => {
+  const { t } = useTranslation('agent');
   const [open, setOpen] = useState(false)
   const { data, isLoading } = useMCPServerTools(server.name, { enabled: open })
   const tools = data?.tools ?? []
@@ -506,7 +513,7 @@ const MCPServerRow: FC<{
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className="min-w-64 max-w-96 max-h-96 overflow-y-auto">
         <div className="flex items-center justify-between px-2 py-1.5 gap-3">
-          <span className="text-xs text-foreground">Enabled</span>
+          <span className="text-xs text-foreground">{t('thread.enabled')}</span>
           <Switch
             size="sm"
             checked={!server.disabled}
@@ -547,6 +554,7 @@ const MCPServerRow: FC<{
 }
 
 const MCPServersSubMenu: FC = () => {
+  const { t } = useTranslation('agent');
   const { data: servers } = useMCPServers()
   const toggle = useToggleMCPServer()
   const navigate = useNavigate()
@@ -555,7 +563,7 @@ const MCPServersSubMenu: FC = () => {
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger className="px-2 py-1.5 text-xs text-muted-foreground focus:text-foreground">
-        <span className="shrink-0">MCP</span>
+        <span className="shrink-0">{t('thread.mcp')}</span>
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className="min-w-56 max-w-80 max-h-96 overflow-y-auto">
         {list.length === 0 && (
@@ -578,7 +586,7 @@ const MCPServersSubMenu: FC = () => {
           className="px-2 py-1.5 gap-2 text-xs text-muted-foreground focus:text-foreground"
         >
           <Plus className="size-3.5 shrink-0" />
-          <span>Add new MCP</span>
+          <span>{t('thread.addNewMcp')}</span>
         </DropdownMenuItem>
       </DropdownMenuSubContent>
     </DropdownMenuSub>
@@ -586,6 +594,7 @@ const MCPServersSubMenu: FC = () => {
 }
 
 const SkillsSubMenu: FC<{ onSelectSkill: (name: string) => void }> = ({ onSelectSkill }) => {
+  const { t } = useTranslation('agent');
   // Reading workingDir here (rather than prop-drilling) so the skills list
   // updates when the composer's cwd changes, picking up project-level skills
   // under .claude/skills, .agents/skills, .gemini/skills in that dir.
@@ -596,7 +605,7 @@ const SkillsSubMenu: FC<{ onSelectSkill: (name: string) => void }> = ({ onSelect
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger className="px-2 py-1.5 text-xs text-muted-foreground focus:text-foreground">
-        <span className="shrink-0">Skills</span>
+        <span className="shrink-0">{t('thread.skills')}</span>
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className="min-w-64 max-w-96 max-h-80 overflow-y-auto">
         {list.length === 0 && (
@@ -631,7 +640,7 @@ const SkillsSubMenu: FC<{ onSelectSkill: (name: string) => void }> = ({ onSelect
           className="px-2 py-1.5 gap-2 text-xs text-muted-foreground focus:text-foreground"
         >
           <Plus className="size-3.5 shrink-0" />
-          <span>Add new skill</span>
+          <span>{t('thread.addNewSkill')}</span>
         </DropdownMenuItem>
       </DropdownMenuSubContent>
     </DropdownMenuSub>
@@ -644,6 +653,7 @@ const ComposerOptionsMenu: FC<{
   onShowCommands: () => void
   onUseSkill: (name: string) => void
 }> = ({ onAttachFiles, onAddContext, onShowCommands, onUseSkill }) => {
+  const { t } = useTranslation('agent');
   const {
     agentType, onAgentTypeChange,
     configOptions, onConfigOptionChange,
@@ -668,7 +678,7 @@ const ComposerOptionsMenu: FC<{
         <button
           type="button"
           className="flex items-center px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/10 cursor-pointer transition-colors shrink-0"
-          title="Options"
+          title={t('thread.options')}
         >
           <Plus className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" />
         </button>
@@ -676,7 +686,7 @@ const ComposerOptionsMenu: FC<{
       <DropdownMenuContent align="start" side="bottom" sideOffset={4}>
         {agentType !== undefined && (
           <div className="flex items-center justify-between px-2 py-1.5 gap-4">
-            <span className="text-xs text-muted-foreground shrink-0">Agent</span>
+            <span className="text-xs text-muted-foreground shrink-0">{t('thread.agent')}</span>
             <AgentTypeSelector
               value={agentType as AgentType}
               onChange={onAgentTypeChange ? (t) => onAgentTypeChange(t) : () => {}}
@@ -703,21 +713,21 @@ const ComposerOptionsMenu: FC<{
           className="px-2 py-1.5 gap-2 text-xs text-muted-foreground focus:text-foreground"
         >
           <Paperclip className="size-3.5 shrink-0" />
-          <span>Upload files</span>
+          <span>{t('thread.uploadFiles')}</span>
         </DropdownMenuItem>
         <DropdownMenuItem
           onSelect={onAddContext}
           className="px-2 py-1.5 gap-2 text-xs text-muted-foreground focus:text-foreground"
         >
           <AtSign className="size-3.5 shrink-0" />
-          <span>Add context</span>
+          <span>{t('thread.addContext')}</span>
         </DropdownMenuItem>
         <DropdownMenuItem
           onSelect={onShowCommands}
           className="px-2 py-1.5 gap-2 text-xs text-muted-foreground focus:text-foreground"
         >
           <SquareSlash className="size-3.5 shrink-0" />
-          <span>Slash commands</span>
+          <span>{t('thread.slashCommands')}</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -729,6 +739,7 @@ type ComposerProps = {
   existingStorageId?: string | null
 }
 const Composer: FC<ComposerProps> = ({ onAttachmentsStorageIdChange, existingStorageId }) => {
+  const { t } = useTranslation('agent');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasTouch = useHasTouch();
@@ -905,11 +916,11 @@ const Composer: FC<ComposerProps> = ({ onAttachmentsStorageIdChange, existingSto
         <div className="flex flex-col gap-2 p-(--composer-padding)">
           <ComposerPrimitive.Input
             ref={textareaRef}
-            placeholder="Message..."
+            placeholder={t('thread.messagePlaceholder')}
             className="aui-composer-input max-h-32 min-h-10 w-full resize-none bg-transparent px-1.75 py-1 text-sm outline-none placeholder:text-muted-foreground/80"
             rows={1}
             autoFocus={!hasTouch}
-            aria-label="Message input"
+            aria-label={t('thread.messageInput')}
           />
           <div className="aui-composer-action-wrapper relative flex items-center justify-between">
             <div className="flex items-center gap-1">
@@ -946,7 +957,7 @@ const Composer: FC<ComposerProps> = ({ onAttachmentsStorageIdChange, existingSto
                   tooltip={
                     attachments.hasPending
                       ? "Waiting for uploads"
-                      : "Send message"
+                      : t('thread.sendMessage')
                   }
                   onSend={handleSend}
                 />

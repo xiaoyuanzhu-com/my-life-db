@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { fetchExplorePosts } from "~/hooks/use-explore";
 import { PostCard } from "./post-card";
 import type { ExplorePost } from "~/types/explore";
@@ -18,6 +19,8 @@ interface ExploreFeedProps {
 }
 
 export function ExploreFeed({ onPostClick }: ExploreFeedProps) {
+  const { t: tCommon } = useTranslation('common');
+  const { t: tData } = useTranslation('data');
   const [posts, setPosts] = useState<ExplorePost[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -81,7 +84,7 @@ export function ExploreFeed({ onPostClick }: ExploreFeedProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="text-muted-foreground text-sm">Loading...</div>
+        <div className="text-muted-foreground text-sm">{tCommon('states.loading')}</div>
       </div>
     );
   }
@@ -89,8 +92,8 @@ export function ExploreFeed({ onPostClick }: ExploreFeedProps) {
   if (posts.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-2">
-        <p className="text-muted-foreground text-sm">No posts yet.</p>
-        <p className="text-muted-foreground text-xs">Posts will appear here when agents publish them via MCP.</p>
+        <p className="text-muted-foreground text-sm">{tData('explore.empty.title')}</p>
+        <p className="text-muted-foreground text-xs">{tData('explore.empty.description')}</p>
       </div>
     );
   }
@@ -114,7 +117,7 @@ export function ExploreFeed({ onPostClick }: ExploreFeedProps) {
         </div>
         {loadingMore && (
           <div className="flex justify-center py-4">
-            <div className="text-muted-foreground text-sm">Loading more...</div>
+            <div className="text-muted-foreground text-sm">{tCommon('states.loadingMore')}</div>
           </div>
         )}
       </div>

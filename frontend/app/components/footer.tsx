@@ -1,10 +1,12 @@
 import { Link, useLocation } from 'react-router';
+import { useTranslation } from 'react-i18next';
 import github from 'thesvg/github';
 import discord from 'thesvg/discord';
 import { Settings } from 'lucide-react';
 import { ThemeToggle } from './theme-toggle';
 
 export function Footer() {
+  const { t } = useTranslation('common');
   const location = useLocation();
   const currentPath = location.pathname;
 
@@ -32,7 +34,7 @@ export function Footer() {
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center hover:text-foreground transition-colors"
-            title="GitHub Repository"
+            title={t('footer.github')}
           >
             <span
               className="block h-3.5 w-3.5 [&_svg]:h-full [&_svg]:w-full [&_svg]:fill-current"
@@ -45,7 +47,7 @@ export function Footer() {
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center hover:text-foreground transition-colors"
-            title="Join Discord"
+            title={t('footer.discord')}
           >
             <span
               className="block h-3.5 w-3.5 [&_svg]:h-full [&_svg]:w-full [&_svg]:fill-current"
@@ -58,7 +60,7 @@ export function Footer() {
           <Link
             to="/settings"
             className="flex items-center hover:text-foreground transition-colors"
-            title="Settings"
+            title={t('footer.settings')}
           >
             <Settings className="h-3.5 w-3.5" />
           </Link>

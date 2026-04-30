@@ -8,6 +8,26 @@
   "auth": {
     "signIn": "Sign In"
   },
+  "actions": {
+    "cancel": "Cancel",
+    "save": "Save",
+    "close": "Close",
+    "discard": "Discard",
+    "add": "Add",
+    "refresh": "Refresh",
+    "search": "Search",
+    "retry": "Retry"
+  },
+  "states": {
+    "loading": "Loading...",
+    "loadingMore": "Loading more...",
+    "error": "Error"
+  },
+  "footer": {
+    "github": "GitHub Repository",
+    "discord": "Join Discord",
+    "settings": "Settings"
+  },
   "errorBoundary": {
     "oops": "Oops!",
     "generic": "An unexpected error occurred.",

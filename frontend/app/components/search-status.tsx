@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface SearchStatusProps {
   isSearching: boolean;
@@ -8,6 +9,7 @@ interface SearchStatusProps {
 }
 
 export function SearchStatus({ isSearching, hasNoResults, hasError, resultCount }: SearchStatusProps) {
+  const { t } = useTranslation('data');
   const [dots, setDots] = useState(0);
 
   // Animate dots for searching state
@@ -37,7 +39,7 @@ export function SearchStatus({ isSearching, hasNoResults, hasError, resultCount 
   if (isSearching) {
     return (
       <div className="text-xs text-muted-foreground flex items-center">
-        <span>Searching</span>
+        <span>{t('search.label')}</span>
         <span className="inline-block w-3 text-left">{'.'.repeat(dots)}</span>
       </div>
     );

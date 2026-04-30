@@ -24,6 +24,7 @@
  */
 
 import { type FC, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   ArchiveIcon,
   ArchiveRestoreIcon,
@@ -124,6 +125,7 @@ export const AgentSidebar: FC<AgentSidebarProps> = ({
   onUnarchiveSession,
   onPinSession,
 }) => {
+  const { t } = useTranslation('agent');
   // Bucket sessions: pinned (across all time), then by `lastActivity` time bucket.
   // A pinned session appears ONLY in the Pinned section to avoid duplicate rows.
   const { pinned, byBucket } = useMemo(() => {
@@ -162,7 +164,7 @@ export const AgentSidebar: FC<AgentSidebarProps> = ({
   return (
     <div className="aui-root flex flex-1 min-h-0 flex-col gap-0.5 overflow-y-auto">
       {pinned.length > 0 && (
-        <Section title="Pinned">
+        <Section title={t('sidebar.pinned')}>
           {pinned.map((s) => (
             <SessionRow
               key={s.id}
@@ -257,6 +259,7 @@ const SessionRow: FC<SessionRowProps> = ({
   onUnarchiveSession,
   onPinSession,
 }) => {
+  const { t } = useTranslation('agent');
   const isActive = session.id === activeSessionId
   const sessionState = sessionStates?.[session.id]
   const isArchived = sessionState === 'archived'
@@ -374,7 +377,7 @@ const SessionRow: FC<SessionRowProps> = ({
             className="mr-1.5 size-6 p-0 opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:bg-accent data-[state=open]:opacity-100 group-data-active:opacity-100"
           >
             <MoreHorizontalIcon className="size-4" />
-            <span className="sr-only">Session options</span>
+            <span className="sr-only">{t('sidebar.sessionOptions')}</span>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent side="bottom" align="start" className="min-w-40">

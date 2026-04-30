@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,6 +31,7 @@ interface TextContentProps {
 
 export const TextContent = forwardRef<TextContentHandle, TextContentProps>(
   function TextContent({ file, onDirtyStateChange, onCloseConfirmed }, ref) {
+    const { t } = useTranslation(['data', 'common']);
     const [isLoading, setIsLoading] = useState(true);
     const [fullContent, setFullContent] = useState<string | null>(null);
     const [editedContent, setEditedContent] = useState<string | null>(null);
@@ -141,15 +143,15 @@ export const TextContent = forwardRef<TextContentHandle, TextContentProps>(
         <AlertDialog open={isCloseDialogOpen} onOpenChange={setIsCloseDialogOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Unsaved changes</AlertDialogTitle>
+              <AlertDialogTitle>{t('data:file.unsavedChanges')}</AlertDialogTitle>
               <AlertDialogDescription>
                 You have unsaved changes. What would you like to do?
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel onClick={handleCancelClose}>Cancel</AlertDialogCancel>
-              <Button variant="destructive" onClick={handleDiscard}>Discard</Button>
-              <AlertDialogAction onClick={handleSaveAndClose}>Save</AlertDialogAction>
+              <AlertDialogCancel onClick={handleCancelClose}>{t('common:actions.cancel')}</AlertDialogCancel>
+              <Button variant="destructive" onClick={handleDiscard}>{t('common:actions.discard')}</Button>
+              <AlertDialogAction onClick={handleSaveAndClose}>{t('common:actions.save')}</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

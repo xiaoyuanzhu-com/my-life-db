@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronRight, Pencil } from 'lucide-react'
 import { cn } from '~/lib/utils'
 import { api } from '~/lib/api'
@@ -56,6 +57,7 @@ export function AutoAgentTree({
   onSelectSession,
   refreshKey = 0,
 }: Props) {
+  const { t } = useTranslation('agent');
   const [defs, setDefs] = useState<AutoAgentSummary[]>([])
   const [error, setError] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
@@ -207,7 +209,7 @@ export function AutoAgentTree({
                     'md:opacity-0 md:group-hover:opacity-100',
                     isEditing && 'md:opacity-100'
                   )}
-                  title="Edit agent"
+                  title={t('autoAgent.edit')}
                 >
                   <Pencil className="size-3.5" />
                 </button>

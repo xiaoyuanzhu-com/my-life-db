@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useFormatter } from "~/lib/i18n/use-formatter";
 import { fetchExplorePost } from "~/hooks/use-explore";
@@ -11,6 +12,7 @@ interface PostDetailProps {
 }
 
 export function PostDetail({ postId, onClose }: PostDetailProps) {
+  const { t } = useTranslation('common');
   const fmt = useFormatter();
   const [post, setPost] = useState<ExplorePostWithComments | null>(null);
   const [loading, setLoading] = useState(true);
@@ -267,7 +269,7 @@ export function PostDetail({ postId, onClose }: PostDetailProps) {
 
         {loading || !post ? (
           <div className="flex items-center justify-center py-20">
-            <div className="text-muted-foreground">Loading...</div>
+            <div className="text-muted-foreground">{t('states.loading')}</div>
           </div>
         ) : (
           <>

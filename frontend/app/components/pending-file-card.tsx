@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X, CircleAlert, Loader2 } from 'lucide-react';
 import { useFormatter } from '~/lib/i18n/use-formatter';
 import { cn } from '~/lib/utils';
@@ -39,6 +40,7 @@ interface PendingFileCardProps {
 }
 
 export function PendingFileCard({ item, onCancel }: PendingFileCardProps) {
+  const { t } = useTranslation('data');
   const fmt = useFormatter();
   const [isCanceling, setIsCanceling] = useState(false);
   const [, setTick] = useState(0); // Force re-render for countdown updates
@@ -104,7 +106,7 @@ export function PendingFileCard({ item, onCancel }: PendingFileCardProps) {
             'p-0.5 rounded hover:bg-muted-foreground/20 transition-colors',
             isCanceling && 'opacity-50 cursor-not-allowed'
           )}
-          aria-label="Cancel upload"
+          aria-label={t('library.cancelUpload')}
         >
           {isCanceling ? (
             <Loader2 className="h-3 w-3 animate-spin" />

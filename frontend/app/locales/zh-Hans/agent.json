@@ -1,18 +1,72 @@
 {
   "page": {
-    "title": "智能体会话",
-    "description": "访问你的智能体会话，用于软件开发任务。",
+    "title": "助手会话",
+    "description": "访问你的助手会话，用于软件开发任务。",
     "signInHint": "请使用顶栏的按钮登录以开始。"
   },
   "loading": "加载中…",
   "sidebar": {
     "sessions": "会话",
     "auto": "自动",
+    "newSession": "新会话",
+    "newAutoAgent": "新建自动助手",
+    "collapse": "收起侧边栏",
+    "expand": "展开侧边栏",
+    "shareSession": "分享会话",
+    "sessionOptions": "会话选项",
+    "pinned": "置顶",
     "filter": {
       "active": "活跃",
       "all": "全部",
-      "archived": "已归档"
+      "archived": "归档"
     }
+  },
+  "thread": {
+    "sessionHistoryUnavailable": "无法加载会话记录",
+    "sessionFailed": "会话失败",
+    "startConversation": "开始对话",
+    "stopGenerating": "停止生成",
+    "sendMessage": "发送消息",
+    "messagePlaceholder": "输入消息…",
+    "messageInput": "消息输入",
+    "uploadFiles": "上传文件",
+    "addContext": "添加上下文",
+    "slashCommands": "斜杠命令",
+    "options": "选项",
+    "agent": "助手",
+    "enabled": "已启用",
+    "mcp": "MCP",
+    "addNewMcp": "添加新 MCP",
+    "skills": "技能",
+    "addNewSkill": "添加新技能",
+    "copyText": "复制文本",
+    "loadingThreads": "加载会话中",
+    "moreOptions": "更多选项",
+    "addAttachment": "添加附件",
+    "expandPreview": "展开预览"
+  },
+  "autoAgent": {
+    "back": "返回助手列表",
+    "editPrompt": "打开新会话以编辑此助手",
+    "edit": "编辑助手",
+    "shareAsText": "以文本分享",
+    "deleteConfirm": "删除自动助手？",
+    "noChangedFiles": "没有变更文件",
+    "noSubfolders": "没有子文件夹",
+    "off": "关闭",
+    "trigger": {
+      "cron": "cron {{expr}}",
+      "fileNew": "新建文件",
+      "fileChanged": "变更文件",
+      "manual": "手动"
+    }
+  },
+  "plan": {
+    "tasks": "任务"
+  },
+  "preview": {
+    "fullscreen": "全屏预览",
+    "exit": "退出全屏"
   },
   "share": {
     "dialogTitle": "分享会话",

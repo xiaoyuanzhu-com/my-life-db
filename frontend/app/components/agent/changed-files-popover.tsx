@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useTranslation } from "react-i18next"
 import { FileText } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/ui/popover"
 import { fetchWithRefresh } from "~/lib/fetch-with-refresh"
@@ -31,6 +32,7 @@ interface ChangedFilesPopoverProps {
 }
 
 export function ChangedFilesPopover({ sessionId, refreshKey, open, onOpenChange, hideTrigger }: ChangedFilesPopoverProps) {
+  const { t } = useTranslation('agent');
   const [data, setData] = useState<ChangedFilesResponse | null>(null)
 
   useEffect(() => {
@@ -77,7 +79,7 @@ export function ChangedFilesPopover({ sessionId, refreshKey, open, onOpenChange,
         {!data || !data.files ? (
           <div className="py-4 text-center text-xs text-muted-foreground">Loading...</div>
         ) : data.files.length === 0 ? (
-          <div className="py-4 text-center text-xs text-muted-foreground">No changed files</div>
+          <div className="py-4 text-center text-xs text-muted-foreground">{t('autoAgent.noChangedFiles')}</div>
         ) : (
           <>
             <div className="max-h-60 overflow-y-auto p-2">

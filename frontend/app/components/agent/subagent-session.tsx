@@ -6,6 +6,7 @@
  * Recursive: if a child tool call has its own children, renders another SubagentSession.
  */
 import { useState, useRef, useMemo, memo } from "react"
+import { useTranslation } from "react-i18next"
 import type { ThreadMessageLike } from "@assistant-ui/react"
 import type { ToolCallMessagePartStatus } from "@assistant-ui/react"
 import type { ReadonlyJSONObject } from "assistant-stream/utils"
@@ -220,6 +221,7 @@ export function SubagentSession({
   childMessages,
   childrenMap,
 }: SubagentSessionProps) {
+  const { t } = useTranslation('agent');
   const hasResult = status?.type === "complete" || status?.type === "incomplete"
   const effectiveStatus = computeToolEffectiveStatus(
     status ?? { type: "running" },
@@ -250,7 +252,7 @@ export function SubagentSession({
       >
         <MessageDot type={dotType} />
         <div className="flex-1 min-w-0 flex items-center gap-2">
-          <span className="font-semibold text-foreground">Agent</span>
+          <span className="font-semibold text-foreground">{t('thread.agent')}</span>
           {description && (
             <span className="truncate text-muted-foreground">{description}</span>
           )}

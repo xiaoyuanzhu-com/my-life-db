@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Share2, Trash2, X } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import {
@@ -20,6 +21,7 @@ interface MultiSelectActionBarProps {
 }
 
 export function MultiSelectActionBar({ onDeleted }: MultiSelectActionBarProps) {
+  const { t } = useTranslation('common');
   const { selectedPaths, clearSelection } = useSelection();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -149,7 +151,7 @@ export function MultiSelectActionBar({ onDeleted }: MultiSelectActionBarProps) {
             onClick={clearSelection}
           >
             <X className="h-4 w-4 mr-1.5" />
-            Cancel
+            {t('actions.cancel')}
           </Button>
         </div>
       </div>

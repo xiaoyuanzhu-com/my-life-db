@@ -8,11 +8,65 @@
   "sidebar": {
     "sessions": "Sessions",
     "auto": "Auto",
+    "newSession": "New session",
+    "newAutoAgent": "New auto agent",
+    "collapse": "Collapse sidebar",
+    "expand": "Expand sidebar",
+    "shareSession": "Share session",
+    "sessionOptions": "Session options",
+    "pinned": "Pinned",
     "filter": {
       "active": "Active",
       "all": "All",
       "archived": "Archived"
     }
+  },
+  "thread": {
+    "sessionHistoryUnavailable": "Session history unavailable",
+    "sessionFailed": "Session failed",
+    "startConversation": "Start a conversation",
+    "stopGenerating": "Stop generating",
+    "sendMessage": "Send message",
+    "messagePlaceholder": "Message...",
+    "messageInput": "Message input",
+    "uploadFiles": "Upload files",
+    "addContext": "Add context",
+    "slashCommands": "Slash commands",
+    "options": "Options",
+    "agent": "Agent",
+    "enabled": "Enabled",
+    "mcp": "MCP",
+    "addNewMcp": "Add new MCP",
+    "skills": "Skills",
+    "addNewSkill": "Add new skill",
+    "copyText": "Copy text",
+    "loadingThreads": "Loading threads",
+    "moreOptions": "More options",
+    "addAttachment": "Add Attachment",
+    "expandPreview": "Expand preview"
+  },
+  "autoAgent": {
+    "back": "Back to agents",
+    "editPrompt": "Open a new chat session pre-filled with a prompt to edit this agent",
+    "edit": "Edit agent",
+    "shareAsText": "Share as text",
+    "deleteConfirm": "Delete auto agent?",
+    "noChangedFiles": "No changed files",
+    "noSubfolders": "No subfolders",
+    "off": "OFF",
+    "trigger": {
+      "cron": "cron {{expr}}",
+      "fileNew": "new file",
+      "fileChanged": "changed file",
+      "manual": "manual"
+    }
+  },
+  "plan": {
+    "tasks": "Tasks"
+  },
+  "preview": {
+    "fullscreen": "Preview fullscreen",
+    "exit": "Exit fullscreen"
   },
   "share": {
     "dialogTitle": "Share session",

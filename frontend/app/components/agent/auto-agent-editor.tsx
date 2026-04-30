@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Check, Copy, Loader2, Play, Save, Sparkles, Trash2 } from 'lucide-react'
 import { Button } from '~/components/ui/button'
 import { Textarea } from '~/components/ui/textarea'
@@ -42,6 +43,7 @@ interface Props {
 }
 
 export function AutoAgentEditor({ name, onSaved, onDeleted, onEditWithAI, onBack }: Props) {
+  const { t } = useTranslation(['agent', 'common']);
   const [markdown, setMarkdown] = useState('')
   const [originalMarkdown, setOriginalMarkdown] = useState('')
   const [loading, setLoading] = useState(true)
@@ -155,7 +157,7 @@ export function AutoAgentEditor({ name, onSaved, onDeleted, onEditWithAI, onBack
             size="icon"
             className="h-7 w-7"
             onClick={onBack}
-            title="Back to agents"
+            title={t('agent:autoAgent.back')}
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -168,7 +170,7 @@ export function AutoAgentEditor({ name, onSaved, onDeleted, onEditWithAI, onBack
             size="sm"
             className="h-8 gap-1.5"
             onClick={() => onEditWithAI(name, markdown)}
-            title="Open a new chat session pre-filled with a prompt to edit this agent"
+            title={t('agent:autoAgent.editPrompt')}
           >
             <Sparkles className="h-4 w-4" />
             Edit with AI
@@ -236,14 +238,14 @@ export function AutoAgentEditor({ name, onSaved, onDeleted, onEditWithAI, onBack
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete auto agent?</AlertDialogTitle>
+            <AlertDialogTitle>{t('agent:autoAgent.deleteConfirm')}</AlertDialogTitle>
             <AlertDialogDescription>
               This permanently removes the <span className="font-mono">{name}</span> folder from disk.
               Past sessions it spawned are not affected.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('common:actions.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
@@ -258,7 +260,7 @@ export function AutoAgentEditor({ name, onSaved, onDeleted, onEditWithAI, onBack
       <Dialog open={shareOpen} onOpenChange={setShareOpen}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Share as text</DialogTitle>
+            <DialogTitle>{t('agent:autoAgent.shareAsText')}</DialogTitle>
             <DialogDescription>
               Copy the full markdown definition. Paste into another MyLifeDB instance at{' '}
               <span className="font-mono">agents/{name}/{name}.md</span>.

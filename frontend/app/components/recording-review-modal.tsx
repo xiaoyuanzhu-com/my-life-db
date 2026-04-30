@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useFormatter } from '~/lib/i18n/use-formatter';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
@@ -25,6 +26,7 @@ export function RecordingReviewModal({
   onDiscard,
   onClose
 }: RecordingReviewModalProps) {
+  const { t } = useTranslation('data');
   const fmt = useFormatter();
   const [activeTab, setActiveTab] = useState<TabType>('raw');
   const [editedRawTranscript, setEditedRawTranscript] = useState('');
@@ -117,7 +119,7 @@ export function RecordingReviewModal({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div>
-            <h2 className="text-lg font-semibold">Recording Complete</h2>
+            <h2 className="text-lg font-semibold">{t('recording.complete')}</h2>
             <p className="text-sm text-muted-foreground">
               {formatDuration(duration)} • {fmt.time(new Date())}
             </p>
@@ -127,7 +129,7 @@ export function RecordingReviewModal({
             size="sm"
             className="h-8 w-8 p-0"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t('recording.close')}
           >
             <X className="h-4 w-4" />
           </Button>
@@ -175,7 +177,7 @@ export function RecordingReviewModal({
                 value={editedRawTranscript}
                 onChange={(e) => setEditedRawTranscript(e.target.value)}
                 className="min-h-[300px] font-mono text-sm"
-                placeholder="No transcript available"
+                placeholder={t('recording.noTranscript')}
               />
               <p className="text-xs text-muted-foreground">
                 Raw transcript as received from ASR engine. Fully editable.
@@ -189,7 +191,7 @@ export function RecordingReviewModal({
                 value={editedCleanedTranscript}
                 onChange={(e) => setEditedCleanedTranscript(e.target.value)}
                 className="min-h-[300px] text-sm"
-                placeholder="No transcript available"
+                placeholder={t('recording.noTranscript')}
               />
               <p className="text-xs text-muted-foreground">
                 Cleaned version with filler words removed and punctuation improved. Fully editable.
@@ -211,7 +213,7 @@ export function RecordingReviewModal({
               ) : isGeneratingSummary ? (
                 <div className="flex flex-col items-center justify-center py-12">
                   <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-                  <p className="text-muted-foreground">Generating summary...</p>
+                  <p className="text-muted-foreground">{t('recording.generatingSummary')}</p>
                 </div>
               ) : summaryError ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">

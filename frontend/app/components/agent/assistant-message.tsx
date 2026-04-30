@@ -9,6 +9,7 @@
  * - Blinking cursor during streaming
  */
 import { useState, useCallback } from "react"
+import { useTranslation } from "react-i18next"
 import { MessagePrimitive, type ToolCallMessagePartProps } from "@assistant-ui/react"
 import { useMessage } from "@assistant-ui/react"
 import { Copy, Check } from "lucide-react"
@@ -24,6 +25,7 @@ interface AssistantMessageProps {
 }
 
 function AssistantTextPart({ text }: { text: string }) {
+  const { t } = useTranslation('agent');
   const [copied, setCopied] = useState(false)
 
   const handleCopy = useCallback(() => {
@@ -58,7 +60,7 @@ function AssistantTextPart({ text }: { text: string }) {
           type="button"
           onClick={handleCopy}
           className="absolute -top-1 -right-1 opacity-0 group-hover/text:opacity-100 transition-opacity rounded-md p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground"
-          title="Copy text"
+          title={t('thread.copyText')}
         >
           {copied ? (
             <Check className="h-3.5 w-3.5" />
