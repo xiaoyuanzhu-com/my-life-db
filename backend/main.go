@@ -156,6 +156,13 @@ func setupStaticRoutes(r *gin.Engine) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 			return
 		}
+		// Don't serve the SPA for unmatched /.well-known/* probes
+		// (security.txt, change-password, etc.) — clients expect a
+		// real 404, not an HTML page.
+		if strings.HasPrefix(path, "/.well-known/") {
+			c.Status(http.StatusNotFound)
+			return
+		}
 		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
 		c.Header("Pragma", "no-cache")
 		c.Header("Expires", "0")

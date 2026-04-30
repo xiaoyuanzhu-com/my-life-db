@@ -575,10 +575,10 @@ func (s *Server) setupRouter() {
 	// Trust proxy headers
 	s.router.SetTrustedProxies(nil)
 
-	// Ignore .well-known requests
-	s.router.GET("/.well-known/*path", func(c *gin.Context) {
-		c.Status(http.StatusNotFound)
-	})
+	// Note: unmatched /.well-known/* requests are 404'd by the NoRoute
+	// handler in main.go (so they don't fall through to the SPA). We
+	// can't register a wildcard here because specific routes like
+	// /.well-known/oauth-authorization-server need to coexist.
 
 	// Note: API routes should be set up by calling code (main.go)
 	// to avoid import cycles
