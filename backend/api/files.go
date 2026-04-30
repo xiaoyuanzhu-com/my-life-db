@@ -424,6 +424,7 @@ type FileNode struct {
 	Type         string     `json:"type,omitempty"` // "file" or "folder"
 	Size         *int64     `json:"size,omitempty"`
 	ModifiedAt   *int64     `json:"modifiedAt,omitempty"`
+	CreatedAt    *int64     `json:"createdAt,omitempty"`
 	PreviewSqlar *string    `json:"previewSqlar,omitempty"`
 	Children     []FileNode `json:"children,omitempty"`
 }
@@ -445,6 +446,7 @@ func parseFields(fieldsParam string) fieldSet {
 		fields["type"] = true
 		fields["size"] = true
 		fields["modifiedAt"] = true
+		fields["createdAt"] = true
 		fields["previewSqlar"] = true
 		return fields
 	}
@@ -641,6 +643,14 @@ func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, curr
 		previewMap, _ = db.GetPreviewSqlarMap(relativePath)
 	}
 
+	// Batch-load DB created_at if requested. created_at is the time MyLifeDB
+	// first indexed the file — used as a sortable "added to library" proxy
+	// since filesystem birthtime is not reliable on Linux/Docker.
+	var createdAtMap map[string]int64
+	if fields["createdAt"] {
+		createdAtMap, _ = db.GetCreatedAtMap(relativePath)
+	}
+
 	var nodes []FileNode
 	for _, entry := range entries {
 		name := entry.Name()
@@ -687,6 +697,11 @@ func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, curr
 		if fields["modifiedAt"] && info != nil {
 			modTime := info.ModTime().UnixMilli()
 			node.ModifiedAt = &modTime
+		}
+		if fields["createdAt"] {
+			if ts, ok := createdAtMap[name]; ok {
+				node.CreatedAt = &ts
+			}
 		}
 		if fields["previewSqlar"] && !isDir {
 			if sqlar, ok := previewMap[name]; ok {

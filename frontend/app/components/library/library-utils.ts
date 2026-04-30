@@ -7,11 +7,14 @@ export interface FileNode {
   type: 'file' | 'folder';
   size?: number;
   modifiedAt?: number;
+  createdAt?: number;
   previewSqlar?: string;
   children?: FileNode[];
   uploadStatus?: 'pending' | 'uploading' | 'error';
   uploadProgress?: number;
 }
+
+export type SortKey = 'name' | 'modifiedAt' | 'createdAt';
 
 export function getFileIcon(filename: string) {
   const ext = filename.toLowerCase().split('.').pop();
@@ -39,14 +42,24 @@ export function getNodeName(node: FileNode): string {
   return node.path.split('/').pop() || node.path;
 }
 
-// Sort nodes: folders first, then files, alphabetically within each group
-export function sortNodes(nodes: FileNode[]): FileNode[] {
+// Sort nodes: folders always pinned before files. Within each group, sort by
+// the requested key. Time-based sorts default to descending (newest first);
+// name sorts ascending. Falls back to alphabetical when the key is missing.
+export function sortNodes(nodes: FileNode[], sortKey: SortKey = 'name'): FileNode[] {
   return [...nodes].sort((a, b) => {
-    // Folders come before files
     if (a.type !== b.type) {
       return a.type === 'folder' ? -1 : 1;
     }
-    // Alphabetical within same type
+    if (sortKey === 'modifiedAt' || sortKey === 'createdAt') {
+      const av = a[sortKey];
+      const bv = b[sortKey];
+      // Missing values sort last
+      if (av == null && bv == null) return a.path.localeCompare(b.path);
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      if (av !== bv) return bv - av; // newest first
+      return a.path.localeCompare(b.path);
+    }
     return a.path.localeCompare(b.path);
   });
 }

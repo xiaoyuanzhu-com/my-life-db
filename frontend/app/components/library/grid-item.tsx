@@ -21,8 +21,9 @@ import {
   AlertDialogTitle,
 } from '~/components/ui/alert-dialog';
 import { Input } from '~/components/ui/input';
-import { type FileNode, getNodeName } from './library-utils';
+import { type FileNode, getNodeName, formatFileSize } from './library-utils';
 import { FileTypeIcon } from './file-type-icon';
+import { formatSmartTimestamp } from '~/lib/i18n/format';
 
 const archiveExtensions = ['.zip', '.tar', '.tar.gz', '.tgz', '.tar.bz2', '.tbz2', '.tar.xz', '.txz', '.tar.zst', '.7z', '.rar'];
 
@@ -35,6 +36,8 @@ interface GridItemProps {
   node: FileNode;
   fullPath: string;
   isSelected?: boolean;
+  /** Visual layout: 'grid' is the default tile layout; 'list' is a compact row */
+  variant?: 'grid' | 'list';
   onClick: () => void;
   onRefresh: () => void;
   onFileDeleted?: (path: string) => void;
@@ -51,6 +54,7 @@ export function GridItem({
   node,
   fullPath,
   isSelected,
+  variant = 'grid',
   onClick,
   onRefresh,
   onFileDeleted,
@@ -187,82 +191,148 @@ export function GridItem({
     }
   };
 
+  const isList = variant === 'list';
+
+  // Shared icon block — sized differently per variant.
+  const iconBlock = (
+    <div
+      className={cn(
+        'relative flex items-center justify-center shrink-0',
+        isList ? 'w-8 h-8' : 'w-12 h-12',
+      )}
+    >
+      {isFolder ? (
+        <FolderClosed className={cn(isList ? 'w-7 h-7' : 'w-10 h-10', 'text-muted-foreground')} />
+      ) : node.previewSqlar ? (
+        <img
+          src={getSqlarUrl(node.previewSqlar)}
+          alt=""
+          loading="lazy"
+          className={cn(isList ? 'w-8 h-8' : 'w-12 h-12', 'object-cover rounded')}
+        />
+      ) : (
+        <FileTypeIcon filename={name} size={isList ? 24 : 36} />
+      )}
+      {isUploading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-background/60 rounded">
+          <Loader2 className={cn(isList ? 'w-4 h-4' : 'w-5 h-5', 'animate-spin text-muted-foreground')} />
+        </div>
+      )}
+      {!isList && node.uploadStatus === 'uploading' && node.uploadProgress !== undefined && (
+        <span className="absolute -bottom-1 text-[10px] tabular-nums text-muted-foreground bg-background rounded px-0.5">
+          {node.uploadProgress}%
+        </span>
+      )}
+      {hasError && (
+        <CircleAlert className={cn('absolute -top-1 -right-1 text-destructive', isList ? 'w-3.5 h-3.5' : 'w-4 h-4')} />
+      )}
+    </div>
+  );
+
   return (
     <>
       <ContextMenu>
         <ContextMenuTrigger asChild>
-          <button
-            className={cn(
-              'flex flex-col items-center gap-2 p-3 rounded-lg transition-colors w-full',
-              'hover:bg-accent active:bg-accent/70',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              isSelected && 'bg-accent ring-1 ring-primary',
-              isUploading && 'opacity-60',
-            )}
-            onClick={(e) => {
-              if (isRenaming) return;
-              e.stopPropagation();
-              onClick();
-            }}
-            onTouchStart={handleTouchStart}
-            onTouchEnd={handleTouchEnd}
-            onTouchCancel={handleTouchEnd}
-          >
-            {/* Icon area */}
-            <div className="relative flex items-center justify-center w-12 h-12">
-              {isFolder ? (
-                <FolderClosed className="w-10 h-10 text-muted-foreground" />
-              ) : node.previewSqlar ? (
-                <img
-                  src={getSqlarUrl(node.previewSqlar)}
-                  alt=""
-                  loading="lazy"
-                  className="w-12 h-12 object-cover rounded"
+          {isList ? (
+            <button
+              className={cn(
+                'flex flex-row items-center gap-3 px-2 py-1.5 rounded-md transition-colors w-full text-left',
+                'hover:bg-accent active:bg-accent/70',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                isSelected && 'bg-accent ring-1 ring-primary',
+                isUploading && 'opacity-60',
+              )}
+              onClick={(e) => {
+                if (isRenaming) return;
+                e.stopPropagation();
+                onClick();
+              }}
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
+              onTouchCancel={handleTouchEnd}
+            >
+              {iconBlock}
+
+              {/* Name (flex-1, truncates) */}
+              {isRenaming ? (
+                <Input
+                  ref={renameInputRef}
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onBlur={handleRenameSubmit}
+                  onKeyDown={handleRenameKeyDown}
+                  onClick={(e) => e.stopPropagation()}
+                  className="h-6 py-0 px-1 text-xs flex-1"
                 />
               ) : (
-                <FileTypeIcon filename={name} size={36} />
-              )}
-              {/* Upload indicators */}
-              {isUploading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-background/60 rounded">
-                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-                </div>
-              )}
-              {node.uploadStatus === 'uploading' && node.uploadProgress !== undefined && (
-                <span className="absolute -bottom-1 text-[10px] tabular-nums text-muted-foreground bg-background rounded px-0.5">
-                  {node.uploadProgress}%
-                </span>
-              )}
-              {hasError && (
-                <CircleAlert className="absolute -top-1 -right-1 w-4 h-4 text-destructive" />
-              )}
-            </div>
-
-            {/* Name */}
-            {isRenaming ? (
-              <Input
-                ref={renameInputRef}
-                value={renameValue}
-                onChange={(e) => setRenameValue(e.target.value)}
-                onBlur={handleRenameSubmit}
-                onKeyDown={handleRenameKeyDown}
-                onClick={(e) => e.stopPropagation()}
-                className="h-6 py-0 px-1 text-xs text-center w-full"
-              />
-            ) : (
-              <div className="w-full text-center min-w-0">
-                <p
+                <span
                   className={cn(
-                    'text-xs truncate',
+                    'text-sm truncate flex-1 min-w-0',
                     hasError && !isFolder && 'text-destructive',
                   )}
                   title={name}
                 >
                   {name}
-                </p>
-              </div>
-            )}
-          </button>
+                </span>
+              )}
+
+              {/* Metadata columns: hidden on small screens to keep rows scannable */}
+              <span className="hidden sm:inline text-xs text-muted-foreground tabular-nums w-24 text-right shrink-0 truncate">
+                {node.modifiedAt ? formatSmartTimestamp(node.modifiedAt) : ''}
+              </span>
+              <span className="hidden md:inline text-xs text-muted-foreground tabular-nums w-24 text-right shrink-0 truncate">
+                {node.createdAt ? formatSmartTimestamp(node.createdAt) : ''}
+              </span>
+              <span className="hidden sm:inline text-xs text-muted-foreground tabular-nums w-16 text-right shrink-0">
+                {!isFolder && node.size != null ? formatFileSize(node.size) : ''}
+              </span>
+            </button>
+          ) : (
+            <button
+              className={cn(
+                'flex flex-col items-center gap-2 p-3 rounded-lg transition-colors w-full',
+                'hover:bg-accent active:bg-accent/70',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                isSelected && 'bg-accent ring-1 ring-primary',
+                isUploading && 'opacity-60',
+              )}
+              onClick={(e) => {
+                if (isRenaming) return;
+                e.stopPropagation();
+                onClick();
+              }}
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
+              onTouchCancel={handleTouchEnd}
+            >
+              {iconBlock}
+
+              {/* Name */}
+              {isRenaming ? (
+                <Input
+                  ref={renameInputRef}
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onBlur={handleRenameSubmit}
+                  onKeyDown={handleRenameKeyDown}
+                  onClick={(e) => e.stopPropagation()}
+                  className="h-6 py-0 px-1 text-xs text-center w-full"
+                />
+              ) : (
+                <div className="w-full text-center min-w-0">
+                  <p
+                    className={cn(
+                      'text-xs truncate',
+                      hasError && !isFolder && 'text-destructive',
+                    )}
+                    title={name}
+                  >
+                    {name}
+                  </p>
+                </div>
+              )}
+            </button>
+          )}
         </ContextMenuTrigger>
         <ContextMenuContent>
           {isFolder && (

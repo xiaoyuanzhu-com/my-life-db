@@ -2,12 +2,12 @@ import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Search, Upload, FolderUp, FolderPlus, RefreshCw, Plus, Import } from "lucide-react";
+import { Search, Upload, FolderUp, FolderPlus, RefreshCw, Plus, Import, MoreHorizontal, LayoutGrid, List as ListIcon, ArrowUpDown } from "lucide-react";
 import { FileGrid } from "~/components/library/file-grid";
 import { BreadcrumbNav } from "~/components/library/breadcrumb-nav";
 import { useSearch } from "~/components/omni-input/modules/use-search";
 import { GridItem } from "~/components/library/grid-item";
-import type { FileNode } from "~/components/library/library-utils";
+import type { FileNode, SortKey } from "~/components/library/library-utils";
 import { ModalNavigationProvider, useModalNavigation } from "~/contexts/modal-navigation-context";
 import type { FileWithDigests } from "~/types/file-card";
 import { Button } from "~/components/ui/button";
@@ -17,6 +17,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
 } from "~/components/ui/dropdown-menu";
 import { useAuth } from "~/contexts/auth-context";
 import { useUploadNotifications } from "~/hooks/use-upload-notifications";
@@ -32,7 +38,7 @@ function fileNodeToFileWithDigests(node: FileNode): FileWithDigests {
     mimeType: null,
     hash: null,
     modifiedAt: node.modifiedAt ?? 0,
-    createdAt: node.modifiedAt ?? 0,
+    createdAt: node.createdAt ?? node.modifiedAt ?? 0,
     digests: [],
     previewSqlar: node.previewSqlar,
   };
@@ -120,6 +126,20 @@ function DataContent() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const dragCounterRef = useRef(0);
+
+  // View mode + sort key — persisted to localStorage so user choices stick
+  // per browser. Lazy initializer reads on mount; subsequent changes write back.
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
+    if (typeof window === 'undefined') return 'grid';
+    return window.localStorage.getItem('data.viewMode') === 'list' ? 'list' : 'grid';
+  });
+  const [sortKey, setSortKey] = useState<SortKey>(() => {
+    if (typeof window === 'undefined') return 'name';
+    const v = window.localStorage.getItem('data.sortKey');
+    return v === 'modifiedAt' || v === 'createdAt' ? v : 'name';
+  });
+  useEffect(() => { window.localStorage.setItem('data.viewMode', viewMode); }, [viewMode]);
+  useEffect(() => { window.localStorage.setItem('data.sortKey', sortKey); }, [sortKey]);
 
   const handleNavigate = useCallback((path: string) => {
     if (path) {
@@ -422,14 +442,67 @@ function DataContent() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setRefreshTrigger(n => n + 1)}
-          aria-label="Refresh"
-        >
-          <RefreshCw className="h-5 w-5" />
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" aria-label={t('actions.more', 'More')}>
+              <MoreHorizontal className="h-5 w-5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                {viewMode === 'list' ? (
+                  <ListIcon className="h-4 w-4 mr-2" />
+                ) : (
+                  <LayoutGrid className="h-4 w-4 mr-2" />
+                )}
+                {t('actions.view', 'View')}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuRadioGroup
+                  value={viewMode}
+                  onValueChange={(v) => setViewMode(v === 'list' ? 'list' : 'grid')}
+                >
+                  <DropdownMenuRadioItem value="grid">
+                    <LayoutGrid className="h-4 w-4 mr-2" />
+                    {t('actions.viewGrid', 'Grid')}
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="list">
+                    <ListIcon className="h-4 w-4 mr-2" />
+                    {t('actions.viewList', 'List')}
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <ArrowUpDown className="h-4 w-4 mr-2" />
+                {t('actions.sortBy', 'Sort by')}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuRadioGroup
+                  value={sortKey}
+                  onValueChange={(v) => setSortKey(v as SortKey)}
+                >
+                  <DropdownMenuRadioItem value="name">
+                    {t('actions.sortName', 'Name')}
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="modifiedAt">
+                    {t('actions.sortModified', 'Modified')}
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="createdAt">
+                    {t('actions.sortCreated', 'Created')}
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setRefreshTrigger(n => n + 1)}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              {t('actions.refresh', 'Refresh')}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Search results or file grid */}
@@ -450,6 +523,8 @@ function DataContent() {
             onUploadFolder={handleUploadFolder}
             currentPath={currentPath}
             onNavigate={handleNavigate}
+            viewMode={viewMode}
+            sortKey={sortKey}
           />
         )}
       </div>

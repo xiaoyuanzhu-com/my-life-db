@@ -9,6 +9,7 @@ import { useErrorMessage } from '~/hooks/use-error-message';
 import { Input } from '~/components/ui/input';
 import {
   type FileNode,
+  type SortKey,
   getNodeName,
   sortNodes,
   buildVirtualNodes,
@@ -29,6 +30,10 @@ interface FileGridProps {
   /** Controlled path state — when provided, FileGrid does not manage its own path */
   currentPath?: string;
   onNavigate?: (path: string) => void;
+  /** Visual layout — controlled by parent's More menu. Default: 'grid' */
+  viewMode?: 'grid' | 'list';
+  /** Sort key — controlled by parent's More menu. Default: 'name' */
+  sortKey?: SortKey;
 }
 
 export function FileGrid({
@@ -42,6 +47,8 @@ export function FileGrid({
   onUploadFolder: _onUploadFolder,
   currentPath: controlledPath,
   onNavigate: controlledNavigate,
+  viewMode = 'grid',
+  sortKey = 'name',
 }: FileGridProps) {
   const [internalPath, setInternalPath] = useState('');
   const currentPath = controlledPath ?? internalPath;
@@ -318,7 +325,7 @@ export function FileGrid({
     return child;
   });
 
-  const allNodes = sortNodes([...virtualChildren, ...annotatedChildren]);
+  const allNodes = sortNodes([...virtualChildren, ...annotatedChildren], sortKey);
 
 
   return (
@@ -351,7 +358,13 @@ export function FileGrid({
             <p>Empty folder</p>
           </div>
         ) : (
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-1">
+          <div
+            className={
+              viewMode === 'list'
+                ? 'flex flex-col gap-0.5'
+                : 'grid grid-cols-3 sm:grid-cols-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-1'
+            }
+          >
             {allNodes.map((node) => {
               const fullPath = currentPath
                 ? `${currentPath}/${node.path}`
@@ -363,6 +376,7 @@ export function FileGrid({
                   node={node}
                   fullPath={fullPath}
                   isSelected={fullPath === selectedFilePath}
+                  variant={viewMode}
                   onClick={() => handleItemClick(node, fullPath)}
                   onRefresh={() => loadChildren(false)}
                   onFileDeleted={handleFileDeleted}
@@ -376,18 +390,33 @@ export function FileGrid({
 
             {/* Inline new folder creation */}
             {isCreatingFolder && (
-              <div className="flex flex-col items-center gap-2 p-3 rounded-lg bg-accent/50">
-                <FolderPlus className="w-10 h-10 text-muted-foreground" />
-                <Input
-                  ref={newFolderInputRef}
-                  value={newFolderName}
-                  onChange={(e) => setNewFolderName(e.target.value)}
-                  onBlur={handleCreateFolder}
-                  onKeyDown={handleNewFolderKeyDown}
-                  placeholder="Folder name"
-                  className="h-6 py-0 px-1 text-xs text-center"
-                />
-              </div>
+              viewMode === 'list' ? (
+                <div className="flex flex-row items-center gap-3 px-2 py-1.5 rounded-md bg-accent/50">
+                  <FolderPlus className="w-7 h-7 text-muted-foreground shrink-0" />
+                  <Input
+                    ref={newFolderInputRef}
+                    value={newFolderName}
+                    onChange={(e) => setNewFolderName(e.target.value)}
+                    onBlur={handleCreateFolder}
+                    onKeyDown={handleNewFolderKeyDown}
+                    placeholder="Folder name"
+                    className="h-6 py-0 px-1 text-xs flex-1"
+                  />
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2 p-3 rounded-lg bg-accent/50">
+                  <FolderPlus className="w-10 h-10 text-muted-foreground" />
+                  <Input
+                    ref={newFolderInputRef}
+                    value={newFolderName}
+                    onChange={(e) => setNewFolderName(e.target.value)}
+                    onBlur={handleCreateFolder}
+                    onKeyDown={handleNewFolderKeyDown}
+                    placeholder="Folder name"
+                    className="h-6 py-0 px-1 text-xs text-center"
+                  />
+                </div>
+              )
             )}
           </div>
         )}

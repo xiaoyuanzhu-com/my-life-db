@@ -44,6 +44,39 @@ func GetPreviewSqlarMap(dirPath string) (map[string]string, error) {
 	return result, rows.Err()
 }
 
+// GetCreatedAtMap returns a map of name -> created_at (epoch ms) for direct
+// children of dirPath. Includes both files and folders. Used by the library
+// tree handler to surface "first seen" time as a sortable createdAt field.
+func GetCreatedAtMap(dirPath string) (map[string]int64, error) {
+	query := `
+		SELECT name, created_at
+		FROM files
+		WHERE path LIKE ? || '%'
+		  AND path NOT LIKE ? || '%/%'
+	`
+	prefix := dirPath
+	if prefix != "" && !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+
+	rows, err := GetDB().Query(query, prefix, prefix)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]int64)
+	for rows.Next() {
+		var name string
+		var createdAt int64
+		if err := rows.Scan(&name, &createdAt); err != nil {
+			continue
+		}
+		result[name] = createdAt
+	}
+	return result, rows.Err()
+}
+
 // GetFileByPath retrieves a file record by path
 func GetFileByPath(path string) (*FileRecord, error) {
 	query := `
