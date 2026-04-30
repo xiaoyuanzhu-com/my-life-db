@@ -31,10 +31,6 @@ export { rowToTask } from './task';
 export type { Setting, SettingRecordRow } from './setting';
 export { rowToSetting } from './setting';
 
-// Database Models - Meilisearch Documents
-export type { MeiliDocument, MeiliDocumentRow, MeiliStatus } from './meili-document';
-export { rowToMeiliDocument } from './meili-document';
-
 // Database Models - Qdrant Documents
 export type { QdrantDocument, QdrantDocumentRow, EmbeddingStatus, SourceType } from './qdrant-document';
 export { rowToQdrantDocument } from './qdrant-document';

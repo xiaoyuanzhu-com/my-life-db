@@ -1,4 +1,4 @@
-package meili
+package textindex
 
 import (
 	"io"

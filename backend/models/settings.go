@@ -23,9 +23,8 @@ type Preferences struct {
 }
 
 type Vendors struct {
-	OpenAI      *OpenAI      `json:"openai,omitempty"`
-	Aliyun      *Aliyun      `json:"aliyun,omitempty"`
-	Meilisearch *Meilisearch `json:"meilisearch,omitempty"`
+	OpenAI *OpenAI `json:"openai,omitempty"`
+	Aliyun *Aliyun `json:"aliyun,omitempty"`
 }
 
 type OpenAI struct {
@@ -42,10 +41,6 @@ type Aliyun struct {
 	OSSAccessKeySecret string `json:"ossAccessKeySecret,omitempty"`
 	OSSRegion          string `json:"ossRegion,omitempty"` // e.g., "cn-hangzhou", "oss-cn-beijing"
 	OSSBucket          string `json:"ossBucket,omitempty"`
-}
-
-type Meilisearch struct {
-	Host string `json:"host,omitempty"`
 }
 
 type Extraction struct {

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"sync"
 )
@@ -21,11 +22,14 @@ type Config struct {
 	// Database
 	DatabasePath string
 
-	// External services
-	MeiliHost   string
-	MeiliAPIKey string
-	MeiliIndex  string
+	// SQLite simple FTS5 extension (wangfenjin/simple).
+	// SimpleExtensionPath: absolute path to libsimple.{so,dylib}
+	// SimpleDictDir: directory containing jieba dict.utf8 + friends
+	// Both are derived from MLD_SIMPLE_EXTENSION_DIR (defaults to <APP_DATA_DIR>/extensions)
+	SimpleExtensionPath string
+	SimpleDictDir       string
 
+	// External services
 	OpenAIAPIKey  string
 	OpenAIBaseURL string
 	OpenAIModel   string
@@ -78,6 +82,20 @@ func load() *Config {
 		appDataDir = absPath
 	}
 
+	// Resolve the simple FTS5 extension paths.
+	// Default location: <APP_DATA_DIR>/extensions/{libsimple.so|libsimple.dylib}
+	// Dict default: <APP_DATA_DIR>/extensions/dict
+	extDir := getEnv("MLD_SIMPLE_EXTENSION_DIR", filepath.Join(appDataDir, "extensions"))
+	if abs, err := filepath.Abs(extDir); err == nil {
+		extDir = abs
+	}
+	libBase := "libsimple.so"
+	if runtime.GOOS == "darwin" {
+		libBase = "libsimple.dylib"
+	}
+	simpleExtPath := filepath.Join(extDir, libBase)
+	simpleDictDir := filepath.Join(extDir, "dict")
+
 	return &Config{
 		// Server
 		Port: getEnvInt("PORT", 12345),
@@ -89,10 +107,9 @@ func load() *Config {
 		AppDataDir:   appDataDir,
 		DatabasePath: filepath.Join(appDataDir, "database.sqlite"),
 
-		// Meilisearch
-		MeiliHost:   getEnv("MEILI_HOST", ""),
-		MeiliAPIKey: getEnv("MEILI_API_KEY", ""),
-		MeiliIndex:  getEnv("MEILI_INDEX", "mylifedb_files"),
+		// SQLite simple extension
+		SimpleExtensionPath: simpleExtPath,
+		SimpleDictDir:       simpleDictDir,
 
 		// OpenAI
 		OpenAIAPIKey:  getEnv("OPENAI_API_KEY", ""),

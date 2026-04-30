@@ -742,7 +742,7 @@ func GetFileWithDigests(path string) (*FileWithDigests, error) {
 }
 
 // RenameFilePath updates a single file's path and name, including all related tables.
-// Updates: files, digests, pins, meili_documents.
+// Updates: files, digests, pins, files_fts.
 func RenameFilePath(oldPath, newPath, newName string) error {
 	tx, err := GetDB().Begin()
 	if err != nil {
@@ -768,17 +768,17 @@ func RenameFilePath(oldPath, newPath, newName string) error {
 		return fmt.Errorf("failed to update pins: %w", err)
 	}
 
-	// Update meili_documents
-	_, err = tx.Exec(`UPDATE meili_documents SET file_path = ? WHERE file_path = ?`, newPath, oldPath)
+	// Update FTS5 search index
+	_, err = tx.Exec(`UPDATE files_fts SET file_path = ? WHERE file_path = ?`, newPath, oldPath)
 	if err != nil {
-		return fmt.Errorf("failed to update meili_documents: %w", err)
+		return fmt.Errorf("failed to update files_fts: %w", err)
 	}
 
 	return tx.Commit()
 }
 
 // RenameFilePaths updates all paths that start with oldPath prefix (for folder renames).
-// Updates all related tables: files, digests, pins, meili_documents.
+// Updates all related tables: files, digests, pins, files_fts.
 func RenameFilePaths(oldPath, newPath string) error {
 	tx, err := GetDB().Begin()
 	if err != nil {
@@ -820,14 +820,14 @@ func RenameFilePaths(oldPath, newPath string) error {
 		return fmt.Errorf("failed to update pins: %w", err)
 	}
 
-	// Update meili_documents
+	// Update FTS5 search index
 	_, err = tx.Exec(`
-		UPDATE meili_documents
+		UPDATE files_fts
 		SET file_path = ? || substr(file_path, ?)
 		WHERE file_path = ? OR file_path LIKE ? || '/%'
 	`, newPath, len(oldPath)+1, oldPath, oldPath)
 	if err != nil {
-		return fmt.Errorf("failed to update meili_documents: %w", err)
+		return fmt.Errorf("failed to update files_fts: %w", err)
 	}
 
 	return tx.Commit()
@@ -857,7 +857,7 @@ func UpdateFileField(path string, field string, value interface{}) error {
 // MoveFileAtomic atomically moves a file record from oldPath to newPath.
 // This is used when detecting external file moves via fsnotify.
 // It updates the file record and ALL related tables in a single transaction:
-// files, digests, pins, meili_documents.
+// files, digests, pins, files_fts.
 func MoveFileAtomic(oldPath, newPath string, newRecord *FileRecord) error {
 	tx, err := GetDB().Begin()
 	if err != nil {
@@ -911,10 +911,10 @@ func MoveFileAtomic(oldPath, newPath string, newRecord *FileRecord) error {
 		return fmt.Errorf("failed to update pins: %w", err)
 	}
 
-	// 5. Update related tables: meili_documents
-	_, err = tx.Exec(`UPDATE meili_documents SET file_path = ? WHERE file_path = ?`, newPath, oldPath)
+	// 5. Update related tables: files_fts
+	_, err = tx.Exec(`UPDATE files_fts SET file_path = ? WHERE file_path = ?`, newPath, oldPath)
 	if err != nil {
-		return fmt.Errorf("failed to update meili_documents: %w", err)
+		return fmt.Errorf("failed to update files_fts: %w", err)
 	}
 
 	return tx.Commit()
@@ -973,7 +973,7 @@ func ListAllFilePaths() ([]string, error) {
 }
 
 // DeleteFileWithCascade removes a file record and all related records in a single transaction.
-// This includes: digests, pins, meili_documents.
+// This includes: digests, pins, files_fts.
 // Used during reconciliation and file deletion to clean up all related data.
 func DeleteFileWithCascade(path string) error {
 	tx, err := GetDB().Begin()
@@ -983,8 +983,8 @@ func DeleteFileWithCascade(path string) error {
 	defer tx.Rollback()
 
 	// Delete search index documents first
-	if _, err := tx.Exec("DELETE FROM meili_documents WHERE file_path = ?", path); err != nil {
-		return fmt.Errorf("failed to delete meili_documents: %w", err)
+	if _, err := tx.Exec("DELETE FROM files_fts WHERE file_path = ?", path); err != nil {
+		return fmt.Errorf("failed to delete files_fts: %w", err)
 	}
 
 	// Delete digests
@@ -1006,7 +1006,7 @@ func DeleteFileWithCascade(path string) error {
 }
 
 // DeleteFilesWithCascadePrefix removes a folder and all files/records under it in a single transaction.
-// Cleans up: files, digests, pins, meili_documents.
+// Cleans up: files, digests, pins, files_fts.
 // Used for recursive folder deletion.
 func DeleteFilesWithCascadePrefix(pathPrefix string) error {
 	tx, err := GetDB().Begin()
@@ -1016,8 +1016,8 @@ func DeleteFilesWithCascadePrefix(pathPrefix string) error {
 	defer tx.Rollback()
 
 	// Delete search index documents
-	if _, err := tx.Exec("DELETE FROM meili_documents WHERE file_path = ? OR file_path LIKE ? || '/%'", pathPrefix, pathPrefix); err != nil {
-		return fmt.Errorf("failed to delete meili_documents: %w", err)
+	if _, err := tx.Exec("DELETE FROM files_fts WHERE file_path = ? OR file_path LIKE ? || '/%'", pathPrefix, pathPrefix); err != nil {
+		return fmt.Errorf("failed to delete files_fts: %w", err)
 	}
 
 	// Delete digests

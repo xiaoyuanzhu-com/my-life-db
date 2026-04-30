@@ -137,15 +137,6 @@ func mergeSettings(current, updates *models.UserSettings) *models.UserSettings {
 			}
 		}
 
-		if updates.Vendors.Meilisearch != nil {
-			if merged.Vendors.Meilisearch == nil {
-				merged.Vendors.Meilisearch = &models.Meilisearch{}
-			}
-			if updates.Vendors.Meilisearch.Host != "" {
-				merged.Vendors.Meilisearch.Host = updates.Vendors.Meilisearch.Host
-			}
-		}
-
 	}
 
 	// Merge digesters

@@ -20,6 +20,10 @@ type Config struct {
 	AppDataDir   string // App data (database, cache) - rebuildable
 	DatabasePath string
 
+	// SQLite simple FTS5 extension (wangfenjin/simple)
+	SimpleExtensionPath string
+	SimpleDictDir       string
+
 	// FS settings (can be hot-reloaded)
 	FSScanInterval time.Duration
 	FSWatchEnabled bool
@@ -32,10 +36,6 @@ type Config struct {
 	OpenAIAPIKey  string
 	OpenAIBaseURL string
 	OpenAIModel   string
-
-	MeiliHost   string
-	MeiliAPIKey string
-	MeiliIndex  string
 
 	// Agent LLM
 	AgentLLM AgentLLMConfig
@@ -64,11 +64,13 @@ func (c *Config) IsDevelopment() bool {
 // ToDBConfig converts server config to database config
 func (c *Config) ToDBConfig() db.Config {
 	return db.Config{
-		Path:            c.DatabasePath,
-		MaxOpenConns:    5,
-		MaxIdleConns:    2,
-		ConnMaxLifetime: 0, // Never expire
-		LogQueries:      c.DBLogQueries,
+		Path:             c.DatabasePath,
+		MaxOpenConns:     5,
+		MaxIdleConns:     2,
+		ConnMaxLifetime:  0, // Never expire
+		LogQueries:       c.DBLogQueries,
+		ExtensionPath:    c.SimpleExtensionPath,
+		ExtensionDictDir: c.SimpleDictDir,
 	}
 }
 

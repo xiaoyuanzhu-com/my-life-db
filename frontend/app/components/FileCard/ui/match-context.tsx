@@ -35,7 +35,7 @@ export function MatchContext({ context }: MatchContextProps) {
   }
 
   // Handle digest match context (keyword)
-  // Snippet may contain <em> tags from Meilisearch (for fuzzy matches)
+  // Snippet may contain <em> tags from FTS5 highlight() (for fuzzy matches)
   const snippetWithHighlights = renderHighlightedSnippet(context.snippet);
 
   return (

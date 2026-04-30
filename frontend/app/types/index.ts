@@ -30,10 +30,6 @@ export type {
   // Settings Table
   Setting,
   SettingRecordRow,
-  // Meilisearch Documents Table
-  MeiliDocument,
-  MeiliDocumentRow,
-  MeiliStatus,
   // Qdrant Documents Table
   QdrantDocument,
   QdrantDocumentRow,
@@ -47,7 +43,6 @@ export {
   rowToDigest,
   rowToTask,
   rowToSetting,
-  rowToMeiliDocument,
   rowToQdrantDocument,
 } from './models';
 

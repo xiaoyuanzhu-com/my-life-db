@@ -201,7 +201,7 @@ func (s *Service) readFile(ctx context.Context, path string) (io.ReadCloser, err
 
 // deleteFile removes a file from filesystem and database.
 // This is the SINGLE entry point for file deletion - all callers should use this.
-// Handles: filesystem, files table, digests, pins, meili_documents.
+// Handles: filesystem, files table, digests, pins, files_fts.
 func (s *Service) deleteFile(ctx context.Context, path string) error {
 	// 1. Validate path
 	if err := s.ValidatePath(path); err != nil {
@@ -219,7 +219,7 @@ func (s *Service) deleteFile(ctx context.Context, path string) error {
 		return fmt.Errorf("failed to delete file from filesystem: %w", err)
 	}
 
-	// 4. Cascade delete from database (files, digests, pins, meili)
+	// 4. Cascade delete from database (files, digests, pins, files_fts)
 	if err := s.cfg.DB.DeleteFileWithCascade(path); err != nil {
 		log.Warn().
 			Err(err).
@@ -237,7 +237,7 @@ func (s *Service) deleteFile(ctx context.Context, path string) error {
 
 // moveFile moves a file from src to dst.
 // This is the SINGLE entry point for file moves/renames - all callers should use this.
-// Handles: filesystem, files table, digests, pins, meili_documents.
+// Handles: filesystem, files table, digests, pins, files_fts.
 func (s *Service) moveFile(ctx context.Context, src, dst string) error {
 	// 1. Validate paths
 	if err := s.ValidatePath(src); err != nil {
@@ -288,13 +288,13 @@ func (s *Service) moveFile(ctx context.Context, src, dst string) error {
 	newRecord.Hash = srcRecord.Hash
 	newRecord.TextPreview = srcRecord.TextPreview
 
-	// 7. Atomic DB update (files, digests, pins, meili)
+	// 7. Atomic DB update (files, digests, pins, files_fts).
+	// MoveFileAtomic also rewrites files_fts.file_path inside the same
+	// transaction, so there is no separate "sync to external search"
+	// step now that Meilisearch is gone.
 	if err := s.cfg.DB.MoveFileAtomic(src, dst, newRecord); err != nil {
 		return fmt.Errorf("failed to update database: %w", err)
 	}
-
-	// 8. Sync external search services (Meili) - best effort, async
-	go db.SyncSearchIndexOnMove(src, dst)
 
 	log.Info().Str("src", src).Str("dst", dst).Msg("file moved successfully")
 	return nil
@@ -339,8 +339,7 @@ func (s *Service) renameOrMove(ctx context.Context, oldPath, newPath string) err
 		if err := s.cfg.DB.RenameFilePaths(oldPath, newPath); err != nil {
 			return fmt.Errorf("failed to update database paths: %w", err)
 		}
-		// Sync external search services (best effort, async)
-		go db.SyncSearchIndexOnMovePrefix(oldPath, newPath)
+		// files_fts paths are rewritten inside RenameFilePaths.
 
 		log.Info().
 			Str("oldPath", oldPath).
@@ -351,8 +350,7 @@ func (s *Service) renameOrMove(ctx context.Context, oldPath, newPath string) err
 		if err := s.cfg.DB.RenameFilePath(oldPath, newPath, newName); err != nil {
 			return fmt.Errorf("failed to update database path: %w", err)
 		}
-		// Sync external search services (best effort, async)
-		go db.SyncSearchIndexOnMove(oldPath, newPath)
+		// files_fts path is rewritten inside RenameFilePath.
 
 		log.Info().
 			Str("oldPath", oldPath).
@@ -365,7 +363,7 @@ func (s *Service) renameOrMove(ctx context.Context, oldPath, newPath string) err
 
 // deleteFolder removes a directory and all its contents from filesystem and database.
 // This is the SINGLE entry point for folder deletion.
-// Handles: filesystem, files table, digests, pins, meili_documents.
+// Handles: filesystem, files table, digests, pins, files_fts.
 func (s *Service) deleteFolder(ctx context.Context, path string) error {
 	// 1. Validate path
 	if err := s.ValidatePath(path); err != nil {

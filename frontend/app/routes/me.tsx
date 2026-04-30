@@ -436,28 +436,6 @@ function SettingsContent() {
                 <p className="text-xs text-muted-foreground">{t('vendors.openaiModel.hint', 'Used for all LLM tasks. Leave blank to use default.')}</p>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">{t('vendors.meilisearchHost.label', 'Search - Meilisearch Host')}</label>
-                <Input
-                  placeholder="http://localhost:7700"
-                  value={settings.vendors?.meilisearch?.host || ""}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      vendors: {
-                        ...settings.vendors,
-                        meilisearch: {
-                          ...settings.vendors?.meilisearch,
-                          host: e.target.value,
-                        },
-                      },
-                    })
-                  }
-                />
-                <p className="text-xs text-muted-foreground">
-                  {t('vendors.meilisearchHost.hint', 'Used by the search API to connect to your local Meilisearch instance.')}
-                </p>
-              </div>
-              <div className="space-y-2">
                 <label className="text-sm font-medium">{t('vendors.qdrantHost.label', 'Search - Qdrant Host')}</label>
                 <Input
                   placeholder="http://localhost:6333"

@@ -31,7 +31,6 @@ var availableDigesters = []DigesterInfo{
 	{Name: "speech-recognition-cleanup", Label: "Transcript Cleanup", Description: "Clean up transcripts", Outputs: []string{"speech-recognition-cleanup"}},
 	{Name: "speech-recognition-summary", Label: "Speech Recognition Summary", Description: "Summarize transcripts", Outputs: []string{"speech-recognition-summary"}},
 	{Name: "speaker-embedding", Label: "Speaker ID", Description: "Extract and cluster speaker voice embeddings for identification", Outputs: []string{"speaker-embedding"}},
-	{Name: "search-keyword", Label: "Keyword Search", Description: "Index for keyword search", Outputs: []string{"search-keyword"}},
 	{Name: "search-semantic", Label: "Semantic Search", Description: "Index for semantic search", Outputs: []string{"search-semantic"}},
 }
 

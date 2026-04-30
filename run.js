@@ -233,9 +233,22 @@ async function runBackend() {
     log.info(`CODEX_HOME=${codexDevHome} (dev isolation)`);
   }
 
+  // Build the simple SQLite FTS5 extension (idempotent — skips if already built)
+  log.info("Ensuring libsimple FTS5 extension is built...");
+  const simpleResult = spawnSync("bash", ["backend/scripts/build-simple.sh"], {
+    cwd: PROJECT_ROOT,
+    stdio: "inherit",
+  });
+  if (simpleResult.status !== 0) {
+    log.error("Failed to build libsimple extension");
+    process.exit(1);
+  }
+
   // Build backend
   log.info("Building backend...");
-  const buildResult = spawnSync("go", ["build", "."], {
+  // sqlite_fts5 build tag enables SQLite FTS5; the simple extension registers
+  // its tokenizer via FTS5 APIs, so the embedded SQLite must have FTS5.
+  const buildResult = spawnSync("go", ["build", "-tags", "sqlite_fts5", "."], {
     cwd: resolve(PROJECT_ROOT, "backend"),
     stdio: "inherit",
   });
@@ -250,62 +263,6 @@ async function runBackend() {
   return spawnProcess("./backend/my-life-db", [], {
     cwd: PROJECT_ROOT,
   });
-}
-
-async function runMeilisearch() {
-  log.info("Starting Meilisearch with Docker...");
-
-  const MEILI_VERSION = "v1.27";
-  const MEILI_PORT = "7700";
-  const MEILI_DATA_DIR = resolve(APP_DATA_DIR, "meili");
-
-  // Create data directory if needed
-  execSync(`mkdir -p "${MEILI_DATA_DIR}"`);
-
-  log.info(`Data will be persisted to: ${MEILI_DATA_DIR}`);
-  log.info(`Meilisearch will be available at: http://localhost:${MEILI_PORT}`);
-
-  const CONTAINER_NAME = "mld-meilisearch";
-
-  // Check if container is already running
-  try {
-    const running = execSync("docker ps --format '{{.Names}}'", { encoding: "utf-8" });
-    if (running.includes(CONTAINER_NAME)) {
-      log.warn(`${CONTAINER_NAME} container is already running`);
-      log.info(`To stop it, run: docker stop ${CONTAINER_NAME}`);
-      return null;
-    }
-  } catch {
-    // Ignore
-  }
-
-  // Pull image
-  spawnSync("docker", ["pull", `getmeili/meilisearch:${MEILI_VERSION}`], { stdio: "inherit" });
-
-  // Run container in background
-  spawnSync(
-    "docker",
-    [
-      "run",
-      "-d",
-      "--rm",
-      "--name",
-      CONTAINER_NAME,
-      "-p",
-      `${MEILI_PORT}:7700`,
-      "-e",
-      "MEILI_ENV=development",
-      "-v",
-      `${MEILI_DATA_DIR}:/meili_data`,
-      `getmeili/meilisearch:${MEILI_VERSION}`,
-    ],
-    { stdio: "inherit" }
-  );
-
-  log.info(`${CONTAINER_NAME} started in background`);
-  log.info(`To stop it, run: docker stop ${CONTAINER_NAME}`);
-  log.info(`To view logs, run: docker logs -f ${CONTAINER_NAME}`);
-  return null;
 }
 
 async function runQdrant() {
@@ -475,7 +432,6 @@ Usage: ./run.js <service> [--watch]
 Available services:
   frontend    Start frontend development server
   backend     Build and start backend server
-  meili       Start Meilisearch search engine (Docker)
   qdrant      Start Qdrant vector database (Docker)
   github      Start GitHub webhook listener (smee.io)
 
@@ -503,12 +459,6 @@ async function main() {
 
     case "backend":
       await runWithWatch("backend", runBackend, "backend/", watch);
-      break;
-
-    case "meili":
-    case "meilisearch":
-      if (watch) log.warn("--watch not supported for meili, ignoring");
-      await runMeilisearch();
       break;
 
     case "qdrant":

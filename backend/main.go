@@ -18,10 +18,8 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/api"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
-	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/server"
-	"github.com/xiaoyuanzhu-com/my-life-db/vendors"
 )
 
 func main() {
@@ -35,6 +33,8 @@ func main() {
 		UserDataDir:      cfg.UserDataDir,
 		AppDataDir:       cfg.AppDataDir,
 		DatabasePath:     cfg.DatabasePath,
+		SimpleExtensionPath: cfg.SimpleExtensionPath,
+		SimpleDictDir:    cfg.SimpleDictDir,
 		FSScanInterval:   1 * time.Hour,
 		FSWatchEnabled:   true,
 		DigestWorkers:    3,
@@ -64,13 +64,6 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create server")
 	}
-
-	// Setup search clients for sync operations (breaks circular dependency)
-	db.SetSearchClients(
-		func() db.MeiliClientInterface {
-			return vendors.GetMeiliClient()
-		},
-	)
 
 	// Setup API routes
 	handlers := api.NewHandlers(srv)

@@ -57,15 +57,18 @@ type Digester interface {
 	Digest(filePath string, file *db.FileRecord, existingDigests []db.Digest, dbConn *sql.DB) ([]DigestInput, error)
 }
 
-// CascadingResets defines which digesters to reset when an upstream digester completes
+// CascadingResets defines which digesters to reset when an upstream digester completes.
+// Note: search-keyword was removed when Meilisearch was dropped — text indexing now
+// happens synchronously via workers/textindex/indexer.go writing to files_fts and
+// is not part of the digest pipeline. search-semantic is kept for future Qdrant work.
 var CascadingResets = map[string][]string{
-	"url-crawl-content":     {"url-crawl-summary", "tags", "search-keyword", "search-semantic"},
-	"doc-to-markdown":       {"tags", "search-keyword", "search-semantic"},
-	"image-ocr":             {"tags", "search-keyword", "search-semantic"},
-	"image-captioning":      {"tags", "search-keyword", "search-semantic"},
-	"image-objects":         {"tags", "search-keyword", "search-semantic"},
-	"speech-recognition":    {"speaker-embedding", "speech-recognition-cleanup", "speech-recognition-summary", "tags", "search-keyword", "search-semantic"},
-	"url-crawl-summary":     {"tags"},
-	"speech-recognition-summary": {"tags", "search-keyword", "search-semantic"},
-	"tags":                  {"search-keyword", "search-semantic"},
+	"url-crawl-content":          {"url-crawl-summary", "tags", "search-semantic"},
+	"doc-to-markdown":            {"tags", "search-semantic"},
+	"image-ocr":                  {"tags", "search-semantic"},
+	"image-captioning":           {"tags", "search-semantic"},
+	"image-objects":              {"tags", "search-semantic"},
+	"speech-recognition":         {"speaker-embedding", "speech-recognition-cleanup", "speech-recognition-summary", "tags", "search-semantic"},
+	"url-crawl-summary":          {"tags"},
+	"speech-recognition-summary": {"tags", "search-semantic"},
+	"tags":                       {"search-semantic"},
 }

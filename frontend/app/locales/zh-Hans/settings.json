@@ -63,10 +63,6 @@
       "label": "OpenAI - 模型",
       "hint": "用于所有 LLM 任务。留空则使用默认值。"
     },
-    "meilisearchHost": {
-      "label": "搜索 - Meilisearch 主机",
-      "hint": "搜索 API 用于连接本地 Meilisearch 实例。"
-    },
     "qdrantHost": {
       "label": "搜索 - Qdrant 主机",
       "hint": "用于语义搜索的 Qdrant 向量服务基础 URL。"

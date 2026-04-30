@@ -29,7 +29,7 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 	"github.com/xiaoyuanzhu-com/my-life-db/skills"
 	"github.com/xiaoyuanzhu-com/my-life-db/workers/digest"
-	meiliworker "github.com/xiaoyuanzhu-com/my-life-db/workers/meili"
+	"github.com/xiaoyuanzhu-com/my-life-db/workers/textindex"
 )
 
 // Server owns and coordinates all application components
@@ -40,8 +40,7 @@ type Server struct {
 	database        *db.DB
 	fsService       *fs.Service
 	digestWorker    *digest.Worker
-	meiliSyncWorker *meiliworker.SyncWorker
-	meiliIndexer    *meiliworker.Indexer
+	textIndexer *textindex.Indexer
 	notifService    *notifications.Service
 	agent               *agent.Agent
 	agentClient     *agentsdk.Client
@@ -434,10 +433,9 @@ http_headers = { "x-litellm-customer-id" = %q }
 	digestCfg := cfg.ToDigestConfig()
 	s.digestWorker = digest.NewWorker(digestCfg, s.database)
 
-	// 5.5. Create Meilisearch sync worker
-	log.Info().Msg("initializing meili sync worker")
-	s.meiliSyncWorker = meiliworker.NewSyncWorker()
-	s.meiliIndexer = meiliworker.NewIndexer(s.fsService.DataRoot(), s.meiliSyncWorker.Nudge)
+	// 5.5. Create text indexer (writes synchronously to SQLite FTS5 files_fts)
+	log.Info().Msg("initializing text indexer")
+	s.textIndexer = textindex.NewIndexer(s.fsService.DataRoot())
 
 	// 6. Create agent (if enabled)
 	if cfg.InboxAgentEnabled {
@@ -466,10 +464,10 @@ http_headers = { "x-litellm-customer-id" = %q }
 
 // connectServices wires up event handlers between services
 func (s *Server) connectServices() {
-	// FS → Meili Indexer + Digest: When files change, index for search and trigger digest processing
+	// FS → Text Indexer + Digest: When files change, index for search and trigger digest processing
 	s.fsService.SetFileChangeHandler(func(event fs.FileChangeEvent) {
 		if event.ContentChanged {
-			s.meiliIndexer.OnFileChange(event.FilePath, event.IsNew, true)
+			s.textIndexer.OnFileChange(event.FilePath, event.IsNew, true)
 			s.digestWorker.OnFileChange(event.FilePath, event.IsNew, true)
 		}
 
@@ -493,13 +491,10 @@ func (s *Server) connectServices() {
 		}
 	})
 
-	// Digest → Meili Sync + Agent: When files finish processing, sync to Meilisearch and trigger agent
+	// Digest → Agent: When files finish processing, trigger agent analysis.
+	// (FTS5 indexing happens synchronously in the FS handler above; the
+	// digest worker no longer needs to nudge a separate sync worker.)
 	s.digestWorker.SetCompletionHandler(func(filePath string, processed int, failed int) {
-		// Always nudge Meilisearch sync worker after digest completion
-		if processed > 0 {
-			s.meiliSyncWorker.Nudge()
-		}
-
 		// Agent analysis only for inbox files
 		if s.agent == nil || !strings.HasPrefix(filePath, "inbox/") {
 			return
@@ -650,11 +645,8 @@ func (s *Server) Start() error {
 	// Start digest worker
 	go s.digestWorker.Start()
 
-	// Start Meilisearch sync worker
-	s.meiliSyncWorker.Start()
-
-	// Start Meilisearch indexer backfill
-	go s.meiliIndexer.Backfill()
+	// Backfill the FTS5 index for any files that aren't yet indexed.
+	go s.textIndexer.Backfill()
 
 	// Start hooks registry
 	if err := s.hookRegistry.Start(s.shutdownCtx); err != nil {
@@ -737,7 +729,6 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 
 	// 6. Stop background services (in reverse order of startup)
-	s.meiliSyncWorker.Stop()
 	s.digestWorker.Stop()
 	s.fsService.Stop()
 
@@ -784,8 +775,7 @@ func (s *Server) runAttachmentsJanitor() {
 func (s *Server) DB() *db.DB                                  { return s.database }
 func (s *Server) FS() *fs.Service                             { return s.fsService }
 func (s *Server) Digest() *digest.Worker                      { return s.digestWorker }
-func (s *Server) MeiliSync() *meiliworker.SyncWorker          { return s.meiliSyncWorker }
-func (s *Server) MeiliIndexer() *meiliworker.Indexer          { return s.meiliIndexer }
+func (s *Server) TextIndexer() *textindex.Indexer            { return s.textIndexer }
 func (s *Server) Notifications() *notifications.Service       { return s.notifService }
 func (s *Server) Agent() *agent.Agent                         { return s.agent }
 func (s *Server) AgentClient() *agentsdk.Client                { return s.agentClient }

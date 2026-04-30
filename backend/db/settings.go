@@ -13,7 +13,6 @@ import (
 var defaultSettings = map[string]string{
 	"openai_model":        "gpt-4o-mini",
 	"openai_base_url":     "",
-	"meili_host":          "",
 	"qdrant_host":         "",
 	"digest_auto_process": "true",
 }
@@ -239,9 +238,6 @@ func LoadUserSettings() (*models.UserSettings, error) {
 			OSSRegion:          pickFromMap("vendors_aliyun_oss_region", "OSS_REGION", "oss-cn-beijing"),
 			OSSBucket:          pickFromMap("vendors_aliyun_oss_bucket", "OSS_BUCKET", ""),
 		},
-		Meilisearch: &models.Meilisearch{
-			Host: pickFromMap("vendors_meilisearch_host", "MEILI_HOST", ""),
-		},
 	}
 
 	// Build digesters
@@ -249,7 +245,6 @@ func LoadUserSettings() (*models.UserSettings, error) {
 		"url-crawler":       pickFromMap("digesters_url_crawler", "", "true") != "false",
 		"url-crawl-summary": pickFromMap("digesters_url_crawl_summary", "", "true") != "false",
 		"tags":              pickFromMap("digesters_tags", "", "true") != "false",
-		"search-keyword":    pickFromMap("digesters_search_keyword", "", "true") != "false",
 		"search-semantic":   pickFromMap("digesters_search_semantic", "", "true") != "false",
 	}
 
@@ -357,9 +352,6 @@ func SaveUserSettings(settings *models.UserSettings) error {
 			if settings.Vendors.Aliyun.OSSBucket != "" {
 				updates["vendors_aliyun_oss_bucket"] = settings.Vendors.Aliyun.OSSBucket
 			}
-		}
-		if settings.Vendors.Meilisearch != nil && settings.Vendors.Meilisearch.Host != "" {
-			updates["vendors_meilisearch_host"] = settings.Vendors.Meilisearch.Host
 		}
 	}
 

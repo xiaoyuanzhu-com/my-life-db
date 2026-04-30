@@ -37,7 +37,7 @@ export function highlightMatches(text: string, terms: string[]): ReactNode {
 }
 
 /**
- * Render a snippet with <em> tags from Meilisearch as React mark elements.
+ * Render a snippet with <em> tags from SQLite FTS5 highlight() as React mark elements.
  * Handles fuzzy match highlights like "docube" → "<em>Docume</em>ntation"
  */
 export function renderHighlightedSnippet(snippet: string): ReactNode {

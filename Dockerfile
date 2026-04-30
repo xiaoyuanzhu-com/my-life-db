@@ -11,25 +11,37 @@ RUN npm ci
 COPY frontend/ .
 RUN npm run build
 
-# Stage 2: Build Go server
+# Stage 2: Build Go server + libsimple SQLite FTS5 extension
 FROM golang:1.25 AS go-builder
 WORKDIR /app
 
-# Install build dependencies for CGO (SQLite)
+# Install build dependencies: CGO (SQLite) + cmake/g++ (libsimple)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libc6-dev \
+    gcc g++ libc6-dev cmake \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy go files
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 
-# Copy Go source
+# Copy Go source (includes backend/third_party/simple submodule snapshot)
 COPY backend/ ./
 
-# Build with CGO enabled for SQLite
+# Build libsimple.so + jieba dict files into a staging tree mirroring the
+# runtime extensions/ layout. The runtime image copies this whole tree.
+RUN bash -c 'set -e; \
+    cd third_party/simple && mkdir -p build && cd build && \
+    cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_TEST_EXAMPLE=OFF .. && \
+    make -j"$(nproc)" && \
+    mkdir -p /app/extensions/dict && \
+    cp src/libsimple.so /app/extensions/libsimple.so && \
+    for f in jieba.dict.utf8 hmm_model.utf8 user.dict.utf8 idf.utf8 stop_words.utf8; do \
+      cp test/dict/$f /app/extensions/dict/$f; \
+    done'
+
+# Build with CGO enabled for SQLite + sqlite_fts5 build tag (required by libsimple)
 ENV CGO_ENABLED=1
-RUN go build -o my-life-db .
+RUN go build -tags sqlite_fts5 -o my-life-db .
 
 # Stage 3: Production image
 FROM debian:trixie AS runner
@@ -59,8 +71,11 @@ RUN mkdir -p /home/xiaoyuanzhu/my-life-db/data \
                  /home/xiaoyuanzhu/my-life-db/.my-life-db \
                  /home/xiaoyuanzhu/.claude
 
-# Copy built artifacts with correct ownership (avoids extra chown layer)
+# Copy built artifacts with correct ownership (avoids extra chown layer).
+# libsimple ships at /opt/mld/extensions (NOT under .my-life-db, which is a
+# bind-mount target at runtime — anything there would be shadowed).
 COPY --from=go-builder --chown=1000:1000 /app/my-life-db ./backend/my-life-db
+COPY --from=go-builder --chown=1000:1000 /app/extensions /opt/mld/extensions
 COPY --from=frontend-builder --chown=1000:1000 /app/dist ./frontend/dist
 
 # Switch to non-root user
@@ -101,6 +116,7 @@ ENV PORT=12345
 ENV HOST=0.0.0.0
 ENV USER_DATA_DIR=/home/xiaoyuanzhu/my-life-db/data
 ENV APP_DATA_DIR=/home/xiaoyuanzhu/my-life-db/.my-life-db
+ENV MLD_SIMPLE_EXTENSION_DIR=/opt/mld/extensions
 ENV HOME=/home/xiaoyuanzhu
 
 EXPOSE 12345

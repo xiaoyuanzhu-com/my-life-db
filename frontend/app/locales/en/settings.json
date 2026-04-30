@@ -63,10 +63,6 @@
       "label": "OpenAI - Model",
       "hint": "Used for all LLM tasks. Leave blank to use default."
     },
-    "meilisearchHost": {
-      "label": "Search - Meilisearch Host",
-      "hint": "Used by the search API to connect to your local Meilisearch instance."
-    },
     "qdrantHost": {
       "label": "Search - Qdrant Host",
       "hint": "Base URL for the Qdrant vector service used by semantic search."

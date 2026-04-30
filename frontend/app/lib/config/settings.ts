@@ -29,9 +29,6 @@ export interface UserSettings {
       ossRegion?: string;
       ossBucket?: string;
     };
-    meilisearch?: {
-      host?: string;
-    };
     qdrant?: {
       host?: string;
     };
@@ -41,7 +38,6 @@ export interface UserSettings {
   digesters?: {
     'speech-recognition'?: boolean;
     'tags'?: boolean;
-    'search-keyword'?: boolean;
     'search-semantic'?: boolean;
   };
 
@@ -113,7 +109,6 @@ export const DEFAULT_SETTINGS: UserSettings = {
   digesters: {
     'speech-recognition': true,
     'tags': true,
-    'search-keyword': true,
     'search-semantic': true,
   },
   extraction: {

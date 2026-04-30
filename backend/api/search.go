@@ -9,7 +9,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
-	"github.com/xiaoyuanzhu-com/my-life-db/vendors"
 )
 
 // RleMask represents an RLE mask for SAM segmentation
@@ -27,22 +26,22 @@ type MatchedObject struct {
 
 // SearchResultItem represents a search result
 type SearchResultItem struct {
-	Path            string            `json:"path"`
-	Name            string            `json:"name"`
-	IsFolder        bool              `json:"isFolder"`
-	Size            *int64            `json:"size,omitempty"`
-	MimeType        *string           `json:"mimeType,omitempty"`
-	ModifiedAt      int64             `json:"modifiedAt"`
-	CreatedAt       int64             `json:"createdAt"`
-	Digests         []db.Digest       `json:"digests"`
-	Score           float64           `json:"score"`
-	Snippet         string            `json:"snippet"`
-	TextPreview     *string           `json:"textPreview,omitempty"`
+	Path          string            `json:"path"`
+	Name          string            `json:"name"`
+	IsFolder      bool              `json:"isFolder"`
+	Size          *int64            `json:"size,omitempty"`
+	MimeType      *string           `json:"mimeType,omitempty"`
+	ModifiedAt    int64             `json:"modifiedAt"`
+	CreatedAt     int64             `json:"createdAt"`
+	Digests       []db.Digest       `json:"digests"`
+	Score         float64           `json:"score"`
+	Snippet       string            `json:"snippet"`
+	TextPreview   *string           `json:"textPreview,omitempty"`
 	PreviewSqlar  *string           `json:"previewSqlar,omitempty"`
 	PreviewStatus *string           `json:"previewStatus,omitempty"`
-	Highlights      map[string]string `json:"highlights,omitempty"`
-	MatchContext    *MatchContext     `json:"matchContext,omitempty"`
-	MatchedObject   *MatchedObject    `json:"matchedObject,omitempty"`
+	Highlights    map[string]string `json:"highlights,omitempty"`
+	MatchContext  *MatchContext     `json:"matchContext,omitempty"`
+	MatchedObject *MatchedObject    `json:"matchedObject,omitempty"`
 }
 
 // MatchContext provides context about where the match was found
@@ -121,78 +120,67 @@ func (h *Handlers) Search(c *gin.Context) {
 		return
 	}
 
-	// Initialize clients
-	meiliClient := vendors.GetMeiliClient()
-
 	results := []SearchResultItem{}
 	var total int
 	sources := []string{}
 
-	// Keyword search
-	if useKeyword && meiliClient != nil {
-		meiliResults, err := meiliClient.Search(query, vendors.MeiliSearchOptions{
-			Limit:      limit,
-			Offset:     offset,
-			TypeFilter: typeFilter,
-			PathFilter: pathFilter,
-		})
-		if err != nil {
-			log.Error().Err(err).Msg("meilisearch failed")
-		} else {
-			sources = append(sources, "keyword")
-			total = meiliResults.EstimatedTotalHits
+	// Keyword search via FTS5
+	hits, hitsTotal, err := db.SearchFTS(query, db.FTSSearchOptions{
+		Limit:      limit,
+		Offset:     offset,
+		TypeFilter: typeFilter,
+		PathFilter: pathFilter,
+	})
+	if err != nil {
+		log.Error().Err(err).Msg("fts5 search failed")
+	} else {
+		sources = append(sources, "keyword")
+		total = hitsTotal
 
-			for _, hit := range meiliResults.Hits {
-				file, err := db.GetFileWithDigests(hit.FilePath)
-				if err != nil || file == nil {
-					continue
-				}
-
-				// Build highlights from formatted fields
-				highlights := make(map[string]string)
-				if hit.Formatted != nil {
-					for k, v := range hit.Formatted {
-						highlights[k] = v
-					}
-				}
-
-				// Build snippet from formatted content or raw content
-				snippet := hit.Content
-				snippet = safeSubstring(snippet, 200)
-				if formatted, ok := hit.Formatted["content"]; ok && formatted != "" {
-					snippet = safeSubstring(formatted, 200)
-				}
-
-				// Build match context for keyword results
-				var matchContext *MatchContext
-				terms := extractSearchTerms(query)
-				matchContext = buildKeywordMatchContext(hit, file, terms)
-
-				// For image files, check if we matched on image-objects and include the matched object for highlighting
-				var matchedObject *MatchedObject
-				if file.MimeType != nil && strings.HasPrefix(*file.MimeType, "image/") {
-					matchedObject = findMatchingObject(file, terms)
-				}
-
-				results = append(results, SearchResultItem{
-					Path:            file.Path,
-					Name:            file.Name,
-					IsFolder:        file.IsFolder,
-					Size:            file.Size,
-					MimeType:        file.MimeType,
-					ModifiedAt:      file.ModifiedAt,
-					CreatedAt:       file.CreatedAt,
-					Digests:         file.Digests,
-					Score:           1.0,
-					Snippet:         snippet,
-					TextPreview:     file.TextPreview,
-					PreviewSqlar:  file.PreviewSqlar,
-					PreviewStatus: file.PreviewStatus,
-					Highlights:      highlights,
-					MatchContext:    matchContext,
-					MatchedObject:   matchedObject,
-				})
+		terms := extractSearchTerms(query)
+		for _, hit := range hits {
+			file, err := db.GetFileWithDigests(hit.FilePath)
+			if err != nil || file == nil {
+				continue
 			}
+
+			// Highlights map mirrors the old meili shape so the frontend
+			// can render `<em>` markup on file_path / content.
+			highlights := map[string]string{}
+			if hit.FilePathHL != "" {
+				highlights["filePath"] = hit.FilePathHL
+			}
+			if hit.Snippet != "" {
+				highlights["content"] = hit.Snippet
+			}
+
+			snippet := safeSubstring(stripEm(hit.Snippet), 200)
+
+			matchContext := buildKeywordMatchContext(hit, file, terms)
+
+			var matchedObject *MatchedObject
+			if file.MimeType != nil && strings.HasPrefix(*file.MimeType, "image/") {
+				matchedObject = findMatchingObject(file, terms)
+			}
+
+			results = append(results, SearchResultItem{
+				Path:          file.Path,
+				Name:          file.Name,
+				IsFolder:      file.IsFolder,
+				Size:          file.Size,
+				MimeType:      file.MimeType,
+				ModifiedAt:    file.ModifiedAt,
+				CreatedAt:     file.CreatedAt,
+				Digests:       file.Digests,
+				Score:         -hit.Score, // bm25 is negative-better; flip for "higher is better" UX
+				Snippet:       snippet,
+				TextPreview:   file.TextPreview,
+				PreviewSqlar:  file.PreviewSqlar,
+				PreviewStatus: file.PreviewStatus,
+				Highlights:    highlights,
+				MatchContext:  matchContext,
+				MatchedObject: matchedObject,
+			})
 		}
 	}
 
@@ -209,7 +197,7 @@ func (h *Handlers) Search(c *gin.Context) {
 	response.Pagination.Total = max(total, len(results))
 	response.Pagination.Limit = limit
 	response.Pagination.Offset = offset
-	response.Pagination.HasMore = len(results) >= limit
+	response.Pagination.HasMore = offset+len(results) < total
 
 	c.JSON(http.StatusOK, response)
 }
@@ -222,6 +210,14 @@ func safeSubstring(s string, maxLen int) string {
 		return s
 	}
 	return string(runes[:maxLen])
+}
+
+// stripEm removes <em>...</em> markup so the same string can be reused as a
+// plain-text snippet. The frontend's `match-context.tsx` renders the
+// highlighted version separately via the Highlights map.
+func stripEm(s string) string {
+	r := strings.NewReplacer("<em>", "", "</em>", "")
+	return r.Replace(s)
 }
 
 func extractSearchTerms(query string) []string {
@@ -353,16 +349,42 @@ func findMatchingObject(file *db.FileWithDigests, terms []string) *MatchedObject
 	return nil
 }
 
-// buildKeywordMatchContext creates match context from Meilisearch formatted results
-// This matches the Node.js buildDigestMatchContext function
-func buildKeywordMatchContext(hit vendors.MeiliHit, file *db.FileWithDigests, terms []string) *MatchContext {
-	const highlightTag = "<em>"
-
+// buildKeywordMatchContext creates a MatchContext for an FTS5 hit. FTS5
+// indexes one content column that already concatenates the file path and
+// the file's text content, so we can't deduce *which* field matched purely
+// from the hit. Instead we:
+//
+//  1. If the path was highlighted, label the match as "File path".
+//  2. Otherwise scan the file's digests for the search terms and label by
+//     which digester contributed the matched text (Summary, OCR, etc).
+//  3. Fall back to a generic "File content" label.
+func buildKeywordMatchContext(hit db.FTSHit, file *db.FileWithDigests, terms []string) *MatchContext {
 	if len(terms) == 0 {
 		return nil
 	}
 
-	// Digest labels matching Node.js TEXT_SOURCE_LABELS and ADDITIONAL_DIGEST_LABELS
+	// File-path match — happens when the user searches for a filename.
+	if strings.Contains(hit.FilePathHL, "<em>") {
+		snippet := hit.FilePathHL
+		if !hit.HasContentHit {
+			return &MatchContext{
+				Source:  "digest",
+				Snippet: snippet,
+				Terms:   terms,
+				Digest: &DigestInfo{
+					Type:  "filePath",
+					Label: "File path",
+				},
+			}
+		}
+		// If both path and content matched, prefer the content match below.
+	}
+
+	if !hit.HasContentHit {
+		return nil
+	}
+
+	// Digest labels matching the old TEXT_SOURCE_LABELS / ADDITIONAL_DIGEST_LABELS.
 	digestLabels := map[string]string{
 		"url-crawl-content":  "Web page content",
 		"url-crawl-summary":  "Summary",
@@ -374,160 +396,55 @@ func buildKeywordMatchContext(hit vendors.MeiliHit, file *db.FileWithDigests, te
 		"tags":               "Tags",
 	}
 
-	// Field configuration matching Node.js DIGEST_FIELD_CONFIG
-	type fieldConfig struct {
-		field         string
-		digesterTypes []string
-		label         string
+	// Probe digesters in priority order. The order roughly mirrors the
+	// fieldConfigs the old code walked.
+	priority := []string{
+		"url-crawl-summary",
+		"tags",
+		"url-crawl-content",
+		"doc-to-markdown",
+		"image-ocr",
+		"image-captioning",
+		"image-objects",
+		"speech-recognition",
 	}
 
-	fieldConfigs := []fieldConfig{
-		{"filePath", []string{}, "File path"},
-		{"summary", []string{"url-crawl-summary"}, "Summary"},
-		{"tags", []string{"tags"}, "Tags"},
-		{"content", []string{"url-crawl-content", "doc-to-markdown", "image-ocr", "image-captioning", "image-objects", "speech-recognition"}, "File content"},
-	}
-
-	// Check each field in priority order
-	for _, config := range fieldConfigs {
-		formattedValue := hit.Formatted[config.field]
-		if !hasHighlight(formattedValue, highlightTag) {
+	for _, digesterType := range priority {
+		var digest *db.Digest
+		for i := range file.Digests {
+			if file.Digests[i].Digester == digesterType && file.Digests[i].Content != nil {
+				digest = &file.Digests[i]
+				break
+			}
+		}
+		if digest == nil || digest.Content == nil {
 			continue
 		}
-
-		snippet := extractSnippetFromFormatted(formattedValue, 200)
-		if config.field == "content" {
-			snippet = extractSnippetFromFormatted(formattedValue, 300)
-		}
-		if strings.TrimSpace(snippet) == "" {
-			continue
-		}
-
-		// Determine the source type label
-		sourceType := config.label
-
-		// For fields with associated digesters, try to find which digest matched
-		if len(config.digesterTypes) > 0 {
-			// Find which digest actually contains the matched text
-			for _, digesterType := range config.digesterTypes {
-				var matchedDigest *db.Digest
-				for i := range file.Digests {
-					if file.Digests[i].Digester == digesterType && file.Digests[i].Content != nil {
-						matchedDigest = &file.Digests[i]
-						break
-					}
-				}
-
-				if matchedDigest != nil && matchedDigest.Content != nil {
-					// Check if any term matches in this digest's content
-					contentLower := strings.ToLower(*matchedDigest.Content)
-					for _, term := range terms {
-						if strings.Contains(contentLower, strings.ToLower(term)) {
-							// Use the digest-specific label if available
-							if label, ok := digestLabels[digesterType]; ok {
-								sourceType = label
-							}
-							goto found
-						}
-					}
+		contentLower := strings.ToLower(*digest.Content)
+		for _, term := range terms {
+			if strings.Contains(contentLower, strings.ToLower(term)) {
+				return &MatchContext{
+					Source:  "digest",
+					Snippet: hit.Snippet,
+					Terms:   terms,
+					Digest: &DigestInfo{
+						Type:  "content",
+						Label: digestLabels[digesterType],
+					},
 				}
 			}
 		}
-
-	found:
-		return &MatchContext{
-			Source:  "digest",
-			Snippet: snippet,
-			Terms:   terms,
-			Digest: &DigestInfo{
-				Type:  config.field,
-				Label: sourceType,
-			},
-		}
 	}
 
-	return nil
-}
-
-// hasHighlight checks if a string contains highlight tags
-func hasHighlight(text string, highlightTag string) bool {
-	return text != "" && strings.Contains(text, highlightTag)
-}
-
-// extractSnippetFromFormatted extracts a snippet around the highlight
-// Uses rune-based operations for proper unicode/multilingual support
-func extractSnippetFromFormatted(formattedText string, maxLength int) string {
-	const highlightPre = "<em>"
-	const highlightPost = "</em>"
-
-	highlightStart := strings.Index(formattedText, highlightPre)
-	if highlightStart == -1 {
-		return safeSubstring(formattedText, maxLength)
+	// Generic fallback — content matched but we couldn't attribute it to a
+	// specific digester (e.g., the file is plain text indexed verbatim).
+	return &MatchContext{
+		Source:  "digest",
+		Snippet: hit.Snippet,
+		Terms:   terms,
+		Digest: &DigestInfo{
+			Type:  "content",
+			Label: "File content",
+		},
 	}
-
-	// Convert to runes for proper unicode handling
-	runes := []rune(formattedText)
-
-	// Find the rune position of the highlight start by counting runes up to the byte position
-	highlightRuneStart := 0
-	byteCount := 0
-	for i := range runes {
-		if byteCount >= highlightStart {
-			highlightRuneStart = i
-			break
-		}
-		byteCount += len(string(runes[i]))
-	}
-
-	// Extract context around the highlight (in runes)
-	contextRadius := 80
-	start := max(0, highlightRuneStart-contextRadius)
-	end := min(len(runes), highlightRuneStart+contextRadius+100)
-
-	snippet := string(runes[start:end])
-	if start > 0 {
-		snippet = "..." + snippet
-	}
-	if end < len(runes) {
-		snippet = snippet + "..."
-	}
-
-	// Trim if still too long, but keep the highlight
-	snippetRunes := []rune(snippet)
-	if len(snippetRunes) > maxLength {
-		// Find highlight in the snippet
-		snippetHighlightStart := strings.Index(snippet, highlightPre)
-		if snippetHighlightStart != -1 {
-			// Find the end of the complete highlight tag
-			highlightEndBytePos := strings.Index(snippet[snippetHighlightStart:], highlightPost)
-			if highlightEndBytePos != -1 {
-				// Convert highlight end byte position (relative to highlightStart) to rune position
-				highlightEndRunePos := 0
-				for i := range snippetRunes {
-					runeBytePos := len(string(snippetRunes[:i]))
-					if runeBytePos >= snippetHighlightStart+highlightEndBytePos+len(highlightPost) {
-						highlightEndRunePos = i
-						break
-					}
-				}
-				if highlightEndRunePos == 0 {
-					highlightEndRunePos = len(snippetRunes)
-				}
-
-				// Keep at least 20 runes after the highlight, but don't exceed maxLength
-				minLength := min(highlightEndRunePos+20, len(snippetRunes))
-				if minLength <= maxLength {
-					snippet = string(snippetRunes[:maxLength]) + "..."
-				} else {
-					snippet = string(snippetRunes[:minLength]) + "..."
-				}
-			} else {
-				snippet = string(snippetRunes[:maxLength]) + "..."
-			}
-		} else {
-			snippet = string(snippetRunes[:maxLength]) + "..."
-		}
-	}
-
-	return strings.TrimSpace(snippet)
 }

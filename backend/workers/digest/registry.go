@@ -66,9 +66,10 @@ func (r *Registry) GetDigesterInfo() []map[string]interface{} {
 }
 
 // digesterOrder defines the explicit execution order of all digesters
-// Digesters are executed in this exact order to respect dependencies
-// NOTE: All digesters disabled — Meilisearch indexing is now handled directly
-// by the MeiliIndexer (workers/meili/indexer.go), not through the digest pipeline.
+// Digesters are executed in this exact order to respect dependencies.
+// NOTE: All digesters currently disabled — text indexing is handled directly
+// by workers/textindex/indexer.go writing to the FTS5 files_fts table on
+// every fs change event, not through the digest pipeline.
 var digesterOrder = []Digester{}
 
 // InitializeRegistry registers all digesters in their defined order
