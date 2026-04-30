@@ -61,9 +61,6 @@
       "manual": "手动"
     }
   },
-  "plan": {
-    "tasks": "任务"
-  },
   "preview": {
     "fullscreen": "全屏预览",
     "exit": "退出全屏"

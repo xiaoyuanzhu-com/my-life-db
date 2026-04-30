@@ -61,9 +61,6 @@
       "manual": "manual"
     }
   },
-  "plan": {
-    "tasks": "Tasks"
-  },
   "preview": {
     "fullscreen": "Preview fullscreen",
     "exit": "Exit fullscreen"
