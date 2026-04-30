@@ -28,21 +28,21 @@ func TestValidatePath_SecurityOnly(t *testing.T) {
 		})
 	}
 
-	// Excluded paths should now be ALLOWED by ValidatePath (security only)
-	excludedPaths := []string{
-		".DS_Store",
+	// Index-skipped paths should be ALLOWED by ValidatePath (security only)
+	skippedPaths := []string{
 		".git/config",
-		"media/.DS_Store",
 		"node_modules/foo",
+		"some/__pycache__/x.pyc",
+		"deep/.pnpm-store/v3/abc",
 	}
 
-	for _, path := range excludedPaths {
-		t.Run("allows excluded: "+path, func(t *testing.T) {
+	for _, path := range skippedPaths {
+		t.Run("allows skipped: "+path, func(t *testing.T) {
 			err := v.ValidatePath(path)
 			if err != nil {
-				t.Errorf("ValidatePath(%q) should allow excluded paths, got error: %v", path, err)
+				t.Errorf("ValidatePath(%q) should allow skipped paths, got error: %v", path, err)
 			}
-			// But IsExcluded should still return true
+			// But IsExcluded should still return true (delegates to IsIndexSkipped)
 			if !v.IsExcluded(path) {
 				t.Errorf("IsExcluded(%q) should return true", path)
 			}
@@ -58,26 +58,28 @@ func TestExclusionPatterns(t *testing.T) {
 		excluded bool
 		desc     string
 	}{
-		// Specific "junk" dot-dirs are excluded
-		{".git/config", true, "should exclude .git directory (VCS)"},
-		{".DS_Store", true, "should exclude .DS_Store files (OS)"},
-		{"node_modules/pkg/index.js", true, "should exclude node_modules (deps)"},
-		{"library/.git/config", true, "should exclude .git in subdirectories"},
+		// The four universal index-skip markers
+		{".git/config", true, "should skip .git directory (VCS)"},
+		{"node_modules/pkg/index.js", true, "should skip node_modules (deps)"},
+		{"library/.git/config", true, "should skip .git in subdirectories"},
+		{"py/__pycache__/mod.pyc", true, "should skip __pycache__"},
+		{"x/.pnpm-store/v3/files", true, "should skip .pnpm-store"},
 
-		// App-relevant dot-dirs are NOT excluded (visible on data page + searchable)
-		{".claude/settings", false, "should NOT exclude .claude"},
-		{".obsidian/workspace", false, "should NOT exclude .obsidian"},
-		{"notes/.obsidian/workspace", false, "should NOT exclude .obsidian in subdirectories"},
+		// Everything else is indexed — including OS files and app dot-dirs
+		{".DS_Store", false, "should NOT skip .DS_Store (not a marker)"},
+		{".claude/settings", false, "should NOT skip .claude"},
+		{".obsidian/workspace", false, "should NOT skip .obsidian"},
+		{"notes/.obsidian/workspace", false, "should NOT skip .obsidian in subdirectories"},
 
-		// Valid paths are NOT excluded
-		{"inbox/document.pdf", false, "should NOT exclude inbox files"},
-		{"notes/2024/january.md", false, "should NOT exclude notes"},
-		{"journal/entry.txt", false, "should NOT exclude journal"},
-		{"library/books/book.epub", false, "should NOT exclude library files"},
+		// Valid paths are NOT skipped
+		{"inbox/document.pdf", false, "should NOT skip inbox files"},
+		{"notes/2024/january.md", false, "should NOT skip notes"},
+		{"journal/entry.txt", false, "should NOT skip journal"},
+		{"library/books/book.epub", false, "should NOT skip library files"},
 
 		// Edge cases - files with . in the name (but not at start)
-		{"notes/my.document.txt", false, "should NOT exclude files with . in middle of name"},
-		{"inbox/v1.2.3.pdf", false, "should NOT exclude version numbers"},
+		{"notes/my.document.txt", false, "should NOT skip files with . in middle of name"},
+		{"inbox/v1.2.3.pdf", false, "should NOT skip version numbers"},
 	}
 
 	for _, tt := range tests {

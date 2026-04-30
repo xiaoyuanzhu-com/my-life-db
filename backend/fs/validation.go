@@ -5,25 +5,28 @@ import (
 	"strings"
 )
 
-// validator handles path validation and exclusion checks
-type validator struct {
-	pathFilter *PathFilter
-}
+// validator handles path validation (security only).
+//
+// Indexing-skip decisions are NOT validation — they are a separate concern
+// handled by IsIndexSkipped/IsIndexSkippedName in pathfilter.go. The
+// scanner/watcher consult those directly.
+type validator struct{}
 
-// newValidator creates a new validator for scanning and indexing.
-// Uses ExcludeForTree so what gets indexed matches what the data page displays.
+// newValidator creates a new validator.
 func newValidator() *validator {
-	return &validator{
-		pathFilter: NewPathFilter(ExcludeForTree),
-	}
+	return &validator{}
 }
 
-// IsExcluded checks if a path matches any exclusion pattern
+// IsExcluded reports whether the path should be skipped during indexing.
+// This is a thin wrapper around IsIndexSkipped kept for the scanner/watcher
+// callsites; new code should call IsIndexSkipped directly.
 func (v *validator) IsExcluded(path string) bool {
-	return v.pathFilter.IsExcluded(path)
+	return IsIndexSkipped(path)
 }
 
-// ValidatePath checks if a path is valid and not malicious (security only)
+// ValidatePath checks if a path is valid and not malicious (security only).
+// It does NOT consider indexing-skip rules — paths under skipped subtrees
+// (e.g. node_modules) are still valid for direct file operations.
 func (v *validator) ValidatePath(path string) error {
 	// No absolute paths
 	if filepath.IsAbs(path) {
@@ -38,21 +41,6 @@ func (v *validator) ValidatePath(path string) error {
 	// No leading /
 	if strings.HasPrefix(path, "/") {
 		return ErrInvalidPath
-	}
-
-	return nil
-}
-
-// ValidatePathForRead checks if a path is valid for reading (security + exclusion)
-// Use this for display/listing operations where excluded files should be hidden
-func (v *validator) ValidatePathForRead(path string) error {
-	if err := v.ValidatePath(path); err != nil {
-		return err
-	}
-
-	// Check against exclusion patterns
-	if v.pathFilter.IsExcluded(path) {
-		return ErrExcludedPath
 	}
 
 	return nil

@@ -204,13 +204,12 @@ func (c *LocalAppClient) GetFolderTree(ctx context.Context, depth int) (*agent.F
 		Children: []*agent.FolderNode{},
 	}
 
-	pathFilter := fs.NewPathFilter(fs.ExcludeForTree)
-	c.buildFolderTree(root, cfg.UserDataDir, "", depth, 1, pathFilter)
+	c.buildFolderTree(root, cfg.UserDataDir, "", depth, 1)
 
 	return root, nil
 }
 
-func (c *LocalAppClient) buildFolderTree(node *agent.FolderNode, baseDir, relativePath string, maxDepth, currentDepth int, pathFilter *fs.PathFilter) {
+func (c *LocalAppClient) buildFolderTree(node *agent.FolderNode, baseDir, relativePath string, maxDepth, currentDepth int) {
 	if maxDepth > 0 && currentDepth > maxDepth {
 		return
 	}
@@ -221,16 +220,12 @@ func (c *LocalAppClient) buildFolderTree(node *agent.FolderNode, baseDir, relati
 		return
 	}
 
-	atRoot := relativePath == ""
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
 
 		name := entry.Name()
-		if pathFilter.IsExcludedEntry(name, atRoot) {
-			continue
-		}
 
 		childPath := name
 		if relativePath != "" {
@@ -245,7 +240,7 @@ func (c *LocalAppClient) buildFolderTree(node *agent.FolderNode, baseDir, relati
 		}
 
 		if currentDepth < maxDepth {
-			c.buildFolderTree(child, baseDir, childPath, maxDepth, currentDepth+1, pathFilter)
+			c.buildFolderTree(child, baseDir, childPath, maxDepth, currentDepth+1)
 		}
 
 		node.Children = append(node.Children, child)

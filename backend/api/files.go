@@ -524,11 +524,9 @@ func (h *Handlers) GetLibraryTree(c *gin.Context) {
 		return
 	}
 
-	pathFilter := fs.NewPathFilter(fs.ExcludeForTree)
-
 	// Server-side search mode: walk entire tree, fuzzy-match, return flat results
 	if query != "" {
-		results, totalWalked := h.searchFiles(fullPath, requestedPath, query, limit, foldersOnly, pathFilter)
+		results, totalWalked := h.searchFiles(fullPath, requestedPath, query, limit, foldersOnly)
 		c.JSON(http.StatusOK, gin.H{
 			"basePath":   baseDir,
 			"path":       requestedPath,
@@ -541,7 +539,7 @@ func (h *Handlers) GetLibraryTree(c *gin.Context) {
 
 	// Track count for limit
 	count := 0
-	children := h.readDirRecursive(baseDir, requestedPath, depth, 1, fields, &count, limit, foldersOnly, pathFilter)
+	children := h.readDirRecursive(baseDir, requestedPath, depth, 1, fields, &count, limit, foldersOnly)
 
 	response := gin.H{
 		"basePath": baseDir,
@@ -557,7 +555,7 @@ func (h *Handlers) GetLibraryTree(c *gin.Context) {
 
 // searchFiles walks the directory tree and returns flat results matching the query.
 // It uses case-insensitive substring matching on the full relative path and filename.
-func (h *Handlers) searchFiles(rootPath, requestedPath, query string, limit int, foldersOnly bool, pathFilter *fs.PathFilter) ([]flatFileResult, int) {
+func (h *Handlers) searchFiles(rootPath, requestedPath, query string, limit int, foldersOnly bool) ([]flatFileResult, int) {
 	lowerQuery := strings.ToLower(query)
 	var results []flatFileResult
 	totalWalked := 0
@@ -569,13 +567,8 @@ func (h *Handlers) searchFiles(rootPath, requestedPath, query string, limit int,
 			return
 		}
 
-		atRoot := relPath == ""
 		for _, entry := range entries {
 			name := entry.Name()
-
-			if pathFilter.IsExcludedEntry(name, atRoot) {
-				continue
-			}
 
 			isDir := entry.IsDir()
 			if foldersOnly && !isDir {
@@ -634,7 +627,7 @@ func (h *Handlers) searchFiles(rootPath, requestedPath, query string, limit int,
 }
 
 // readDirRecursive reads directory contents recursively up to specified depth
-func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, currentDepth int, fields fieldSet, count *int, limit int, foldersOnly bool, pathFilter *fs.PathFilter) []FileNode {
+func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, currentDepth int, fields fieldSet, count *int, limit int, foldersOnly bool) []FileNode {
 	fullPath := filepath.Join(baseDir, relativePath)
 
 	entries, err := os.ReadDir(fullPath)
@@ -649,14 +642,8 @@ func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, curr
 	}
 
 	var nodes []FileNode
-	atRoot := relativePath == ""
 	for _, entry := range entries {
 		name := entry.Name()
-
-		// Skip excluded files/directories
-		if pathFilter.IsExcludedEntry(name, atRoot) {
-			continue
-		}
 
 		isDir := entry.IsDir()
 
@@ -711,7 +698,7 @@ func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, curr
 		if isDir {
 			// maxDepth: 0 = unlimited, otherwise check current depth
 			if maxDepth == 0 || currentDepth < maxDepth {
-				node.Children = h.readDirRecursive(baseDir, childRelPath, maxDepth, currentDepth+1, fields, count, limit, foldersOnly, pathFilter)
+				node.Children = h.readDirRecursive(baseDir, childRelPath, maxDepth, currentDepth+1, fields, count, limit, foldersOnly)
 			} else {
 				node.Children = []FileNode{} // Empty array for unexpanded folders
 			}

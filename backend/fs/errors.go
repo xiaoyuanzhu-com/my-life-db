@@ -6,9 +6,6 @@ var (
 	// ErrInvalidPath is returned when a path is invalid or malicious
 	ErrInvalidPath = errors.New("invalid file path")
 
-	// ErrExcludedPath is returned when a path matches exclusion patterns
-	ErrExcludedPath = errors.New("path is excluded")
-
 	// ErrFileNotFound is returned when a file doesn't exist
 	ErrFileNotFound = errors.New("file not found")
 

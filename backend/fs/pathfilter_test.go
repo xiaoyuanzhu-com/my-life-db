@@ -2,191 +2,57 @@ package fs
 
 import "testing"
 
-func TestPathFilter_IsExcluded(t *testing.T) {
+func TestIsIndexSkipped(t *testing.T) {
 	tests := []struct {
-		name       string
-		exclusions Category
-		path       string
-		want       bool
+		path string
+		want bool
+		desc string
 	}{
-		// Hidden files
-		{"hidden dir", CategoryHidden, ".git", true},
-		{"hidden file", CategoryHidden, ".hidden", true},
-		{"hidden nested", CategoryHidden, "foo/.hidden/bar", true},
-		{"not hidden", CategoryHidden, "regular", false},
-		{"dot only", CategoryHidden, ".", false},
+		// All four markers as direct paths
+		{"node_modules", true, "node_modules at root"},
+		{".git", true, ".git at root"},
+		{".pnpm-store", true, ".pnpm-store at root"},
+		{"__pycache__", true, "__pycache__ at root"},
 
-		// VCS
-		{"git", CategoryVCS, ".git", true},
-		{"svn", CategoryVCS, ".svn", true},
-		{"hg nested", CategoryVCS, "project/.hg", true},
-		{"not vcs", CategoryVCS, "gitrepo", false},
+		// Markers nested at any depth
+		{"projects/foo/node_modules", true, "node_modules nested"},
+		{"projects/foo/node_modules/bar/index.js", true, "file under node_modules"},
+		{"a/b/.git/objects/pack", true, ".git nested"},
+		{"py/pkg/__pycache__/mod.cpython-311.pyc", true, "__pycache__ nested"},
+		{"deep/path/.pnpm-store/v3/files/abc", true, ".pnpm-store nested"},
 
-		// IDE
-		{"idea", CategoryIDE, ".idea", true},
-		{"vscode", CategoryIDE, ".vscode", true},
-		{"suo file", CategoryIDE, "project.suo", true},
-		{"not ide", CategoryIDE, "ideas", false},
-
-		// Backup
-		{"tilde prefix", CategoryBackup, "~file", true},
-		{"tilde suffix", CategoryBackup, "file~", true},
-		{"bak file", CategoryBackup, "file.bak", true},
-		{"swp file", CategoryBackup, ".file.swp", true}, // Also hidden
-		{"not backup", CategoryBackup, "backup", false},
-
-		// Dependencies
-		{"node_modules", CategoryDependencies, "node_modules", true},
-		{"vendor", CategoryDependencies, "vendor", true},
-		{"nested node_modules", CategoryDependencies, "project/node_modules/pkg", true},
-		{"not deps", CategoryDependencies, "modules", false},
-
-		// Cache
-		{"pycache", CategoryCache, "__pycache__", true},
-		{"pytest", CategoryCache, ".pytest_cache", true},
-		{"pyc file", CategoryCache, "module.pyc", true},
-		{"next", CategoryCache, ".next", true},
-		{"not cache", CategoryCache, "cache", false},
-
-		// Build
-		{"dist", CategoryBuild, "dist", true},
-		{"build", CategoryBuild, "build", true},
-		{"target", CategoryBuild, "target", true},
-		{"nested target", CategoryBuild, "rust-project/target/debug", true},
-		{"so file", CategoryBuild, "lib.so", true},
-		{"not build", CategoryBuild, "builder", false},
-
-		// Virtual env
-		{"venv", CategoryVirtualEnv, "venv", true},
-		{".venv", CategoryVirtualEnv, ".venv", true},
-		{"not venv", CategoryVirtualEnv, "environment", false},
-
-		// OS files
-		{"ds_store", CategoryOS, ".DS_Store", true},
-		{"thumbs", CategoryOS, "Thumbs.db", true},
-		{"resource fork", CategoryOS, "._hidden", true},
-		{"not os", CategoryOS, "dsstore", false},
-
-		// Logs
-		{"log dir", CategoryLogs, "logs", true},
-		{"log file", CategoryLogs, "app.log", true},
-		{"not log", CategoryLogs, "logger", false},
-
-		// App reserved (currently empty - inbox and app are shown in library tree)
-		{"inbox nested", CategoryAppReserved, "foo/inbox", false},
-		{"not reserved", CategoryAppReserved, "library", false},
-
-		// Combined categories
-		{"git with default", ExcludeDefault, ".git", true},
-		{"node_modules with default", ExcludeDefault, "node_modules", true},
-		{"regular with default", ExcludeDefault, "documents", false},
-
-		// Complex paths
-		{"deep hidden", CategoryHidden, "a/b/c/.hidden/d", true},
-		{"deep vcs", CategoryVCS, "projects/myapp/.git/objects", true},
+		// Non-marker paths
+		{"", false, "empty path"},
+		{"notes/2024/january.md", false, "regular note path"},
+		{"inbox/document.pdf", false, "inbox file"},
+		{".claude/settings.json", false, ".claude is not a skip marker"},
+		{".obsidian/workspace", false, ".obsidian is not a skip marker"},
+		{".DS_Store", false, ".DS_Store is not a skip marker"},
+		{"library/.git-keep", false, "name containing .git is not a marker"},
+		{"node_modules_backup", false, "name containing node_modules is not a marker"},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			f := NewPathFilter(tt.exclusions)
-			if got := f.IsExcluded(tt.path); got != tt.want {
-				t.Errorf("IsExcluded(%q) = %v, want %v", tt.path, got, tt.want)
+		t.Run(tt.desc, func(t *testing.T) {
+			if got := IsIndexSkipped(tt.path); got != tt.want {
+				t.Errorf("IsIndexSkipped(%q) = %v, want %v", tt.path, got, tt.want)
 			}
 		})
 	}
 }
 
-func TestPathFilter_IsExcludedEntry(t *testing.T) {
-	tests := []struct {
-		name       string
-		exclusions Category
-		entry      string
-		atRoot     bool
-		want       bool
-	}{
-		// Case insensitivity for OS files
-		{"DS_Store upper", CategoryOS, ".DS_Store", false, true},
-		{"ds_store lower", CategoryOS, ".ds_store", false, true},
-		{"Thumbs.db", CategoryOS, "Thumbs.db", false, true},
-		{"thumbs.db lower", CategoryOS, "thumbs.db", false, true},
+func TestIsIndexSkippedName(t *testing.T) {
+	skipped := []string{"node_modules", ".git", ".pnpm-store", "__pycache__"}
+	for _, name := range skipped {
+		if !IsIndexSkippedName(name) {
+			t.Errorf("IsIndexSkippedName(%q) should be true", name)
+		}
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			f := NewPathFilter(tt.exclusions)
-			if got := f.IsExcludedEntry(tt.entry, tt.atRoot); got != tt.want {
-				t.Errorf("IsExcludedEntry(%q, %v) = %v, want %v", tt.entry, tt.atRoot, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestPathFilter_Presets(t *testing.T) {
-	// Test that presets combine categories correctly
-	tests := []struct {
-		name   string
-		preset Category
-		check  Category
-		want   bool
-	}{
-		{"default has hidden", ExcludeDefault, CategoryHidden, true},
-		{"default has vcs", ExcludeDefault, CategoryVCS, true},
-		{"default has deps", ExcludeDefault, CategoryDependencies, true},
-		{"default no app reserved", ExcludeDefault, CategoryAppReserved, false},
-
-		{"tree no hidden", ExcludeForTree, CategoryHidden, false},
-		{"tree has deps", ExcludeForTree, CategoryDependencies, true},
-		{"tree has app reserved", ExcludeForTree, CategoryAppReserved, true},
-		{"tree has vcs", ExcludeForTree, CategoryVCS, true},
-		{"tree has build", ExcludeForTree, CategoryBuild, true},
-
-		{"all has everything", ExcludeAll, CategoryHidden | CategoryBackup | CategoryVCS | CategoryIDE |
-			CategoryDependencies | CategoryCache | CategoryBuild | CategoryVirtualEnv |
-			CategoryOS | CategoryLogs | CategoryAppReserved, true},
-
-		{"none has nothing", ExcludeNone, CategoryHidden, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			hasCategory := tt.preset&tt.check == tt.check
-			if hasCategory != tt.want {
-				t.Errorf("preset %v has category %v = %v, want %v", tt.preset, tt.check, hasCategory, tt.want)
-			}
-		})
-	}
-}
-
-func TestDefaultPathFilter(t *testing.T) {
-	f := DefaultPathFilter()
-	if f == nil {
-		t.Fatal("DefaultPathFilter returned nil")
-	}
-	if f.exclusions != ExcludeDefault {
-		t.Errorf("DefaultPathFilter exclusions = %v, want %v", f.exclusions, ExcludeDefault)
-	}
-}
-
-func TestExcludeForTree_ShowsDotDirs(t *testing.T) {
-	// ExcludeForTree should NOT blanket-hide dot-prefixed dirs.
-	// Specific categories (VCS, IDE, etc.) still hide their own dirs.
-	f := NewPathFilter(ExcludeForTree)
-
-	// Dot dirs that aren't in any specific excluded category should be visible
-	if f.IsExcludedEntry(".claude", false) {
-		t.Error(".claude should be visible in tree")
-	}
-	if f.IsExcludedEntry(".obsidian", false) {
-		t.Error(".obsidian should be visible in tree")
-	}
-
-	// But OS-excluded dot files are still hidden (via CategoryOS)
-	if !f.IsExcludedEntry(".DS_Store", false) {
-		t.Error(".DS_Store should be excluded via CategoryOS")
-	}
-
-	// Dependencies still hidden
-	if !f.IsExcludedEntry("node_modules", false) {
-		t.Error("node_modules should be excluded via CategoryDependencies")
+	notSkipped := []string{"", "notes", ".claude", ".obsidian", ".DS_Store", "build", "dist", "out", "target"}
+	for _, name := range notSkipped {
+		if IsIndexSkippedName(name) {
+			t.Errorf("IsIndexSkippedName(%q) should be false", name)
+		}
 	}
 }
