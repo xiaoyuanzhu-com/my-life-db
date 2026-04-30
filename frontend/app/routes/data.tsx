@@ -440,67 +440,67 @@ function DataContent() {
               <Import className="h-4 w-4 mr-2" />
               {t('actions.importFromApps', 'Import from apps')}
             </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label={t('actions.more', 'More')}>
-              <MoreHorizontal className="h-5 w-5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                {viewMode === 'list' ? (
-                  <ListIcon className="h-4 w-4 mr-2" />
-                ) : (
-                  <LayoutGrid className="h-4 w-4 mr-2" />
-                )}
-                {t('actions.view', 'View')}
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                <DropdownMenuRadioGroup
-                  value={viewMode}
-                  onValueChange={(v) => setViewMode(v === 'list' ? 'list' : 'grid')}
-                >
-                  <DropdownMenuRadioItem value="grid">
-                    <LayoutGrid className="h-4 w-4 mr-2" />
-                    {t('actions.viewGrid', 'Grid')}
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="list">
-                    <ListIcon className="h-4 w-4 mr-2" />
-                    {t('actions.viewList', 'List')}
-                  </DropdownMenuRadioItem>
-                </DropdownMenuRadioGroup>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <ArrowUpDown className="h-4 w-4 mr-2" />
-                {t('actions.sortBy', 'Sort by')}
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                <DropdownMenuRadioGroup
-                  value={sortKey}
-                  onValueChange={(v) => setSortKey(v as SortKey)}
-                >
-                  <DropdownMenuRadioItem value="name">
-                    {t('actions.sortName', 'Name')}
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="modifiedAt">
-                    {t('actions.sortModified', 'Modified')}
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="createdAt">
-                    {t('actions.sortCreated', 'Created')}
-                  </DropdownMenuRadioItem>
-                </DropdownMenuRadioGroup>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => setRefreshTrigger(n => n + 1)}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              {t('actions.refresh', 'Refresh')}
-            </DropdownMenuItem>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <MoreHorizontal className="h-4 w-4 mr-2" />
+                {t('actions.more', 'More')}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    {viewMode === 'list' ? (
+                      <ListIcon className="h-4 w-4 mr-2" />
+                    ) : (
+                      <LayoutGrid className="h-4 w-4 mr-2" />
+                    )}
+                    {t('actions.view', 'View')}
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuRadioGroup
+                      value={viewMode}
+                      onValueChange={(v) => setViewMode(v === 'list' ? 'list' : 'grid')}
+                    >
+                      <DropdownMenuRadioItem value="grid">
+                        <LayoutGrid className="h-4 w-4 mr-2" />
+                        {t('actions.viewGrid', 'Grid')}
+                      </DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="list">
+                        <ListIcon className="h-4 w-4 mr-2" />
+                        {t('actions.viewList', 'List')}
+                      </DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <ArrowUpDown className="h-4 w-4 mr-2" />
+                    {t('actions.sortBy', 'Sort by')}
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuRadioGroup
+                      value={sortKey}
+                      onValueChange={(v) => setSortKey(v as SortKey)}
+                    >
+                      <DropdownMenuRadioItem value="name">
+                        {t('actions.sortName', 'Name')}
+                      </DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="modifiedAt">
+                        {t('actions.sortModified', 'Modified')}
+                      </DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="createdAt">
+                        {t('actions.sortCreated', 'Created')}
+                      </DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setRefreshTrigger(n => n + 1)}>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  {t('actions.refresh', 'Refresh')}
+                </DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
