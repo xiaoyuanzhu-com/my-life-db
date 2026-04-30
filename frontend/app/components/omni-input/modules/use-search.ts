@@ -23,7 +23,7 @@ export interface SearchControls {
   isSearching: boolean;
 
   // Actions
-  search: (query: string) => void;
+  search: (query: string, path?: string) => void;
   clear: () => void;
 }
 
@@ -54,7 +54,7 @@ export function useSearch(options?: UseSearchOptions): SearchControls {
   }, []);
 
   // Perform search
-  const performSearch = useCallback(async (query: string) => {
+  const performSearch = useCallback(async (query: string, path?: string) => {
     currentQueryRef.current = query;
 
     if (!query || query.length < 2) {
@@ -84,6 +84,7 @@ export function useSearch(options?: UseSearchOptions): SearchControls {
     const fetchKeyword = async () => {
       try {
         const params = new URLSearchParams({ q: searchQuery, types: 'keyword', limit: String(SEARCH_BATCH_SIZE) });
+        if (path) params.set('path', path);
         const response = await api.get(`/api/search?${params}`, {
           signal: keywordController.signal,
         });
@@ -115,7 +116,7 @@ export function useSearch(options?: UseSearchOptions): SearchControls {
   }, []);
 
   // Search with debouncing
-  const search = useCallback((query: string) => {
+  const search = useCallback((query: string, path?: string) => {
     // Clear existing timeout
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
@@ -138,7 +139,7 @@ export function useSearch(options?: UseSearchOptions): SearchControls {
 
     // Set new timeout for search with adaptive delay
     searchTimeoutRef.current = setTimeout(() => {
-      performSearch(trimmedQuery);
+      performSearch(trimmedQuery, path);
     }, delay);
   }, [getSearchDebounceDelay, performSearch]);
 

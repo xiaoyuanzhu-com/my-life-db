@@ -288,11 +288,11 @@ function DataContent() {
   const handleSearchChange = useCallback((value: string) => {
     setSearchQuery(value);
     if (value.trim()) {
-      search(value);
+      search(value, currentPath);
     } else {
       clearSearch();
     }
-  }, [search, clearSearch]);
+  }, [search, clearSearch, currentPath]);
 
   const handleSearchToggle = useCallback(() => {
     setSearchExpanded(true);
@@ -387,6 +387,9 @@ function DataContent() {
               onBlur={(e) => {
                 const next = e.relatedTarget as Node | null;
                 if (next && e.currentTarget.parentElement?.contains(next)) return;
+                // Keep search expanded if there's an active query so clicking
+                // a result (which steals focus) doesn't clear the results.
+                if (searchQuery.trim()) return;
                 handleSearchCollapse();
               }}
               tabIndex={searchExpanded ? 0 : -1}
