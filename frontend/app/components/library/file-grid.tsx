@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { FolderPlus } from 'lucide-react';
+import { FolderPlus, ArrowUp, ArrowDown } from 'lucide-react';
+import { cn } from '~/lib/utils';
 import { api } from '~/lib/api';
 import { useLibraryNotifications } from '~/hooks/use-notifications';
 import type { PendingInboxItem } from '~/lib/send-queue/types';
@@ -35,6 +36,8 @@ interface FileGridProps {
   viewMode?: 'grid' | 'list';
   /** Sort key — controlled by parent's More menu. Default: 'name' */
   sortKey?: SortKey;
+  /** Callback when the user changes sort key (e.g. clicking a list header) */
+  onSortChange?: (key: SortKey) => void;
 }
 
 export function FileGrid({
@@ -50,6 +53,7 @@ export function FileGrid({
   onNavigate: controlledNavigate,
   viewMode = 'grid',
   sortKey = 'name',
+  onSortChange,
 }: FileGridProps) {
   const [internalPath, setInternalPath] = useState('');
   const currentPath = controlledPath ?? internalPath;
@@ -367,6 +371,47 @@ export function FileGrid({
                 : 'grid grid-cols-3 sm:grid-cols-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-1'
             }
           >
+            {viewMode === 'list' && (
+              <div className="sticky top-[-0.5rem] -mx-2 -mt-2 px-4 pt-2 pb-1 bg-background z-10 flex flex-row items-center gap-3 text-xs font-medium text-muted-foreground">
+                <div className="w-8 h-8 shrink-0" aria-hidden="true" />
+                <button
+                  type="button"
+                  onClick={() => onSortChange?.('name')}
+                  className={cn(
+                    'flex-1 min-w-0 text-left flex items-center gap-1 hover:text-foreground transition-colors',
+                    sortKey === 'name' && 'text-foreground',
+                  )}
+                >
+                  <span className="truncate">{t('data:headers.name', 'Name')}</span>
+                  {sortKey === 'name' && <ArrowUp className="w-3 h-3 shrink-0" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSortChange?.('modifiedAt')}
+                  className={cn(
+                    'hidden sm:flex w-24 shrink-0 items-center justify-end gap-1 hover:text-foreground transition-colors',
+                    sortKey === 'modifiedAt' && 'text-foreground',
+                  )}
+                >
+                  <span className="truncate">{t('data:headers.modified', 'Modified')}</span>
+                  {sortKey === 'modifiedAt' && <ArrowDown className="w-3 h-3 shrink-0" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSortChange?.('createdAt')}
+                  className={cn(
+                    'hidden md:flex w-24 shrink-0 items-center justify-end gap-1 hover:text-foreground transition-colors',
+                    sortKey === 'createdAt' && 'text-foreground',
+                  )}
+                >
+                  <span className="truncate">{t('data:headers.created', 'Created')}</span>
+                  {sortKey === 'createdAt' && <ArrowDown className="w-3 h-3 shrink-0" />}
+                </button>
+                <span className="hidden sm:inline w-16 text-right shrink-0">
+                  {t('data:headers.size', 'Size')}
+                </span>
+              </div>
+            )}
             {allNodes.map((node) => {
               const fullPath = currentPath
                 ? `${currentPath}/${node.path}`

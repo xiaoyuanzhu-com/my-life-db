@@ -525,6 +525,7 @@ function DataContent() {
             onNavigate={handleNavigate}
             viewMode={viewMode}
             sortKey={sortKey}
+            onSortChange={setSortKey}
           />
         )}
       </div>
