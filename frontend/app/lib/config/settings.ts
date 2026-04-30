@@ -4,7 +4,7 @@ export interface UserSettings {
   // User Preferences
   preferences: {
     theme: 'light' | 'dark' | 'auto';
-    defaultView: 'home' | 'inbox' | 'library';
+    defaultView: 'home' | 'library';
     weeklyDigest: boolean;
     digestDay: 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 = Sunday
     logLevel?: 'debug' | 'info' | 'warn' | 'error';

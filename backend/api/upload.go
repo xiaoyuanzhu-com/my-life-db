@@ -249,12 +249,7 @@ func (h *Handlers) FinalizeUpload(c *gin.Context) {
 	}
 
 	// Notify UI (metadata processing happens automatically via fs.Service watcher)
-	// Use inbox-changed for inbox uploads, library-changed for library uploads
-	if body.Destination == nil || *body.Destination == "inbox" {
-		h.server.Notifications().NotifyInboxChanged()
-	} else {
-		h.server.Notifications().NotifyLibraryChanged(paths[0], "upload")
-	}
+	h.server.Notifications().NotifyLibraryChanged(paths[0], "upload")
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -354,11 +349,7 @@ func (h *Handlers) SimpleUpload(c *gin.Context) {
 	}
 
 	// Notify UI
-	if dir == "inbox" || dir == "" || dir == "." {
-		h.server.Notifications().NotifyInboxChanged()
-	} else {
-		h.server.Notifications().NotifyLibraryChanged(destPath, "upload")
-	}
+	h.server.Notifications().NotifyLibraryChanged(destPath, "upload")
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

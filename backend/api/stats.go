@@ -25,19 +25,6 @@ func (h *Handlers) GetStats(c *gin.Context) {
 		libraryCount, librarySize = 0, 0
 	}
 
-	// Query inbox items
-	var inboxCount int64
-	err = db.GetDB().QueryRow(`
-		SELECT COUNT(*)
-		FROM files
-		WHERE is_folder = 0
-		AND path LIKE 'inbox/%'
-	`).Scan(&inboxCount)
-	if err != nil {
-		log.Error().Err(err).Msg("failed to get inbox stats")
-		inboxCount = 0
-	}
-
 	// Query total files for digests
 	var totalFiles int64
 	err = db.GetDB().QueryRow(`
@@ -82,9 +69,6 @@ func (h *Handlers) GetStats(c *gin.Context) {
 		"library": gin.H{
 			"fileCount": libraryCount,
 			"totalSize": librarySize,
-		},
-		"inbox": gin.H{
-			"itemCount": inboxCount,
 		},
 		"digests": gin.H{
 			"totalFiles":     totalFiles,

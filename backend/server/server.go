@@ -14,8 +14,6 @@ import (
 
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
-	"github.com/xiaoyuanzhu-com/my-life-db/agent"
-	"github.com/xiaoyuanzhu-com/my-life-db/agent/appclient"
 	"github.com/xiaoyuanzhu-com/my-life-db/agentrunner"
 	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/connect"
@@ -42,7 +40,6 @@ type Server struct {
 	digestWorker    *digest.Worker
 	textIndexer *textindex.Indexer
 	notifService    *notifications.Service
-	agent               *agent.Agent
 	agentClient     *agentsdk.Client
 	explore         *explore.Service
 	hookRegistry    *hooks.Registry
@@ -437,16 +434,6 @@ http_headers = { "x-litellm-customer-id" = %q }
 	log.Info().Msg("initializing text indexer")
 	s.textIndexer = textindex.NewIndexer(s.fsService.DataRoot())
 
-	// 6. Create agent (if enabled)
-	if cfg.InboxAgentEnabled {
-		log.Info().Msg("initializing inbox agent")
-		appClient := appclient.NewLocalClient(s.database.Conn(), s.fsService)
-		llmClient := agent.NewOpenAILLMClient()
-		s.agent = agent.NewAgent(appClient, llmClient)
-	} else {
-		log.Info().Msg("inbox agent disabled")
-	}
-
 	// 7.5. MyLifeDB Connect store — third-party app authorization (OAuth 2.1
 	// + PKCE). Schema is owned by db/migration_026_connect.go; this just
 	// hands the connect package a *sql.DB handle.
@@ -471,11 +458,6 @@ func (s *Server) connectServices() {
 			s.digestWorker.OnFileChange(event.FilePath, event.IsNew, true)
 		}
 
-		// Notify UI of file changes
-		if event.IsNew || event.ContentChanged {
-			s.notifService.NotifyInboxChanged()
-		}
-
 		// Emit file events to hooks registry for auto-run agents
 		if event.IsNew {
 			s.fsHook.EmitFileEvent(hooks.EventFileCreated, map[string]any{
@@ -489,44 +471,6 @@ func (s *Server) connectServices() {
 				"name": filepath.Base(event.FilePath),
 			})
 		}
-	})
-
-	// Digest → Agent: When files finish processing, trigger agent analysis.
-	// (FTS5 indexing happens synchronously in the FS handler above; the
-	// digest worker no longer needs to nudge a separate sync worker.)
-	s.digestWorker.SetCompletionHandler(func(filePath string, processed int, failed int) {
-		// Agent analysis only for inbox files
-		if s.agent == nil || !strings.HasPrefix(filePath, "inbox/") {
-			return
-		}
-
-		// Only trigger if at least one digest was successfully processed
-		if processed == 0 {
-			log.Debug().Str("path", filePath).Msg("no digests processed, skipping agent analysis")
-			return
-		}
-
-		log.Info().Str("path", filePath).Int("processed", processed).Msg("triggering agent analysis")
-
-		// Run agent analysis in background
-		go func() {
-			ctx := context.Background()
-			resp, err := s.agent.AnalyzeFile(ctx, filePath)
-			if err != nil {
-				log.Error().Err(err).Str("path", filePath).Msg("agent analysis failed")
-				return
-			}
-
-			log.Info().
-				Str("path", filePath).
-				Str("intentionType", resp.Intention.IntentionType).
-				Str("suggestedFolder", resp.Intention.SuggestedFolder).
-				Float64("confidence", resp.Intention.Confidence).
-				Msg("agent analysis complete")
-
-			// Notify UI of new intention
-			s.notifService.NotifyInboxChanged()
-		}()
 	})
 }
 
@@ -777,7 +721,6 @@ func (s *Server) FS() *fs.Service                             { return s.fsServi
 func (s *Server) Digest() *digest.Worker                      { return s.digestWorker }
 func (s *Server) TextIndexer() *textindex.Indexer            { return s.textIndexer }
 func (s *Server) Notifications() *notifications.Service       { return s.notifService }
-func (s *Server) Agent() *agent.Agent                         { return s.agent }
 func (s *Server) AgentClient() *agentsdk.Client                { return s.agentClient }
 func (s *Server) Explore() *explore.Service                      { return s.explore }
 func (s *Server) HookRegistry() *hooks.Registry                  { return s.hookRegistry }

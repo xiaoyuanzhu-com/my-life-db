@@ -40,9 +40,6 @@ type Config struct {
 	// Agent LLM
 	AgentLLM AgentLLMConfig
 
-	// Feature flags
-	InboxAgentEnabled bool
-
 	// OAuth settings
 	AuthMode              string
 	OAuthClientID         string

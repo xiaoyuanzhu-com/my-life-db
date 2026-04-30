@@ -15,34 +15,6 @@ export interface Digest {
   updatedAt: number;
 }
 
-export interface InboxItem {
-  path: string;
-  name: string;
-  isFolder: boolean;
-  size: number | null;
-  mimeType: string | null;
-  hash: string | null;
-  modifiedAt: number;
-  createdAt: number;
-  digests: Digest[];
-  textPreview?: string;
-  previewSqlar?: string;
-  isPinned: boolean;
-}
-
-export interface InboxResponse {
-  items: InboxItem[];
-  cursors: {
-    first: string | null;
-    last: string | null;
-  };
-  hasMore: {
-    older: boolean;
-    newer: boolean;
-  };
-  targetIndex?: number;
-}
-
 // Types for /api/search endpoint responses
 // Generated from backend/api/search.go
 

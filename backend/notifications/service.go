@@ -9,7 +9,6 @@ import (
 type EventType string
 
 const (
-	EventInboxChanged         EventType = "inbox-changed"
 	EventLibraryChanged       EventType = "library-changed"
 	EventPinChanged           EventType = "pin-changed"
 	EventDigestUpdate         EventType = "digest-update"
@@ -80,14 +79,6 @@ func (s *Service) Notify(event Event) {
 			// Channel full, skip this subscriber
 		}
 	}
-}
-
-// NotifyInboxChanged sends an inbox-changed event
-func (s *Service) NotifyInboxChanged() {
-	s.Notify(Event{
-		Type:      EventInboxChanged,
-		Timestamp: time.Now().UnixMilli(),
-	})
 }
 
 // NotifyLibraryChanged sends a library-changed event

@@ -56,7 +56,6 @@ func main() {
 				Models:     agentModels,
 			}
 		}(),
-		InboxAgentEnabled: cfg.InboxAgentEnabled,
 	}
 
 	// Create server

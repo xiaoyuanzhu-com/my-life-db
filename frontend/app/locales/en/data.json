@@ -39,12 +39,6 @@
       "productivity": "Productivity"
     }
   },
-  "inbox": {
-    "failedToLoad": "Failed to load inbox: {{error}}",
-    "empty": "No items in inbox",
-    "offline": "Offline — showing cached data",
-    "loading": "Loading inbox..."
-  },
   "omni": {
     "addFile": "Add file",
     "saveAudio": "Save Audio",

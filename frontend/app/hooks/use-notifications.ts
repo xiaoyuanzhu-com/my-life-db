@@ -1,5 +1,4 @@
 // Unified notification hook - shares a single SSE connection
-// Replaces use-inbox-notifications and use-preview-notifications
 
 import { useEffect, useMemo } from 'react';
 import { refreshAccessToken } from '~/lib/fetch-with-refresh';
@@ -180,54 +179,6 @@ if (typeof document !== 'undefined') {
 // Public hooks
 // ============================================================================
 
-interface UseInboxNotificationsOptions {
-  onInboxChange: () => void;
-  enabled?: boolean;
-}
-
-/**
- * Hook for inbox change notifications
- */
-export function useInboxNotifications(options: UseInboxNotificationsOptions) {
-  const { onInboxChange, enabled = true } = options;
-
-  // Debounce the callback to batch rapid notifications
-  const debouncedOnChange = useMemo(
-    () => debounce(onInboxChange, DEBOUNCE_MS),
-    [onInboxChange]
-  );
-
-  useEffect(() => {
-    if (!enabled) return;
-
-    // Create listener
-    const listener = (event: MessageEvent) => {
-      try {
-        const data = JSON.parse(event.data);
-
-        // Ignore connection confirmation
-        if (data.type === 'connected') {
-          return;
-        }
-
-        // Trigger debounced refresh on any notification event
-        debouncedOnChange();
-      } catch {
-        // Silently ignore parse errors
-      }
-    };
-
-    // Subscribe
-    const unsubscribe = subscribe(listener);
-
-    // Cleanup
-    return () => {
-      unsubscribe();
-      debouncedOnChange.cancel();
-    };
-  }, [enabled, debouncedOnChange]);
-}
-
 interface UsePreviewNotificationsOptions {
   onPreviewUpdated: (filePath: string, previewType: string) => void;
   enabled?: boolean;
@@ -344,7 +295,7 @@ interface UseAgentSessionNotificationsOptions {
 export function useAgentSessionNotifications(options: UseAgentSessionNotificationsOptions) {
   const { onSessionUpdated, enabled = true } = options;
 
-  // Debounce the callback to batch rapid notifications (matches useInboxNotifications pattern)
+  // Debounce the callback to batch rapid notifications
   const debouncedOnSessionUpdated = useMemo(
     () => debounce(onSessionUpdated, DEBOUNCE_MS),
     [onSessionUpdated]

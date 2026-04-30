@@ -48,9 +48,6 @@ type Config struct {
 	AgentCustomerID string // AGENT_CUSTOMER_ID — per-user ID for usage tracking
 	AgentModels     string // AGENT_MODELS — JSON array of available models
 
-	// Feature flags
-	InboxAgentEnabled bool
-
 	// Debug settings
 	DBLogQueries bool
 	DebugModules string
@@ -129,9 +126,6 @@ func load() *Config {
 		AgentAPIKey:     getEnv("AGENT_API_KEY", ""),
 		AgentCustomerID: getEnv("AGENT_CUSTOMER_ID", ""),
 		AgentModels:     getEnv("AGENT_MODELS", ""),
-
-		// Feature flags
-		InboxAgentEnabled: getEnv("MLD_INBOX_AGENT", "") == "1",
 
 		// Debug
 		DBLogQueries: getEnv("DB_LOG_QUERIES", "") == "1",

@@ -202,7 +202,7 @@
   animation: mask-fade-out 3s ease-out forwards;
 }
 
-/* Slide up and fade in animation for new inbox items */
+/* Slide up and fade in animation for new items */
 @keyframes slide-up-fade {
   0% {
     opacity: 0;
@@ -319,38 +319,6 @@
 
 .animate-content-ready {
   animation: content-ready 0.35s ease-out both;
-}
-
-/* Initial hidden state for new items before animation starts */
-.animate-new-item-initial {
-  opacity: 0;
-  transform: translateY(20px);
-}
-
-/* Collapse and fade out animation for deleted inbox items */
-@keyframes collapse-fade {
-  0% {
-    opacity: 1;
-    transform: scale(1);
-    max-height: 500px;
-    margin-bottom: 1rem;
-  }
-  50% {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(0.95);
-    max-height: 0;
-    margin-bottom: 0;
-    padding: 0;
-  }
-}
-
-.animate-collapse-fade {
-  animation: collapse-fade 0.3s ease-out forwards;
-  overflow: hidden;
 }
 
 /* Blink animation for typing cursor */

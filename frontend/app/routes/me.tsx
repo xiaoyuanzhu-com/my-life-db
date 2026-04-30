@@ -25,9 +25,6 @@ interface Stats {
     fileCount: number;
     totalSize: number;
   };
-  inbox: {
-    itemCount: number;
-  };
   digests: {
     totalFiles: number;
     digestedFiles: number;

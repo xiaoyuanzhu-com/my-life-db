@@ -217,33 +217,3 @@ export interface ExtractionOptions {
   minConfidence?: number; // 0-1, filter results below threshold
 }
 
-// ============================================================================
-// Inbox enrichment status (for API responses)
-// ============================================================================
-
-// Digest stage status for API responses
-export interface DigestStageStatusSummary {
-  /** Digester name (e.g., 'url-crawl-content', 'tags') */
-  digester: string;
-  status: 'to-do' | 'in-progress' | 'success' | 'failed' | 'skipped';
-  error: string | null;
-  updatedAt: number | null;
-}
-
-// Digest status summary for a file
-export interface DigestStatusSummary {
-  filePath: string;
-  overall: DigestStatus;
-  stages: DigestStageStatusSummary[];
-  hasFailures: boolean;
-  completedCount: number;
-  skippedCount: number;
-  totalCount: number;
-  canRetry: boolean;
-}
-
-export interface InboxDigestScreenshot {
-  src: string;
-  mimeType: string;
-  filename: string;
-}

@@ -39,12 +39,6 @@
       "productivity": "效率"
     }
   },
-  "inbox": {
-    "failedToLoad": "加载收件箱失败：{{error}}",
-    "empty": "收件箱为空",
-    "offline": "离线模式 — 显示缓存数据",
-    "loading": "加载收件箱…"
-  },
   "omni": {
     "addFile": "添加文件",
     "saveAudio": "保存音频",
