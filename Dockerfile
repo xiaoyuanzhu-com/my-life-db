@@ -15,9 +15,9 @@ RUN npm run build
 FROM golang:1.25 AS go-builder
 WORKDIR /app
 
-# Install build dependencies: CGO (SQLite) + cmake/g++ (libsimple)
+# Install build dependencies: CGO (SQLite) + cmake/g++ (libsimple) + git (cppjieba download)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc g++ libc6-dev cmake \
+    gcc g++ libc6-dev cmake git \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy go files
@@ -29,9 +29,15 @@ COPY backend/ ./
 
 # Build libsimple.so + jieba dict files into a staging tree mirroring the
 # runtime extensions/ layout. The runtime image copies this whole tree.
+#
+# cmake flags:
+#   -DBUILD_SQLITE3=OFF      — skip contrib sqlite3 (go-sqlite3 provides FTS5)
+#   -DBUILD_TEST_EXAMPLE=OFF — skip test/example binaries
+#   cppjieba is downloaded via ExternalProject_Add (needs git + network);
+#   its dict/ is copied to build/test/dict/ by a PRE_BUILD step.
 RUN bash -c 'set -e; \
     cd third_party/simple && mkdir -p build && cd build && \
-    cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_TEST_EXAMPLE=OFF .. && \
+    cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SQLITE3=OFF -DBUILD_TEST_EXAMPLE=OFF .. && \
     make -j"$(nproc)" && \
     mkdir -p /app/extensions/dict && \
     cp src/libsimple.so /app/extensions/libsimple.so && \
