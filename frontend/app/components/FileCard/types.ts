@@ -11,6 +11,8 @@ export type FileContentType =
   | 'video'
   | 'audio'
   | 'text'
+  | 'markdown'
+  | 'html'
   | 'pdf'
   | 'doc'
   | 'ppt'

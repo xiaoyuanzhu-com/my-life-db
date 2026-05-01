@@ -16,6 +16,10 @@ const cardRegistry: Record<FileContentType, ComponentType<BaseCardProps>> = {
   video: VideoCard,
   audio: AudioCard,
   text: TextCard,
+  // Markdown and HTML files use the same card layout as text files;
+  // the richer preview only kicks in when the modal opens them.
+  markdown: TextCard,
+  html: TextCard,
   pdf: PdfCard,
   doc: DocCard,
   ppt: PptCard,

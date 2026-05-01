@@ -112,7 +112,11 @@ export function getFileContentType(file: FileWithDigests): FileContentType {
   if (isExcel(mimeType, ext)) return 'xls';
   if (isEpub(mimeType, ext)) return 'epub';
 
-  // 3. Text content (by MIME, extension, or preview)
+  // 3. Markdown / HTML get richer preview surfaces
+  if (ext === 'md' || ext === 'markdown') return 'markdown';
+  if (ext === 'html' || ext === 'htm' || mimeType === 'text/html') return 'html';
+
+  // 4. Text content (by MIME, extension, or preview)
   if (mimeType.startsWith('text/')) return 'text';
   if (isTextExtension(ext)) return 'text';
   if (file.textPreview) return 'text';

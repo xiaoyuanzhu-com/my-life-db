@@ -21,6 +21,8 @@ import { AudioContent } from './modal-contents/audio-content';
 import { VideoContent } from './modal-contents/video-content';
 import { ImageContent } from './modal-contents/image-content';
 import { TextContent } from './modal-contents/text-content';
+import { MarkdownContent } from './modal-contents/markdown-content';
+import { HtmlContent } from './modal-contents/html-content';
 import { FallbackContent } from './modal-contents/fallback-content';
 
 // Lazy load large libraries only
@@ -218,6 +220,26 @@ function ModalContentRenderer({
     case 'text':
       return (
         <TextContent
+          ref={textContentRef}
+          file={file}
+          onDirtyStateChange={onDirtyStateChange}
+          onCloseConfirmed={onTextCloseConfirmed}
+        />
+      );
+
+    case 'markdown':
+      return (
+        <MarkdownContent
+          ref={textContentRef}
+          file={file}
+          onDirtyStateChange={onDirtyStateChange}
+          onCloseConfirmed={onTextCloseConfirmed}
+        />
+      );
+
+    case 'html':
+      return (
+        <HtmlContent
           ref={textContentRef}
           file={file}
           onDirtyStateChange={onDirtyStateChange}

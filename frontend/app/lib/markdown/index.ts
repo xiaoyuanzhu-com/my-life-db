@@ -102,12 +102,37 @@ function wrapTables(html: string): string {
 }
 
 /**
+ * Rewrite relative <img> src attributes to point at /raw/{basePath}/<src>.
+ * Leaves absolute URLs (scheme, protocol-relative, root-relative, data:, #fragment) untouched.
+ */
+function rewriteRelativeImgSrc(html: string, basePath: string): string {
+  const trimmed = basePath.replace(/^\/+|\/+$/g, '')
+  // Use a dummy origin so the URL constructor can resolve relative paths;
+  // we only keep the resulting pathname.
+  const baseUrl = `https://x/raw/${trimmed ? trimmed + '/' : ''}`
+  return html.replace(/(<img\s+[^>]*\bsrc=)"([^"]+)"/gi, (match, prefix: string, src: string) => {
+    if (/^([a-z][a-z0-9+.-]*:|\/\/|\/|data:|#)/i.test(src)) return match
+    try {
+      const resolved = new URL(src, baseUrl).pathname
+      return `${prefix}"${resolved}"`
+    } catch {
+      return match
+    }
+  })
+}
+
+export interface ParseMarkdownOptions {
+  /** Folder path (relative from UserDataDir) used to resolve relative <img> src in the rendered HTML. */
+  basePath?: string
+}
+
+/**
  * Synchronous markdown parsing for streaming content.
  * Uses marked.parse() with the custom renderer but replaces special block
  * placeholders with loading UI instead of rendering them.
  * Fast enough to call on every streaming update without debouncing.
  */
-export function parseMarkdownSync(content: string): string {
+export function parseMarkdownSync(content: string, opts?: ParseMarkdownOptions): string {
   // Reset blocks before parsing (they get populated by the custom renderer)
   mermaidBlocks = []
   htmlPreviewBlocks = []
@@ -122,10 +147,14 @@ export function parseMarkdownSync(content: string): string {
   // Replace HTML preview placeholders with loading UI
   html = html.replace(HTML_PREVIEW_PLACEHOLDER_REGEX, () => getHtmlPreviewLoadingHtml())
 
+  if (opts?.basePath !== undefined) {
+    html = rewriteRelativeImgSrc(html, opts.basePath)
+  }
+
   return html
 }
 
-export async function parseMarkdown(content: string): Promise<string> {
+export async function parseMarkdown(content: string, opts?: ParseMarkdownOptions): Promise<string> {
   const hl = await getHighlighter()
 
   // Ensure marked is configured
@@ -153,18 +182,17 @@ export async function parseMarkdown(content: string): Promise<string> {
     })
   }
 
-  // If no mermaid blocks, return as-is
-  if (mermaidBlocks.length === 0) {
-    return html
+  // Render mermaid blocks (in parallel) if any
+  if (mermaidBlocks.length > 0) {
+    const renderedMermaids = await Promise.all(mermaidBlocks.map((code) => renderMermaidBlock(code)))
+    html = html.replace(MERMAID_PLACEHOLDER_REGEX, (_, index) => {
+      return renderedMermaids[parseInt(index, 10)] || ''
+    })
   }
 
-  // Render all mermaid blocks in parallel
-  const renderedMermaids = await Promise.all(mermaidBlocks.map((code) => renderMermaidBlock(code)))
-
-  // Replace placeholders with rendered SVGs
-  html = html.replace(MERMAID_PLACEHOLDER_REGEX, (_, index) => {
-    return renderedMermaids[parseInt(index, 10)] || ''
-  })
+  if (opts?.basePath !== undefined) {
+    html = rewriteRelativeImgSrc(html, opts.basePath)
+  }
 
   return html
 }
