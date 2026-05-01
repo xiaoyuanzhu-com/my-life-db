@@ -89,6 +89,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       // Strip out unchanged masked API keys before sending
       const cleanedSettings = stripUnchangedMaskedKeys(updatedSettings, originalSettings);
 
+      // JSON.stringify drops `undefined`, so the backend can't tell "field
+      // omitted" from "explicitly cleared". Send "" to signal a clear so the
+      // server can drop the saved preference.
+      if (cleanedSettings.preferences && cleanedSettings.preferences.language === undefined) {
+        cleanedSettings.preferences = { ...cleanedSettings.preferences, language: "" as never };
+      }
+
       const response = await api.put("/api/settings", cleanedSettings);
 
       if (response.ok) {

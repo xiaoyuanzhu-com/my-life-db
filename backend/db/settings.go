@@ -217,9 +217,10 @@ func LoadUserSettings() (*models.UserSettings, error) {
 		}
 	}
 
-	// Parse UI language (singular)
+	// Parse UI language (singular). Empty/missing → leave nil so the
+	// frontend treats it as "system default".
 	if uiLang := pickFromMap("preferences_language", "", ""); uiLang != "" {
-		preferences.Language = uiLang
+		preferences.Language = &uiLang
 	}
 
 	// Build vendors
@@ -313,8 +314,17 @@ func SaveUserSettings(settings *models.UserSettings) error {
 			updates["preferences_languages"] = string(langJSON)
 		}
 	}
-	if settings.Preferences.Language != "" {
-		updates["preferences_language"] = settings.Preferences.Language
+	// nil → leave existing row untouched (no change requested).
+	// non-nil empty → explicit clear, drop the row.
+	// non-nil non-empty → upsert with the new value.
+	if settings.Preferences.Language != nil {
+		if *settings.Preferences.Language == "" {
+			if err := DeleteSetting("preferences_language"); err != nil {
+				return err
+			}
+		} else {
+			updates["preferences_language"] = *settings.Preferences.Language
+		}
 	}
 
 	// Vendors

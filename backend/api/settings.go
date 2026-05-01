@@ -83,7 +83,7 @@ func mergeSettings(current, updates *models.UserSettings) *models.UserSettings {
 	if len(updates.Preferences.Languages) > 0 {
 		merged.Preferences.Languages = updates.Preferences.Languages
 	}
-	if updates.Preferences.Language != "" {
+	if updates.Preferences.Language != nil {
 		merged.Preferences.Language = updates.Preferences.Language
 	}
 

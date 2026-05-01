@@ -15,7 +15,8 @@ import zhHansAgent from '~/locales/zh-Hans/agent.json';
 import zhHansErrors from '~/locales/zh-Hans/errors.json';
 
 // Pick a locale from the browser. User preference from the server
-// (preferences_language) is applied later by SettingsProvider via changeLanguage.
+// (preferences_language) is applied later by SettingsProvider (mounted in
+// root.tsx) via changeLanguage.
 // Exported so callers (e.g., the language selector's "System default" path)
 // can resolve the system locale fresh instead of reading the current i18n state.
 export function detectSystemLocale(): string {

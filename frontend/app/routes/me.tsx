@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Sparkles, Save, Check, Loader2, RotateCcw } from "lucide-react";
-import { SettingsProvider, useSettingsContext } from "~/components/settings/settings-context";
+import { useSettingsContext } from "~/components/settings/settings-context";
 import { LanguageSelector } from "~/components/settings/language-selector";
 import { UiLanguageSelector } from "~/components/settings/ui-language-selector";
 import { useAuth } from "~/contexts/auth-context";
@@ -738,9 +738,5 @@ export default function MePage() {
     );
   }
 
-  return (
-    <SettingsProvider>
-      <SettingsContent />
-    </SettingsProvider>
-  );
+  return <SettingsContent />;
 }

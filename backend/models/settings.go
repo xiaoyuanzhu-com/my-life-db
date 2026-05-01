@@ -19,7 +19,10 @@ type Preferences struct {
 	LogLevel      string   `json:"logLevel,omitempty"`
 	UserEmail     string   `json:"userEmail,omitempty"`
 	Languages     []string `json:"languages,omitempty"`
-	Language      string   `json:"language,omitempty"` // UI language (BCP-47): "", "en", "zh-Hans"
+	// UI language (BCP-47): nil = system default, "en" or "zh-Hans" otherwise.
+	// Pointer so partial PUTs can distinguish "field omitted" (keep) from
+	// "explicitly cleared back to system default" (sent as JSON `""`).
+	Language      *string  `json:"language,omitempty"`
 }
 
 type Vendors struct {

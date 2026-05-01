@@ -5,6 +5,7 @@ import { Header } from "~/components/header";
 import { BottomNav } from "~/components/bottom-nav";
 import { AuthProvider } from "~/contexts/auth-context";
 import { FeatureFlagsProvider } from "~/contexts/feature-flags-context";
+import { SettingsProvider } from "~/components/settings/settings-context";
 import { Toaster } from "~/components/ui/sonner";
 import { TooltipProvider } from "~/components/ui/tooltip";
 import { isNativeApp, nativeBridge, setupNativeListeners } from "~/lib/native-bridge";
@@ -87,12 +88,18 @@ export default function Root() {
           scrollable layer that causes mobile scroll to jump and not follow finger. */}
       <div className={`antialiased grid grid-cols-1 grid-rows-[auto_minmax(0,1fr)] h-dvh w-full min-w-0 overflow-y-auto overflow-x-hidden${native ? ' native-app' : ''}`}>
         <AuthProvider>
-          {/* Hide header in native app — the native SwiftUI shell provides navigation chrome */}
-          {!native && <ConditionalHeader />}
-          <main className={`min-h-0 h-full flex flex-col w-full min-w-0${native ? '' : ' row-start-2 pb-[60px] md:pb-0'}`}>
-            <Outlet />
-          </main>
-          {!native && <ConditionalBottomNav />}
+          {/* SettingsProvider runs once on mount to fetch user settings and
+              apply the saved UI language. Lifted here (instead of /me only)
+              so non-/me routes also reflect the saved language preference
+              after a hard reload. */}
+          <SettingsProvider>
+            {/* Hide header in native app — the native SwiftUI shell provides navigation chrome */}
+            {!native && <ConditionalHeader />}
+            <main className={`min-h-0 h-full flex flex-col w-full min-w-0${native ? '' : ' row-start-2 pb-[60px] md:pb-0'}`}>
+              <Outlet />
+            </main>
+            {!native && <ConditionalBottomNav />}
+          </SettingsProvider>
         </AuthProvider>
         <ScrollRestoration />
         <Toaster position="bottom-right" richColors closeButton />
