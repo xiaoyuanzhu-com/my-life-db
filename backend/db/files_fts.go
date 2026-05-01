@@ -6,7 +6,7 @@ import (
 )
 
 // files_fts is a SQLite FTS5 virtual table backed by the wangfenjin/simple
-// tokenizer (see migration_026_files_fts.go). All write paths are synchronous
+// tokenizer (see migration_027_files_fts.go). All write paths are synchronous
 // — when a file's content changes we INSERT OR REPLACE the row immediately
 // inside the same transaction the file metadata lives in. There is no
 // staging table and no async sync worker; the index is always consistent

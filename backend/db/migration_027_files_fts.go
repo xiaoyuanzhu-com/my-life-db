@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// Migration 026: replace the meili_documents staging table with a SQLite FTS5
+// Migration 027: replace the meili_documents staging table with a SQLite FTS5
 // virtual table named files_fts, populated using the wangfenjin/simple
 // tokenizer (jieba-based Chinese segmentation + English).
 //
@@ -25,13 +25,13 @@ import (
 // belong upstream of this migration.
 func init() {
 	RegisterMigration(Migration{
-		Version:     26,
+		Version:     27,
 		Description: "Replace meili_documents with files_fts FTS5 virtual table",
-		Up:          migration026Up,
+		Up:          migration027Up,
 	})
 }
 
-func migration026Up(db *sql.DB) error {
+func migration027Up(db *sql.DB) error {
 	// Create the FTS5 virtual table backed by the simple tokenizer.
 	// document_id is UNINDEXED — we only filter by it in WHERE clauses,
 	// no need to tokenize. Both file_path and content participate in
