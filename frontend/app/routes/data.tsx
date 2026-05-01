@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Search, Upload, FolderUp, FolderPlus, RefreshCw, Plus, Import, MoreHorizontal, LayoutGrid, List as ListIcon, ArrowUpDown } from "lucide-react";
 import { FileGrid } from "~/components/library/file-grid";
 import { BreadcrumbNav } from "~/components/library/breadcrumb-nav";
-import { useSearch } from "~/components/omni-input/modules/use-search";
+import { useSearch } from "~/hooks/use-search";
 import { GridItem } from "~/components/library/grid-item";
 import type { FileNode, SortKey } from "~/components/library/library-utils";
 import { ModalNavigationProvider, useModalNavigation } from "~/contexts/modal-navigation-context";

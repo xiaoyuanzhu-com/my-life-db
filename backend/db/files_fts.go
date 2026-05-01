@@ -155,8 +155,12 @@ func SearchFTS(query string, opts FTSSearchOptions) ([]FTSHit, int, error) {
 	args := []any{query}
 
 	if opts.PathFilter != "" {
+		// Anchor the prefix to a folder boundary so currentPath="inbox"
+		// matches "inbox/foo" but NOT "inbox-archive/foo". Normalise any
+		// trailing slash from the caller before re-appending exactly one.
+		prefix := strings.TrimSuffix(opts.PathFilter, "/") + "/"
 		whereParts = append(whereParts, "files_fts.file_path LIKE ? ESCAPE '\\'")
-		args = append(args, escapeLikePrefix(opts.PathFilter)+"%")
+		args = append(args, escapeLikePrefix(prefix)+"%")
 	}
 	if opts.TypeFilter != "" {
 		whereParts = append(whereParts, "files.mime_type LIKE ? ESCAPE '\\'")
