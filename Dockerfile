@@ -50,58 +50,29 @@ ENV CGO_ENABLED=1
 RUN go build -tags sqlite_fts5 -o my-life-db .
 
 # Stage 3: Production image
+#
+# Layer ordering principle: every install that does NOT depend on app code
+# happens BEFORE the COPY commands. App-only changes (Go binary, frontend
+# bundle, libsimple) only invalidate the final COPY layers (~85MB), instead
+# of re-pulling chromium + claude + nodejs + npm globals (~600MB) every push.
 FROM debian:trixie AS runner
 WORKDIR /home/xiaoyuanzhu/my-life-db
 
-# Install runtime dependencies + Claude CLI dependencies + Python runtime
+# Stable system packages: runtime deps + Python toolchain (for screenitshot
+# / playwright) + Node.js + npm (for the ACP agent ecosystem). Combined into
+# ONE apt-get to avoid duplicate index downloads and an extra layer.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates tzdata curl bash git openssh-client \
     python3 python3-pip python3-venv python3-dev gcc \
+    nodejs npm \
     && rm -rf /var/lib/apt/lists/*
 
-# Install screenitshot for document preview generation (PDF, EPUB, DOCX, etc.)
-# Step 1 (as root): install pip package + Chromium's system-level dependencies
+# screenitshot for document preview generation (PDF, EPUB, DOCX, etc.) +
+# Chromium's system-level dependencies (pulled in by playwright install-deps).
 RUN pip3 install --break-system-packages "screenitshot>=0.7.2" && \
     playwright install-deps chromium
 
-# Create non-root user with UID/GID 1000 for better host compatibility
-RUN groupadd -g 1000 xiaoyuanzhu && useradd -u 1000 -g xiaoyuanzhu -m xiaoyuanzhu
-
-# Create data directories and .claude directory with proper permissions
-# Done BEFORE COPY so chown only touches empty dirs, not the binaries
-RUN mkdir -p /home/xiaoyuanzhu/my-life-db/data \
-             /home/xiaoyuanzhu/my-life-db/.my-life-db \
-             /home/xiaoyuanzhu/.claude && \
-    chown -R 1000:1000 /home/xiaoyuanzhu && \
-    chmod -R 775 /home/xiaoyuanzhu/my-life-db/data \
-                 /home/xiaoyuanzhu/my-life-db/.my-life-db \
-                 /home/xiaoyuanzhu/.claude
-
-# Copy built artifacts with correct ownership (avoids extra chown layer).
-# libsimple ships at /opt/mld/extensions (NOT under .my-life-db, which is a
-# bind-mount target at runtime — anything there would be shadowed).
-COPY --from=go-builder --chown=1000:1000 /app/my-life-db ./backend/my-life-db
-COPY --from=go-builder --chown=1000:1000 /app/extensions /opt/mld/extensions
-COPY --from=frontend-builder --chown=1000:1000 /app/dist ./frontend/dist
-
-# Switch to non-root user
-USER 1000
-
-# Step 2 (as xiaoyuanzhu): download Chromium browser to user's cache
-RUN playwright install chromium
-
-# Install Claude CLI as xiaoyuanzhu user
-# The installer will put it in ~/.local/bin/claude
-RUN curl -fsSL https://claude.ai/install.sh | bash
-
-# Add ~/.local/bin to PATH for the xiaoyuanzhu user
-ENV PATH="/home/xiaoyuanzhu/.local/bin:${PATH}"
-
-# Node.js runtime (required for ACP agent ecosystem)
-USER root
-RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm && rm -rf /var/lib/apt/lists/*
-
-# ACP agent binaries (must install as root for global npm path)
+# ACP agent binaries (installed as root for global npm path).
 #   - @zed-industries/claude-agent-acp → `claude-agent-acp` (Claude Code ACP wrapper)
 #   - @zed-industries/codex-acp        → `codex-acp`        (OpenAI Codex ACP wrapper)
 #   - @google/gemini-cli               → `gemini`           (runs ACP via `gemini --acp`)
@@ -114,16 +85,46 @@ RUN npm install -g \
     @qwen-code/qwen-code \
     opencode-ai
 
+# Create non-root user with UID/GID 1000 for better host compatibility.
+RUN groupadd -g 1000 xiaoyuanzhu && useradd -u 1000 -g xiaoyuanzhu -m xiaoyuanzhu
+
+# Create data directories and .claude directory with proper permissions.
+RUN mkdir -p /home/xiaoyuanzhu/my-life-db/data \
+             /home/xiaoyuanzhu/my-life-db/.my-life-db \
+             /home/xiaoyuanzhu/.claude && \
+    chown -R 1000:1000 /home/xiaoyuanzhu && \
+    chmod -R 775 /home/xiaoyuanzhu/my-life-db/data \
+                 /home/xiaoyuanzhu/my-life-db/.my-life-db \
+                 /home/xiaoyuanzhu/.claude
+
+# Set HOME explicitly before per-user installs so caches land under
+# /home/xiaoyuanzhu/ rather than /root/. Docker does NOT auto-set HOME from
+# /etc/passwd when USER changes — it inherits whatever was last in ENV.
+ENV HOME=/home/xiaoyuanzhu
+ENV PATH="/home/xiaoyuanzhu/.local/bin:${PATH}"
+
 USER 1000
 
-# Environment variables
+# Per-user installs: Chromium browser (~/.cache/ms-playwright) + Claude CLI
+# (~/.local/bin/claude). Both write under HOME, so they need USER 1000.
+RUN playwright install chromium
+RUN curl -fsSL https://claude.ai/install.sh | bash
+
+# Runtime environment.
 ENV NODE_ENV=production
 ENV PORT=12345
 ENV HOST=0.0.0.0
 ENV USER_DATA_DIR=/home/xiaoyuanzhu/my-life-db/data
 ENV APP_DATA_DIR=/home/xiaoyuanzhu/my-life-db/.my-life-db
 ENV MLD_SIMPLE_EXTENSION_DIR=/opt/mld/extensions
-ENV HOME=/home/xiaoyuanzhu
+
+# Application artifacts — kept LAST so app-code changes invalidate ONLY these
+# layers (~85MB), not any of the heavy install layers above.
+# libsimple ships at /opt/mld/extensions (NOT under .my-life-db, which is a
+# bind-mount target at runtime — anything there would be shadowed).
+COPY --from=go-builder       --chown=1000:1000 /app/my-life-db ./backend/my-life-db
+COPY --from=go-builder       --chown=1000:1000 /app/extensions /opt/mld/extensions
+COPY --from=frontend-builder --chown=1000:1000 /app/dist       ./frontend/dist
 
 EXPOSE 12345
 
