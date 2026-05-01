@@ -51,20 +51,20 @@ func runMigrations(db *sql.DB) error {
 		return fmt.Errorf("failed to get current version: %w", err)
 	}
 
-	// Detect legacy Node.js migration history: if the DB version is higher than
-	// all registered Go migrations, the old version entries would cause every
-	// Go migration to be skipped. Reset the version table so Go migrations run.
+	// Refuse to run if the DB has a higher version than any registered migration.
+	// This usually means the binary is older than the database (downgrade) or a
+	// migration file was removed. Silently resetting the version table would
+	// re-run migrations against an already-migrated schema and cause subtle
+	// runtime failures, so fail loudly instead.
 	if len(migrations) > 0 {
 		maxRegistered := migrations[len(migrations)-1].Version
 		if currentVersion > maxRegistered {
-			log.Info().
-				Int("db_version", currentVersion).
-				Int("max_registered", maxRegistered).
-				Msg("legacy migration history detected, resetting schema_version for Go migrations")
-			if _, err := db.Exec("DELETE FROM schema_version"); err != nil {
-				return fmt.Errorf("failed to reset legacy schema_version: %w", err)
-			}
-			currentVersion = 0
+			return fmt.Errorf(
+				"schema version conflict: database is at version %d but the highest registered migration is %d; "+
+					"this binary is likely older than the database, or a migration was removed. "+
+					"Refusing to start to avoid corrupting migration history",
+				currentVersion, maxRegistered,
+			)
 		}
 	}
 
