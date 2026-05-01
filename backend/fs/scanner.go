@@ -87,7 +87,7 @@ func (s *scanner) scan() {
 	seenPaths := make(map[string]bool) // Track all files seen on disk
 
 	// Phase 1: Walk filesystem and identify files needing processing
-	var totalFiles, excludedFiles, dirs int
+	var totalFiles, excludedFiles, dirs, symlinks int
 	err := filepath.Walk(s.service.cfg.DataRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil // Skip errors
@@ -111,6 +111,18 @@ func (s *scanner) scan() {
 		// Skip directories (after exclusion check)
 		if info.IsDir() {
 			dirs++
+			return nil
+		}
+
+		// Skip symlinks. filepath.Walk uses Lstat, so symlinks appear here as
+		// non-directory entries even when they point to directories. Without
+		// this guard, downstream metadata processing follows the link via
+		// os.Open and fails with "is a directory" for symlinked dirs (common
+		// in vendored speech/ML toolkits like Kaldi/PaddleSpeech that link
+		// shared utils/ folders into every example). Skipping all symlinks
+		// also avoids cycles and double-indexing of shared targets.
+		if info.Mode()&os.ModeSymlink != 0 {
+			symlinks++
 			return nil
 		}
 
