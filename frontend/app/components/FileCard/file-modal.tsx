@@ -14,7 +14,6 @@ import { ModalActionButtons } from './ui/modal-action-buttons';
 import { DigestsPanel } from './ui/digests-panel';
 import { ModalLayout, useModalLayout, getModalContainerStyles } from './ui/modal-layout';
 import { useModalNavigation } from '~/contexts/modal-navigation-context';
-import type { AudioSyncState } from './modal-contents/audio-content';
 import type { TextContentHandle } from './modal-contents/text-content';
 
 // Direct imports for small content viewers (bundle in main)
@@ -44,7 +43,6 @@ type ModalView = 'content' | 'digests';
 export function FileModal() {
   const { currentFile, prevFile, nextFile, isOpen, hasPrev, hasNext, closeModal, goToPrev, goToNext } = useModalNavigation();
   const [activeView, setActiveView] = useState<ModalView>('content');
-  const [audioSync, setAudioSync] = useState<AudioSyncState | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const layout = useModalLayout();
 
@@ -54,7 +52,6 @@ export function FileModal() {
   // Reset view and state when file changes
   useEffect(() => {
     setActiveView('content');
-    setAudioSync(null);
     setIsDirty(false);
   }, [currentFile?.path]);
 
@@ -117,14 +114,10 @@ export function FileModal() {
   // Determine content type for the current file
   const contentType = currentFile ? getFileContentType(currentFile) : null;
 
-  // Build digests panel props (with audio sync for audio files)
   const digestsPanelProps = useMemo(() => {
     if (!currentFile) return null;
-    return {
-      file: currentFile,
-      ...(contentType === 'audio' && audioSync ? { audioSync } : {}),
-    };
-  }, [currentFile, contentType, audioSync]);
+    return { file: currentFile };
+  }, [currentFile]);
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
@@ -165,7 +158,6 @@ export function FileModal() {
                     file={currentFile}
                     showDigests={showDigests}
                     onClose={handleCloseRequest}
-                    onAudioSyncChange={setAudioSync}
                     onDirtyStateChange={setIsDirty}
                     onTextCloseConfirmed={handleTextCloseConfirmed}
                     textContentRef={textContentRef}
@@ -189,7 +181,6 @@ function ModalContentRenderer({
   file,
   showDigests,
   onClose,
-  onAudioSyncChange,
   onDirtyStateChange,
   onTextCloseConfirmed,
   textContentRef,
@@ -198,7 +189,6 @@ function ModalContentRenderer({
   file: NonNullable<ReturnType<typeof useModalNavigation>['currentFile']>;
   showDigests: boolean;
   onClose: () => void;
-  onAudioSyncChange: (sync: AudioSyncState | null) => void;
   onDirtyStateChange: (isDirty: boolean) => void;
   onTextCloseConfirmed: () => void;
   textContentRef: React.RefObject<TextContentHandle | null>;
@@ -217,12 +207,7 @@ function ModalContentRenderer({
       return <VideoContent file={file} />;
 
     case 'audio':
-      return (
-        <AudioContent
-          file={file}
-          onAudioSyncChange={onAudioSyncChange}
-        />
-      );
+      return <AudioContent file={file} />;
 
     case 'pdf':
       return <PdfContent file={file} />;

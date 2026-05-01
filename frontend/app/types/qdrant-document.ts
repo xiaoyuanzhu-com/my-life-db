@@ -13,7 +13,7 @@ export type EmbeddingStatus = 'pending' | 'indexing' | 'indexed' | 'deleting' | 
 
 /**
  * Source type for chunks
- * Can be a digester name (e.g., 'image-ocr', 'image-captioning') or special values like 'summary', 'tags', 'file'
+ * Can be a digester name (e.g., 'tags', 'search-keyword') or special values like 'summary', 'file'
  */
 export type SourceType = string;
 

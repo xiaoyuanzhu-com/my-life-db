@@ -113,9 +113,6 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		// Vendor routes
 		api.GET("/vendors/openai/models", h.GetOpenAIModels)
 
-		// ASR routes
-		api.POST("/asr", h.ASRHandler)
-
 		// MyLifeDB Connect — owner-side management of third-party apps.
 		// (The OAuth dance itself uses /connect/* below; these endpoints
 		// power the Settings → Connected Apps panel.)

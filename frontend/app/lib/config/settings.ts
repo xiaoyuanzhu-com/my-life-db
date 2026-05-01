@@ -36,7 +36,6 @@ export interface UserSettings {
 
   // Digester Configuration
   digesters?: {
-    'speech-recognition'?: boolean;
     'tags'?: boolean;
     'search-semantic'?: boolean;
   };
@@ -107,7 +106,6 @@ export const DEFAULT_SETTINGS: UserSettings = {
     logLevel: 'info',
   },
   digesters: {
-    'speech-recognition': true,
     'tags': true,
     'search-semantic': true,
   },

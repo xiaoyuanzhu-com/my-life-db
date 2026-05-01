@@ -4,19 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/xiaoyuanzhu-com/my-life-db/config"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/models"
-	"github.com/xiaoyuanzhu-com/my-life-db/vendors"
 )
 
 var upgrader = websocket.Upgrader{
@@ -390,124 +385,3 @@ func sendError(conn *websocket.Conn, errMsg string) {
 	conn.WriteJSON(msg)
 }
 
-// ASRRequest represents the request for non-realtime ASR
-type ASRRequest struct {
-	FileURL     string `json:"fileUrl,omitempty"`     // URL to audio file (e.g., presigned OSS URL)
-	FilePath    string `json:"filePath,omitempty"`    // Local file path (absolute or relative to app data dir)
-	Diarization bool   `json:"diarization,omitempty"` // Enable speaker diarization
-}
-
-// ASRHandler processes audio through non-realtime ASR (Aliyun Fun-ASR)
-// Accepts either:
-// 1. JSON with file_path or file_url
-// 2. Multipart form data with 'audio' file field
-func (h *Handlers) ASRHandler(c *gin.Context) {
-	var audioPath string
-	var diarization bool
-	contentType := c.GetHeader("Content-Type")
-
-	// Check if this is a multipart upload
-	if strings.HasPrefix(contentType, "multipart/form-data") {
-		// Handle multipart file upload
-		file, err := c.FormFile("audio")
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "audio file is required in multipart upload: " + err.Error()})
-			return
-		}
-
-		// Get diarization flag from form (optional)
-		diarization = c.PostForm("diarization") == "true"
-
-		// Save uploaded file to temp directory
-		cfg := config.Get()
-		tempDir := filepath.Join(cfg.GetAppDataDir(), "recordings", "temp")
-		if err := os.MkdirAll(tempDir, 0755); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create temp directory: " + err.Error()})
-			return
-		}
-
-		audioPath = filepath.Join(tempDir, file.Filename)
-		if err := c.SaveUploadedFile(file, audioPath); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save uploaded file: " + err.Error()})
-			return
-		}
-
-		log.Info().Str("audioPath", audioPath).Msg("saved uploaded audio file for ASR processing")
-	} else {
-		// Handle JSON request with file_path or file_url
-		var req ASRRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request: " + err.Error()})
-			return
-		}
-
-		// Validate: must have either file_url or file_path
-		if req.FileURL == "" && req.FilePath == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "either file_url or file_path is required"})
-			return
-		}
-
-		diarization = req.Diarization
-		audioPath = req.FilePath
-	}
-
-	// Load settings for Aliyun credentials
-	settings, err := db.LoadUserSettings()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load settings: " + err.Error()})
-		return
-	}
-
-	if settings.Vendors == nil || settings.Vendors.Aliyun == nil || settings.Vendors.Aliyun.APIKey == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Aliyun API key not configured"})
-		return
-	}
-
-	// Get the Aliyun client
-	aliyunClient := vendors.GetAliyunClient()
-	if aliyunClient == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to initialize Aliyun client"})
-		return
-	}
-
-	// Ensure the path is absolute (if not already set from multipart upload)
-	if audioPath != "" && !filepath.IsAbs(audioPath) {
-		// If relative, assume it's relative to app data dir (where temp files are stored)
-		cfg := config.Get()
-		audioPath = filepath.Join(cfg.GetAppDataDir(), audioPath)
-	}
-
-	log.Info().
-		Str("audioPath", audioPath).
-		Bool("diarization", diarization).
-		Msg("starting non-realtime ASR")
-
-	// Perform non-realtime ASR using fun-asr model
-	asrResponse, err := aliyunClient.SpeechRecognition(audioPath, vendors.ASROptions{
-		Model:       "fun-asr",
-		Diarization: diarization,
-	})
-	if err != nil {
-		log.Error().Err(err).Str("audioPath", audioPath).Msg("ASR failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "ASR failed: " + err.Error()})
-		return
-	}
-
-	log.Info().
-		Str("audioPath", audioPath).
-		Int("textLength", len(asrResponse.Text)).
-		Int("segmentCount", len(asrResponse.Segments)).
-		Msg("ASR completed successfully")
-
-	// Clean up the temp audio file if it's from our temp directory
-	if filepath.Dir(audioPath) == filepath.Join(config.Get().GetAppDataDir(), "recordings", "temp") {
-		if err := os.Remove(audioPath); err != nil {
-			log.Warn().Err(err).Str("audioPath", audioPath).Msg("failed to clean up temp audio file")
-		} else {
-			log.Info().Str("audioPath", audioPath).Msg("cleaned up temp audio file")
-		}
-	}
-
-	// Return the full ASR response
-	c.JSON(http.StatusOK, asrResponse)
-}

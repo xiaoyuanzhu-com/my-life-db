@@ -386,14 +386,10 @@ func buildKeywordMatchContext(hit db.FTSHit, file *db.FileWithDigests, terms []s
 
 	// Digest labels matching the old TEXT_SOURCE_LABELS / ADDITIONAL_DIGEST_LABELS.
 	digestLabels := map[string]string{
-		"url-crawl-content":  "Web page content",
-		"url-crawl-summary":  "Summary",
-		"doc-to-markdown":    "Document content",
-		"image-ocr":          "Image text (OCR)",
-		"image-captioning":   "Image caption",
-		"image-objects":      "Image objects",
-		"speech-recognition": "Speech transcript",
-		"tags":               "Tags",
+		"url-crawl-summary": "Summary",
+		"doc-to-markdown":   "Document content",
+		"image-objects":     "Image objects",
+		"tags":              "Tags",
 	}
 
 	// Probe digesters in priority order. The order roughly mirrors the
@@ -401,12 +397,8 @@ func buildKeywordMatchContext(hit db.FTSHit, file *db.FileWithDigests, terms []s
 	priority := []string{
 		"url-crawl-summary",
 		"tags",
-		"url-crawl-content",
 		"doc-to-markdown",
-		"image-ocr",
-		"image-captioning",
 		"image-objects",
-		"speech-recognition",
 	}
 
 	for _, digesterType := range priority {

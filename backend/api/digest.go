@@ -24,12 +24,7 @@ var availableDigesters = []DigesterInfo{
 	{Name: "url-crawl-summary", Label: "URL Summary", Description: "Summarize crawled URL content", Outputs: []string{"url-crawl-summary"}},
 	{Name: "doc-to-markdown", Label: "Doc to Markdown", Description: "Convert documents to markdown", Outputs: []string{"doc-to-markdown"}},
 	{Name: "doc-to-screenshot", Label: "Doc Screenshot", Description: "Generate document screenshots", Outputs: []string{"doc-to-screenshot"}},
-	{Name: "image-captioning", Label: "Image Captioning", Description: "Generate image captions", Outputs: []string{"image-captioning"}},
-	{Name: "image-ocr", Label: "Image OCR", Description: "Extract text from images", Outputs: []string{"image-ocr"}},
 	{Name: "image-objects", Label: "Image Objects", Description: "Detect objects in images", Outputs: []string{"image-objects"}},
-	{Name: "speech-recognition", Label: "Speech Recognition", Description: "Transcribe audio/video", Outputs: []string{"speech-recognition"}},
-	{Name: "speech-recognition-cleanup", Label: "Transcript Cleanup", Description: "Clean up transcripts", Outputs: []string{"speech-recognition-cleanup"}},
-	{Name: "speech-recognition-summary", Label: "Speech Recognition Summary", Description: "Summarize transcripts", Outputs: []string{"speech-recognition-summary"}},
 	{Name: "speaker-embedding", Label: "Speaker ID", Description: "Extract and cluster speaker voice embeddings for identification", Outputs: []string{"speaker-embedding"}},
 	{Name: "search-semantic", Label: "Semantic Search", Description: "Index for semantic search", Outputs: []string{"search-semantic"}},
 }

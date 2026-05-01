@@ -9,7 +9,7 @@ import type { TextSourceType } from '~/types/text-source';
 
 /**
  * New format: sources is Record<string, number> mapping source type to chunk count
- * e.g., { "image-ocr": 1, "image-captioning": 1, "tags": 1 }
+ * e.g., { "tags": 1, "search-keyword": 1 }
  */
 interface SearchSemanticContent {
   sources: Record<string, number>;

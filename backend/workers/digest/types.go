@@ -62,13 +62,8 @@ type Digester interface {
 // happens synchronously via workers/textindex/indexer.go writing to files_fts and
 // is not part of the digest pipeline. search-semantic is kept for future Qdrant work.
 var CascadingResets = map[string][]string{
-	"url-crawl-content":          {"url-crawl-summary", "tags", "search-semantic"},
-	"doc-to-markdown":            {"tags", "search-semantic"},
-	"image-ocr":                  {"tags", "search-semantic"},
-	"image-captioning":           {"tags", "search-semantic"},
-	"image-objects":              {"tags", "search-semantic"},
-	"speech-recognition":         {"speaker-embedding", "speech-recognition-cleanup", "speech-recognition-summary", "tags", "search-semantic"},
-	"url-crawl-summary":          {"tags"},
-	"speech-recognition-summary": {"tags", "search-semantic"},
-	"tags":                       {"search-semantic"},
+	"doc-to-markdown":   {"tags", "search-semantic"},
+	"image-objects":     {"tags", "search-semantic"},
+	"url-crawl-summary": {"tags"},
+	"tags":              {"search-semantic"},
 }

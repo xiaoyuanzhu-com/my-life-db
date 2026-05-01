@@ -10,18 +10,11 @@ function formatTime(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-export interface AudioSyncState {
-  currentTime: number;
-  onSeek: (time: number) => void;
-}
-
 interface AudioContentProps {
   file: FileWithDigests;
-  /** Callback to expose audio sync state for transcript highlighting */
-  onAudioSyncChange?: (sync: AudioSyncState | null) => void;
 }
 
-export function AudioContent({ file, onAudioSyncChange }: AudioContentProps) {
+export function AudioContent({ file }: AudioContentProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -34,23 +27,6 @@ export function AudioContent({ file, onAudioSyncChange }: AudioContentProps) {
   const audioRef = useCallback((node: HTMLAudioElement | null) => {
     setAudioElement(node);
   }, []);
-
-  // Seek handler for external control (e.g., clicking on transcript)
-  const handleSeek = useCallback((time: number) => {
-    if (!audioElement) return;
-    audioElement.currentTime = time;
-  }, [audioElement]);
-
-  // Expose audio sync state to parent
-  useEffect(() => {
-    if (onAudioSyncChange) {
-      if (audioElement) {
-        onAudioSyncChange({ currentTime, onSeek: handleSeek });
-      } else {
-        onAudioSyncChange(null);
-      }
-    }
-  }, [currentTime, handleSeek, audioElement, onAudioSyncChange]);
 
   // Reset state when file changes
   useEffect(() => {

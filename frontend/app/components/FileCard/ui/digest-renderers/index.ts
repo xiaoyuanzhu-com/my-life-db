@@ -5,12 +5,9 @@
 
 import type { ComponentType } from 'react';
 import { TagsRenderer } from './tags';
-import { SpeechRecognitionRenderer } from './speech-recognition';
 import { SearchKeywordRenderer } from './search-keyword';
 import { SearchSemanticRenderer } from './search-semantic';
 import { SpeakerEmbeddingRenderer } from './speaker-embedding';
-import { SpeechRecognitionCleanupRenderer } from './speech-recognition-cleanup';
-import { SpeechRecognitionSummaryRenderer } from './speech-recognition-summary';
 import { FallbackRenderer } from './fallback';
 
 export interface DigestRendererProps {
@@ -23,12 +20,9 @@ type DigestRenderer = ComponentType<DigestRendererProps>;
 
 const renderers: Record<string, DigestRenderer> = {
   'tags': TagsRenderer,
-  'speech-recognition': SpeechRecognitionRenderer,
   'search-keyword': SearchKeywordRenderer,
   'search-semantic': SearchSemanticRenderer,
   'speaker-embedding': SpeakerEmbeddingRenderer,
-  'speech-recognition-cleanup': SpeechRecognitionCleanupRenderer,
-  'speech-recognition-summary': SpeechRecognitionSummaryRenderer,
 };
 
 /**

@@ -112,25 +112,19 @@ export function OmniInput({
     adjustTextareaHeight();
   }, [content, voice.transcript.finalized, voice.transcript.partial, adjustTextareaHeight]);
 
-  // Coordination: When recording stops and refinement completes, append transcript to content
-  const wasRecordingRef = useRef(false);
-  const wasRefiningRef = useRef(false);
+  // Coordination: When recording stops, append transcript to content
   const transcriptAppendedRef = useRef(false);
 
   useEffect(() => {
-    // Reset flag when starting new recording
-    if (voice.isRecording && !wasRecordingRef.current) {
+    if (voice.isRecording) {
+      // Reset flag when starting new recording
       transcriptAppendedRef.current = false;
     }
-
-    wasRecordingRef.current = voice.isRecording;
   }, [voice.isRecording]);
 
   useEffect(() => {
-    // Only append transcript when refinement completes
-    const refinementJustCompleted = wasRefiningRef.current && !voice.isRefining;
-
-    if (refinementJustCompleted && !transcriptAppendedRef.current) {
+    // Append transcript when recording is done and transcript is ready
+    if (!voice.isRecording && voice.transcript.finalized && !transcriptAppendedRef.current) {
       const finalTranscript = voice.transcript.finalized.trim();
       if (finalTranscript) {
         setContent(prev => {
@@ -140,9 +134,7 @@ export function OmniInput({
         transcriptAppendedRef.current = true;
       }
     }
-
-    wasRefiningRef.current = voice.isRefining;
-  }, [voice.isRefining, voice.transcript.finalized]);
+  }, [voice.isRecording, voice.transcript.finalized]);
 
   // Coordination: When content changes, trigger search
   const { search: performSearch } = search;

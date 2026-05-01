@@ -1,23 +1,20 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { api } from '~/lib/api';
 
 interface UseRealtimeASROptions {
   onTranscript?: (text: string, isFinal: boolean) => void;
   onError?: (error: string) => void;
   onRecordingComplete?: (audioBlob: Blob | null) => void; // Called when recording stops
-  onRefinedTranscript?: (text: string) => void; // Called when ASR refinement completes
   saveAudio?: boolean; // Whether to save audio recording
   sampleRate?: number;
 }
 
-export function useRealtimeASR({ onTranscript, onError, onRecordingComplete, onRefinedTranscript, saveAudio = false, sampleRate = 16000 }: UseRealtimeASROptions = {}) {
+export function useRealtimeASR({ onTranscript, onError, onRecordingComplete, saveAudio = false, sampleRate = 16000 }: UseRealtimeASROptions = {}) {
   const [isRecording, setIsRecording] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [rawTranscript, setRawTranscript] = useState(''); // Accumulated final sentences
   const [partialSentence, setPartialSentence] = useState(''); // Current partial sentence
   const [recordedAudio, setRecordedAudio] = useState<Blob | null>(null); // Recorded audio blob
-  const [isRefining, setIsRefining] = useState(false); // Whether ASR refinement is in progress
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
@@ -48,8 +45,8 @@ export function useRealtimeASR({ onTranscript, onError, onRecordingComplete, onR
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      // Always initialize MediaRecorder (for ASR refinement)
-      // saveAudio only controls whether the audio is attached to the inbox entry
+      // Always initialize MediaRecorder for recording audio
+      // saveAudio controls whether the audio is attached to the inbox entry
       audioChunksRef.current = []; // Reset chunks
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: 'audio/webm' // Use WebM for better browser support
@@ -63,7 +60,7 @@ export function useRealtimeASR({ onTranscript, onError, onRecordingComplete, onR
 
       mediaRecorder.start(1000); // Collect data every second
       mediaRecorderRef.current = mediaRecorder;
-      console.log('🎙️ MediaRecorder started (for ASR refinement)');
+      console.log('🎙️ MediaRecorder started');
 
       // Create WebSocket connection
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -299,7 +296,7 @@ export function useRealtimeASR({ onTranscript, onError, onRecordingComplete, onR
       console.log('✅ WebSocket finished, proceeding with refinement');
     }
 
-    // Always record audio (for refinement), regardless of saveAudio setting
+    // Always record audio, regardless of saveAudio setting
     // saveAudio only controls whether to attach the audio file to the inbox entry
     let audioBlob: Blob | null = null;
 
@@ -325,45 +322,6 @@ export function useRealtimeASR({ onTranscript, onError, onRecordingComplete, onR
       });
 
       setRecordedAudio(audioBlob);
-
-      // Refine transcript using batch ASR (always, regardless of saveAudio)
-      if (audioBlob && audioBlob.size > 0) {
-        console.log('🔄 Starting ASR refinement...');
-        setIsRefining(true);
-
-        try {
-          // Create a File object and use FormData for multipart upload
-          const tempFileName = `${Date.now()}.webm`;
-          const formData = new FormData();
-          const file = new File([audioBlob], tempFileName, { type: 'audio/webm' });
-          formData.append('audio', file);
-
-          // Call ASR endpoint with multipart upload
-          const asrRes = await api.fetch('/api/asr', {
-            method: 'POST',
-            body: formData
-          });
-
-          if (!asrRes.ok) {
-            const errorText = await asrRes.text();
-            throw new Error(`ASR refinement failed: ${errorText}`);
-          }
-
-          const asrData = await asrRes.json();
-          const refinedText = asrData.text || '';
-
-          console.log('✅ ASR refinement complete:', refinedText);
-
-          // Update transcript with refined version
-          setRawTranscript(refinedText);
-          onRefinedTranscript?.(refinedText);
-        } catch (err) {
-          console.error('❌ ASR refinement failed:', err);
-          onError?.('Failed to refine transcript: ' + (err instanceof Error ? err.message : String(err)));
-        } finally {
-          setIsRefining(false);
-        }
-      }
 
       // Notify completion (only if saveAudio is enabled, audio should be attached)
       onRecordingComplete?.(saveAudio ? audioBlob : null);
@@ -410,7 +368,7 @@ export function useRealtimeASR({ onTranscript, onError, onRecordingComplete, onR
     // Don't set isRecording = false here - let ws.onclose do it after final transcript arrives
     setAudioLevel(0);
     setRecordingDuration(0);
-  }, [saveAudio, onRecordingComplete, onRefinedTranscript, onError]);
+  }, [saveAudio, onRecordingComplete, onError]);
 
   // Reset transcripts and audio only when starting new recording (not when stopping)
   const wasRecordingRef = useRef(false);
@@ -440,7 +398,6 @@ export function useRealtimeASR({ onTranscript, onError, onRecordingComplete, onR
     rawTranscript,
     partialSentence,
     recordedAudio,
-    isRefining,
     startRecording,
     stopRecording
   };

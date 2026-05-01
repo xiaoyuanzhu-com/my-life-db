@@ -18,7 +18,6 @@ import {
   RotateCcw,
 } from "lucide-react";
 import type { FileRecord, Digest } from "~/types";
-import { TranscriptViewer } from "~/components/transcript-viewer";
 import { api } from "~/lib/api";
 import { parseApiError, formatApiError } from "~/lib/errors";
 
@@ -90,12 +89,11 @@ function isTextContent(contentType: string | null): boolean {
 
 interface DigestCardProps {
   digest: Digest;
-  onAudioSeek?: (time: number) => void;
   onReset?: (digester: string) => void;
   isResetting?: boolean;
 }
 
-function DigestCard({ digest, onAudioSeek, onReset, isResetting }: DigestCardProps) {
+function DigestCard({ digest, onReset, isResetting }: DigestCardProps) {
   let parsedContent: any = null;
   if (digest.content) {
     try {
@@ -130,15 +128,6 @@ function DigestCard({ digest, onAudioSeek, onReset, isResetting }: DigestCardPro
           </div>
         </div>
       </div>
-    );
-  } else if (digest.digester === "url-crawl-content" && parsedContent) {
-    const markdownContent = typeof parsedContent.markdown === "string" ? parsedContent.markdown : null;
-    contentBody = markdownContent ? (
-      <div className="p-2 bg-muted rounded text-xs font-mono whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
-        {markdownContent}
-      </div>
-    ) : (
-      <div className="text-sm text-muted-foreground">Markdown content unavailable.</div>
     );
   } else if (
     (digest.digester === "url-crawl-summary" || digest.digester === "summarize") &&
@@ -177,8 +166,6 @@ function DigestCard({ digest, onAudioSeek, onReset, isResetting }: DigestCardPro
     } else {
       showContentSection = false;
     }
-  } else if (digest.digester === "speech-recognition" && parsedContent?.segments) {
-    contentBody = <TranscriptViewer data={parsedContent} onSeek={onAudioSeek} />;
   } else if (parsedContent) {
     contentBody = (
       <div className="p-2 bg-muted rounded text-xs font-mono whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
@@ -247,24 +234,6 @@ export default function FileInfoPage() {
   const [resettingDigester, setResettingDigester] = useState<string | null>(null);
   const digestPollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  const handleAudioSeek = useCallback((time: number) => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    if (audio.readyState >= 1) {
-      audio.currentTime = time;
-      audio.play();
-    } else {
-      const onLoadedMetadata = () => {
-        audio.currentTime = time;
-        audio.play();
-        audio.removeEventListener("loadedmetadata", onLoadedMetadata);
-      };
-      audio.addEventListener("loadedmetadata", onLoadedMetadata);
-      audio.load();
-    }
-  }, []);
 
   // Reconstruct file path from params
   const pathParam = params["*"] || "";
@@ -626,7 +595,6 @@ export default function FileInfoPage() {
                 <DigestCard
                   key={digest.id}
                   digest={digest}
-                  onAudioSeek={displayContentType?.startsWith("audio/") ? handleAudioSeek : undefined}
                   onReset={handleResetDigest}
                   isResetting={resettingDigester === digest.digester}
                 />

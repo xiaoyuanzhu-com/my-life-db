@@ -20,43 +20,16 @@ type ContentSource struct {
 // Each source is returned separately for independent indexing in Qdrant
 //
 // Source priority order:
-// 1. url-crawl-content (parse JSON, extract markdown)
-// 2. doc-to-markdown (raw content)
-// 3. image-ocr (raw content)
-// 4. image-captioning (raw content)
-// 5. image-objects (parse JSON, extract titles/descriptions)
-// 6. speech-recognition (parse JSON if segments, else raw)
-// 7. file (read .md/.txt from filesystem)
-// 8. file (read text.md from folder)
+// 1. doc-to-markdown (raw content)
+// 2. image-objects (parse JSON, extract titles/descriptions)
+// 3. file (read .md/.txt from filesystem)
+// 4. file (read text.md from folder)
 func GetContentSources(filePath string, file *db.FileRecord, existingDigests []db.Digest) ([]ContentSource, error) {
 	cfg := config.Get()
 	dataDir := cfg.GetDataRoot()
 	var sources []ContentSource
 
-	// 1. Check for URL content digest (url-crawl-content)
-	for _, d := range existingDigests {
-		if d.Digester == "url-crawl-content" && d.Status == "completed" && d.Content != nil {
-			// Try to parse as JSON first
-			var contentData struct {
-				Markdown string `json:"markdown"`
-			}
-			if err := json.Unmarshal([]byte(*d.Content), &contentData); err == nil && contentData.Markdown != "" {
-				sources = append(sources, ContentSource{
-					SourceType: "url-crawl-content",
-					Text:       contentData.Markdown,
-				})
-			} else {
-				// Fallback to raw content
-				sources = append(sources, ContentSource{
-					SourceType: "url-crawl-content",
-					Text:       *d.Content,
-				})
-			}
-			break
-		}
-	}
-
-	// 2. Check for doc-to-markdown digest
+	// 1. Check for doc-to-markdown digest
 	for _, d := range existingDigests {
 		if d.Digester == "doc-to-markdown" && d.Status == "completed" && d.Content != nil {
 			sources = append(sources, ContentSource{
@@ -67,29 +40,7 @@ func GetContentSources(filePath string, file *db.FileRecord, existingDigests []d
 		}
 	}
 
-	// 3. Check for image-ocr digest
-	for _, d := range existingDigests {
-		if d.Digester == "image-ocr" && d.Status == "completed" && d.Content != nil {
-			sources = append(sources, ContentSource{
-				SourceType: "image-ocr",
-				Text:       *d.Content,
-			})
-			break
-		}
-	}
-
-	// 4. Check for image-captioning digest
-	for _, d := range existingDigests {
-		if d.Digester == "image-captioning" && d.Status == "completed" && d.Content != nil {
-			sources = append(sources, ContentSource{
-				SourceType: "image-captioning",
-				Text:       *d.Content,
-			})
-			break
-		}
-	}
-
-	// 5. Check for image-objects digest
+	// 2. Check for image-objects digest
 	for _, d := range existingDigests {
 		if d.Digester == "image-objects" && d.Status == "completed" && d.Content != nil {
 			// Parse JSON and extract object descriptions
@@ -124,36 +75,7 @@ func GetContentSources(filePath string, file *db.FileRecord, existingDigests []d
 		}
 	}
 
-	// 6. Check for speech-recognition digest
-	for _, d := range existingDigests {
-		if d.Digester == "speech-recognition" && d.Status == "completed" && d.Content != nil {
-			// Try to parse as JSON with segments
-			var transcriptData struct {
-				Segments []struct {
-					Text string `json:"text"`
-				} `json:"segments"`
-			}
-			if err := json.Unmarshal([]byte(*d.Content), &transcriptData); err == nil && len(transcriptData.Segments) > 0 {
-				var segmentTexts []string
-				for _, seg := range transcriptData.Segments {
-					segmentTexts = append(segmentTexts, seg.Text)
-				}
-				sources = append(sources, ContentSource{
-					SourceType: "speech-recognition",
-					Text:       strings.Join(segmentTexts, " "),
-				})
-			} else {
-				// Fallback to raw content
-				sources = append(sources, ContentSource{
-					SourceType: "speech-recognition",
-					Text:       *d.Content,
-				})
-			}
-			break
-		}
-	}
-
-	// 7. Try reading from filesystem (markdown or text files)
+	// 3. Try reading from filesystem (markdown or text files)
 	if strings.HasSuffix(strings.ToLower(filePath), ".md") || strings.HasSuffix(strings.ToLower(filePath), ".txt") {
 		fullPath := filepath.Join(dataDir, filePath)
 		if content, err := os.ReadFile(fullPath); err == nil {
@@ -164,7 +86,7 @@ func GetContentSources(filePath string, file *db.FileRecord, existingDigests []d
 		}
 	}
 
-	// 8. Try folder's text.md
+	// 4. Try folder's text.md
 	if file.IsFolder {
 		textMdPath := filepath.Join(dataDir, filePath, "text.md")
 		if content, err := os.ReadFile(textMdPath); err == nil {
@@ -203,26 +125,9 @@ func GetPrimaryTextContent(filePath string, file *db.FileRecord, existingDigests
 }
 
 // GetSummaryDigest finds and returns summary content from digests
-// Checks url-crawl-summary first, then speech-recognition-summary
 func GetSummaryDigest(existingDigests []db.Digest) *string {
-	// Check url-crawl-summary first
 	for _, d := range existingDigests {
 		if d.Digester == "url-crawl-summary" && d.Status == "completed" && d.Content != nil {
-			// Try to parse as JSON
-			var summaryData struct {
-				Summary string `json:"summary"`
-			}
-			if err := json.Unmarshal([]byte(*d.Content), &summaryData); err == nil && summaryData.Summary != "" {
-				return &summaryData.Summary
-			}
-			// Fallback to raw content
-			return d.Content
-		}
-	}
-
-	// Check speech-recognition-summary
-	for _, d := range existingDigests {
-		if d.Digester == "speech-recognition-summary" && d.Status == "completed" && d.Content != nil {
 			// Try to parse as JSON
 			var summaryData struct {
 				Summary string `json:"summary"`

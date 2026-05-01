@@ -15,12 +15,8 @@ import (
 type TextSourceType string
 
 const (
-	TextSourceURLCrawl       TextSourceType = "url-crawl-content"
-	TextSourceDocToMarkdown  TextSourceType = "doc-to-markdown"
-	TextSourceImageOCR       TextSourceType = "image-ocr"
-	TextSourceImageCaptioning TextSourceType = "image-captioning"
-	TextSourceSpeech         TextSourceType = "speech-recognition"
-	TextSourceFile           TextSourceType = "file"
+	TextSourceDocToMarkdown TextSourceType = "doc-to-markdown"
+	TextSourceFile          TextSourceType = "file"
 )
 
 // TextContent represents extracted text with its source
@@ -29,85 +25,11 @@ type TextContent struct {
 	Source TextSourceType
 }
 
-// GetURLCrawlMarkdown extracts markdown content from url-crawl-content digest
-func GetURLCrawlMarkdown(existingDigests []db.Digest) string {
-	for _, d := range existingDigests {
-		if d.Digester == "url-crawl-content" && d.Status == "completed" && d.Content != nil {
-			return extractURLCrawlMarkdown(*d.Content)
-		}
-	}
-	return ""
-}
-
-func extractURLCrawlMarkdown(content string) string {
-	// Try to parse as JSON with markdown field
-	var parsed struct {
-		Markdown string `json:"markdown"`
-	}
-	if err := json.Unmarshal([]byte(content), &parsed); err == nil && parsed.Markdown != "" {
-		return parsed.Markdown
-	}
-	return content
-}
-
 // GetDocToMarkdown gets doc-to-markdown content
 func GetDocToMarkdown(existingDigests []db.Digest) string {
 	for _, d := range existingDigests {
 		if d.Digester == "doc-to-markdown" && d.Status == "completed" && d.Content != nil {
 			return *d.Content
-		}
-	}
-	return ""
-}
-
-// GetImageOCRText gets OCR text content
-func GetImageOCRText(existingDigests []db.Digest) string {
-	for _, d := range existingDigests {
-		if d.Digester == "image-ocr" && d.Status == "completed" && d.Content != nil {
-			return *d.Content
-		}
-	}
-	return ""
-}
-
-// GetImageCaptioningText gets image captioning text
-func GetImageCaptioningText(existingDigests []db.Digest) string {
-	for _, d := range existingDigests {
-		if d.Digester == "image-captioning" && d.Status == "completed" && d.Content != nil {
-			return *d.Content
-		}
-	}
-	return ""
-}
-
-// GetSpeechRecognitionText gets speech recognition text
-func GetSpeechRecognitionText(existingDigests []db.Digest) string {
-	for _, d := range existingDigests {
-		if d.Digester == "speech-recognition" && d.Status == "completed" && d.Content != nil {
-			content := *d.Content
-			// Parse ASR JSON response to extract text
-			var parsed struct {
-				Text     string `json:"text"`
-				Segments []struct {
-					Text string `json:"text"`
-				} `json:"segments"`
-			}
-			if err := json.Unmarshal([]byte(content), &parsed); err == nil {
-				// Prefer the top-level text field (full transcript)
-				if parsed.Text != "" {
-					return parsed.Text
-				}
-				// Fallback to joining segments
-				if len(parsed.Segments) > 0 {
-					var texts []string
-					for _, s := range parsed.Segments {
-						texts = append(texts, s.Text)
-					}
-					return strings.Join(texts, " ")
-				}
-			}
-			// If JSON parsing fails, return raw content (backward compatibility)
-			return content
 		}
 	}
 	return ""
@@ -176,51 +98,15 @@ func HasLocalTextContent(file *db.FileRecord) bool {
 	return IsTextFile(file.MimeType, file.Name)
 }
 
-// HasURLCrawlContent checks if url-crawl content exists with minimum length
-func HasURLCrawlContent(existingDigests []db.Digest, minLength int) bool {
-	markdown := GetURLCrawlMarkdown(existingDigests)
-	return len(strings.TrimSpace(markdown)) >= minLength
-}
-
 // HasDocToMarkdownContent checks if doc-to-markdown content exists
 func HasDocToMarkdownContent(existingDigests []db.Digest, minLength int) bool {
 	content := GetDocToMarkdown(existingDigests)
 	return len(strings.TrimSpace(content)) >= minLength
 }
 
-// HasImageOCRContent checks if OCR content exists
-func HasImageOCRContent(existingDigests []db.Digest, minLength int) bool {
-	content := GetImageOCRText(existingDigests)
-	return len(strings.TrimSpace(content)) >= minLength
-}
-
-// HasImageCaptioningContent checks if captioning content exists
-func HasImageCaptioningContent(existingDigests []db.Digest, minLength int) bool {
-	content := GetImageCaptioningText(existingDigests)
-	return len(strings.TrimSpace(content)) >= minLength
-}
-
-// HasSpeechRecognitionContent checks if speech content exists
-func HasSpeechRecognitionContent(existingDigests []db.Digest, minLength int) bool {
-	content := GetSpeechRecognitionText(existingDigests)
-	return len(strings.TrimSpace(content)) >= minLength
-}
-
 // HasAnyTextSource checks if any text source is available
 func HasAnyTextSource(file *db.FileRecord, existingDigests []db.Digest, minLength int) bool {
-	if HasURLCrawlContent(existingDigests, minLength) {
-		return true
-	}
 	if HasDocToMarkdownContent(existingDigests, minLength) {
-		return true
-	}
-	if HasImageOCRContent(existingDigests, minLength) {
-		return true
-	}
-	if HasImageCaptioningContent(existingDigests, minLength) {
-		return true
-	}
-	if HasSpeechRecognitionContent(existingDigests, minLength) {
 		return true
 	}
 	return HasLocalTextContent(file)
@@ -241,39 +127,15 @@ func ReadLocalFile(filePath string) (string, error) {
 }
 
 // GetPrimaryTextContent gets the primary text content for a file with priority order:
-// 1. URL crawl content (highest priority for URLs)
-// 2. Document to markdown (for PDFs, DOCX, etc.)
-// 3. Image OCR (primary for images)
-// 4. Image captioning (fallback for images without OCR text)
-// 5. Speech recognition (for audio/video)
-// 6. Local file content (for text files)
+// 1. Document to markdown (for PDFs, DOCX, etc.)
+// 2. Local file content (for text files)
 func GetPrimaryTextContent(filePath string, file *db.FileRecord, existingDigests []db.Digest) *TextContent {
-	// 1. URL crawl content (highest priority for URLs)
-	if text := GetURLCrawlMarkdown(existingDigests); text != "" {
-		return &TextContent{Text: text, Source: TextSourceURLCrawl}
-	}
-
-	// 2. Document to markdown (for PDFs, DOCX, etc.)
+	// 1. Document to markdown (for PDFs, DOCX, etc.)
 	if text := GetDocToMarkdown(existingDigests); text != "" {
 		return &TextContent{Text: text, Source: TextSourceDocToMarkdown}
 	}
 
-	// 3. Image OCR (primary for images)
-	if text := GetImageOCRText(existingDigests); text != "" {
-		return &TextContent{Text: text, Source: TextSourceImageOCR}
-	}
-
-	// 4. Image captioning (fallback for images without OCR text)
-	if text := GetImageCaptioningText(existingDigests); text != "" {
-		return &TextContent{Text: text, Source: TextSourceImageCaptioning}
-	}
-
-	// 5. Speech recognition (for audio/video)
-	if text := GetSpeechRecognitionText(existingDigests); text != "" {
-		return &TextContent{Text: text, Source: TextSourceSpeech}
-	}
-
-	// 6. Local file content (for text files)
+	// 2. Local file content (for text files)
 	if !file.IsFolder && HasLocalTextContent(file) {
 		text, err := ReadLocalFile(filePath)
 		if err == nil && text != "" {
