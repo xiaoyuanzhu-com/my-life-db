@@ -43,6 +43,16 @@ func (h *Handlers) ConnectAuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		// OAuth JWTs (owner-session) are also sent as Authorization: Bearer.
+		// Distinguish by shape: Connect tokens are base64url-encoded random
+		// bytes (no dots); JWTs have the form header.payload.signature.
+		// If the token contains a dot, it isn't a Connect token — fall
+		// through and let AuthMiddleware validate it as an OAuth token.
+		if strings.Contains(raw, ".") {
+			c.Next()
+			return
+		}
+
 		store := h.server.Connect()
 		hash := connect.HashToken(raw)
 		row, err := store.LookupActiveToken(hash)
@@ -53,8 +63,9 @@ func (h *Handlers) ConnectAuthMiddleware() gin.HandlerFunc {
 		}
 		if row == nil || row.Kind != connect.KindAccess {
 			// Unknown / expired / revoked / wrong-kind: do NOT silently
-			// promote to owner-auth. The bearer was clearly a connect
-			// token attempt, so refuse here to avoid surprising fall-through.
+			// promote to owner-auth. The bearer has no JWT shape so it's
+			// clearly a connect token attempt — refuse here to avoid
+			// surprising fall-through.
 			RespondCoded(c, http.StatusUnauthorized, "AUTH_INVALID_TOKEN",
 				"connect access token is invalid, expired, or revoked")
 			c.Abort()
