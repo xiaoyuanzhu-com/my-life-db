@@ -14,9 +14,11 @@ import zhHansData from '~/locales/zh-Hans/data.json';
 import zhHansAgent from '~/locales/zh-Hans/agent.json';
 import zhHansErrors from '~/locales/zh-Hans/errors.json';
 
-// Pick the initial locale from the browser. User preference from the server
+// Pick a locale from the browser. User preference from the server
 // (preferences_language) is applied later by SettingsProvider via changeLanguage.
-function readInitialLocale(): string {
+// Exported so callers (e.g., the language selector's "System default" path)
+// can resolve the system locale fresh instead of reading the current i18n state.
+export function detectSystemLocale(): string {
   if (typeof navigator === 'undefined') return DEFAULT_UI_LOCALE;
   const candidates = navigator.languages?.length ? navigator.languages : [navigator.language];
   for (const raw of candidates) {
@@ -29,7 +31,7 @@ function readInitialLocale(): string {
 }
 
 void i18n.use(initReactI18next).init({
-  lng: readInitialLocale(),
+  lng: detectSystemLocale(),
   fallbackLng: 'en',
   ns: ['common', 'settings', 'data', 'agent', 'errors'],
   defaultNS: 'common',

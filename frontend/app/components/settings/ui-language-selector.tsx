@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import i18n from "~/lib/i18n/config";
+import i18n, { detectSystemLocale } from "~/lib/i18n/config";
 import {
   SUPPORTED_UI_LOCALES,
   LOCALE_NATIVE_NAMES,
@@ -18,8 +18,10 @@ export function UiLanguageSelector({ value, onChange }: UiLanguageSelectorProps)
     const normalized = next === "" ? undefined : (next as UiLocale);
     onChange(normalized);
     // Swap catalogs immediately so the user sees the change without a page reload.
-    // If normalized is undefined, fall back to the locale injected at boot.
-    const target = normalized ?? document.documentElement.lang ?? "en";
+    // For "System default", detect the browser locale fresh — don't fall back to
+    // document.documentElement.lang, which mirrors the *current* i18n language
+    // (so it would just re-apply whatever language is already active).
+    const target = normalized ?? detectSystemLocale();
     void i18n.changeLanguage(target);
   };
 

@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import type { UserSettings } from "~/lib/config/settings";
 import { api } from "~/lib/api";
-import i18n from "~/lib/i18n/config";
+import i18n, { detectSystemLocale } from "~/lib/i18n/config";
 import { parseApiError, formatApiError } from "~/lib/errors";
 
 interface SettingsContextType {
@@ -62,9 +62,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       const data = await response.json();
       setSettings(data);
       setOriginalSettings(data);
-      const lang = data?.preferences?.language;
-      if (lang && lang !== i18n.language) {
-        void i18n.changeLanguage(lang);
+      // Apply saved preference if present; otherwise fall back to the system
+      // locale so clearing the preference (or never having set one) actually
+      // resets the UI rather than leaving whatever language was last applied.
+      const target = data?.preferences?.language || detectSystemLocale();
+      if (target !== i18n.language) {
+        void i18n.changeLanguage(target);
       }
     } catch (error) {
       console.error("Failed to load settings:", error);
