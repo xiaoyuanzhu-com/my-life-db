@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -15,6 +16,38 @@ func (d *DB) IsPinned(path string) (bool, error) {
 		return false, err
 	}
 	return count > 0, nil
+}
+
+// GetPinnedSet returns the subset of the given paths that are pinned, as a
+// set keyed by path. Single query — replaces N IsPinned() calls.
+func (d *DB) GetPinnedSet(paths []string) (map[string]bool, error) {
+	result := make(map[string]bool, len(paths))
+	if len(paths) == 0 {
+		return result, nil
+	}
+
+	placeholders := make([]string, len(paths))
+	args := make([]any, len(paths))
+	for i, p := range paths {
+		placeholders[i] = "?"
+		args[i] = p
+	}
+
+	query := `SELECT file_path FROM pins WHERE file_path IN (` + strings.Join(placeholders, ",") + `)`
+	rows, err := d.conn.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		result[p] = true
+	}
+	return result, rows.Err()
 }
 
 // AddPin pins a file

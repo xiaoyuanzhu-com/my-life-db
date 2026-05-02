@@ -119,6 +119,65 @@ func (d *DB) GetFileByPath(path string) (*FileRecord, error) {
 	return &f, nil
 }
 
+// GetFilesByPaths retrieves multiple file records in a single query.
+// Returns a map keyed by path so callers can preserve their own ordering.
+// Missing paths are simply absent from the map (no error).
+func (d *DB) GetFilesByPaths(paths []string) (map[string]*FileRecord, error) {
+	result := make(map[string]*FileRecord, len(paths))
+	if len(paths) == 0 {
+		return result, nil
+	}
+
+	placeholders := make([]string, len(paths))
+	args := make([]any, len(paths))
+	for i, p := range paths {
+		placeholders[i] = "?"
+		args[i] = p
+	}
+
+	query := `
+		SELECT path, name, is_folder, size, mime_type, hash,
+			   modified_at, created_at, last_scanned_at, text_preview, preview_sqlar, preview_status
+		FROM files
+		WHERE path IN (` + strings.Join(placeholders, ",") + `)
+	`
+
+	rows, err := d.conn.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var f FileRecord
+		var isFolder int
+		var size sql.NullInt64
+		var hash, mimeType, textPreview, previewSqlar, previewStatus sql.NullString
+		var lastScannedAt sql.NullInt64
+
+		if err := rows.Scan(
+			&f.Path, &f.Name, &isFolder, &size, &mimeType,
+			&hash, &f.ModifiedAt, &f.CreatedAt, &lastScannedAt,
+			&textPreview, &previewSqlar, &previewStatus,
+		); err != nil {
+			return nil, err
+		}
+
+		f.IsFolder = isFolder == 1
+		f.Size = IntPtr(size)
+		f.Hash = StringPtr(hash)
+		f.MimeType = StringPtr(mimeType)
+		f.TextPreview = StringPtr(textPreview)
+		f.PreviewSqlar = StringPtr(previewSqlar)
+		f.PreviewStatus = StringPtr(previewStatus)
+		f.LastScannedAt = lastScannedAt.Int64
+
+		fc := f
+		result[fc.Path] = &fc
+	}
+	return result, rows.Err()
+}
+
 // UpsertFile inserts or updates a file record
 func (d *DB) UpsertFile(ctx context.Context, f *FileRecord) (bool, error) {
 	// Check if file exists before upsert to determine if this is a new insert

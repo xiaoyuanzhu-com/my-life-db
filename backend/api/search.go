@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
@@ -124,28 +125,59 @@ func (h *Handlers) Search(c *gin.Context) {
 	var total int
 	sources := []string{}
 
+	totalStart := time.Now()
+	var searchMs, enrichMs int64
+
 	// Keyword search via FTS5
+	searchStart := time.Now()
 	hits, hitsTotal, err := h.server.IndexDB().SearchFTS(query, db.FTSSearchOptions{
 		Limit:      limit,
 		Offset:     offset,
 		TypeFilter: typeFilter,
 		PathFilter: pathFilter,
 	})
+	searchMs = time.Since(searchStart).Milliseconds()
 	if err != nil {
 		log.Error().Err(err).Msg("fts5 search failed")
 	} else {
 		sources = append(sources, "keyword")
 		total = hitsTotal
 
+		enrichStart := time.Now()
 		terms := extractSearchTerms(query)
+
+		// Batch enrichment: gather all hit paths once, then issue one query
+		// per data source instead of three queries per hit.
+		paths := make([]string, 0, len(hits))
 		for _, hit := range hits {
-			file, err := h.server.IndexDB().GetFileWithDigests(hit.FilePath)
-			if err != nil || file == nil {
+			paths = append(paths, hit.FilePath)
+		}
+
+		filesByPath, err := h.server.IndexDB().GetFilesByPaths(paths)
+		if err != nil {
+			log.Error().Err(err).Msg("batch fetch files failed")
+			filesByPath = map[string]*db.FileRecord{}
+		}
+		digestsByPath, err := h.server.IndexDB().GetDigestsForFiles(paths)
+		if err != nil {
+			log.Error().Err(err).Msg("batch fetch digests failed")
+			digestsByPath = map[string][]db.Digest{}
+		}
+		pinnedSet, err := h.server.AppDB().GetPinnedSet(paths)
+		if err != nil {
+			log.Error().Err(err).Msg("batch fetch pins failed")
+			pinnedSet = map[string]bool{}
+		}
+
+		for _, hit := range hits {
+			fileRec := filesByPath[hit.FilePath]
+			if fileRec == nil {
 				continue
 			}
-			// Pins live in the app DB; populate IsPinned from there.
-			if pinned, perr := h.server.AppDB().IsPinned(hit.FilePath); perr == nil {
-				file.IsPinned = pinned
+			file := &db.FileWithDigests{
+				FileRecord: *fileRec,
+				Digests:    digestsByPath[hit.FilePath],
+				IsPinned:   pinnedSet[hit.FilePath],
 			}
 
 			// Highlights map mirrors the old meili shape so the frontend
@@ -186,6 +218,7 @@ func (h *Handlers) Search(c *gin.Context) {
 				MatchedObject: matchedObject,
 			})
 		}
+		enrichMs = time.Since(enrichStart).Milliseconds()
 	}
 
 	response := SearchResponse{
@@ -193,9 +226,9 @@ func (h *Handlers) Search(c *gin.Context) {
 		Query:   query,
 		Sources: sources,
 		Timing: Timing{
-			TotalMs:  0,
-			SearchMs: 0,
-			EnrichMs: 0,
+			TotalMs:  time.Since(totalStart).Milliseconds(),
+			SearchMs: searchMs,
+			EnrichMs: enrichMs,
 		},
 	}
 	response.Pagination.Total = max(total, len(results))

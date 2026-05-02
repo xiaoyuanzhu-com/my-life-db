@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -74,6 +75,56 @@ func (d *DB) GetDigestsForFile(filePath string) ([]Digest, error) {
 	}
 
 	return digests, nil
+}
+
+// GetDigestsForFiles retrieves all digests for the given set of file paths
+// in a single query and groups them by file_path. Files with no digests are
+// simply absent from the map. Order within each group matches GetDigestsForFile
+// (ORDER BY digester).
+func (d *DB) GetDigestsForFiles(paths []string) (map[string][]Digest, error) {
+	result := make(map[string][]Digest, len(paths))
+	if len(paths) == 0 {
+		return result, nil
+	}
+
+	placeholders := make([]string, len(paths))
+	args := make([]any, len(paths))
+	for i, p := range paths {
+		placeholders[i] = "?"
+		args[i] = p
+	}
+
+	query := `
+		SELECT id, file_path, digester, status, content, sqlar_name, error, attempts, created_at, updated_at
+		FROM digests
+		WHERE file_path IN (` + strings.Join(placeholders, ",") + `)
+		ORDER BY file_path, digester
+	`
+
+	rows, err := d.conn.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var dg Digest
+		var content, sqlarName, digestError sql.NullString
+
+		if err := rows.Scan(
+			&dg.ID, &dg.FilePath, &dg.Digester, &dg.Status, &content,
+			&sqlarName, &digestError, &dg.Attempts, &dg.CreatedAt, &dg.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		dg.Content = StringPtr(content)
+		dg.SqlarName = StringPtr(sqlarName)
+		dg.Error = StringPtr(digestError)
+
+		result[dg.FilePath] = append(result[dg.FilePath], dg)
+	}
+	return result, rows.Err()
 }
 
 // GetDigestByFileAndDigester retrieves a specific digest
