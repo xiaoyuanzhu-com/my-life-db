@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
@@ -17,6 +18,12 @@ import (
 // (rather than the default "sqlite3") so we can attach a ConnectHook that
 // runs LoadExtension + jieba_dict() per connection.
 const sqliteSimpleDriver = "sqlite3_simple"
+
+// writerQueueSize bounds backpressure when callers submit faster than the
+// writer can process. Picked large enough to absorb burst traffic from the
+// scanner's parallel processFile workers without being so large that a
+// runaway producer can mask itself.
+const writerQueueSize = 256
 
 var (
 	// driverRegistered is the path the simple-driver was registered with.
@@ -36,10 +43,13 @@ var (
 	mu       sync.RWMutex
 )
 
-// DB wraps a sql.DB connection
+// DB wraps a sql.DB connection plus a single-writer goroutine.
+// Reads use d.conn directly; writes go through d.writer.Do.
 type DB struct {
-	conn *sql.DB
-	cfg  Config
+	conn   *sql.DB
+	cfg    Config
+	role   DBRole
+	writer *Writer
 }
 
 // Open opens a database connection with the given configuration
@@ -92,11 +102,14 @@ func Open(cfg Config) (*DB, error) {
 		Msg("database opened")
 
 	d := &DB{
-		conn: conn,
-		cfg:  cfg,
+		conn:   conn,
+		cfg:    cfg,
+		role:   cfg.Role,
+		writer: newWriter(conn, writerQueueSize),
 	}
+	go d.writer.run()
 
-	// Set as global for existing query functions
+	// Set as global for existing query functions (deprecated; removed in a later task)
 	mu.Lock()
 	globalDB = d
 	mu.Unlock()
@@ -164,6 +177,9 @@ func (d *DB) Close() error {
 	defer mu.Unlock()
 
 	if d.conn != nil {
+		if d.writer != nil {
+			d.writer.stop()
+		}
 		// Clear global if this is the global instance
 		if globalDB == d {
 			globalDB = nil
@@ -247,4 +263,23 @@ func (d *DB) Transaction(fn func(*sql.Tx) error) error {
 	}
 
 	return tx.Commit()
+}
+
+// Write runs fn inside a write transaction on the per-DB writer goroutine.
+// All writes for this DB must go through this method (or one of the typed
+// helper methods that wrap it). Direct writes via d.Read() are never safe.
+func (d *DB) Write(ctx context.Context, fn func(*sql.Tx) error) error {
+	return d.writer.Do(ctx, fn)
+}
+
+// Read returns the underlying *sql.DB for read-only queries. Safe for
+// concurrent use; WAL mode allows multiple readers alongside the one writer.
+// Do NOT call Exec/Begin on the returned handle for writes — use Write.
+func (d *DB) Read() *sql.DB {
+	return d.conn
+}
+
+// Role returns the role of this database instance.
+func (d *DB) Role() DBRole {
+	return d.role
 }

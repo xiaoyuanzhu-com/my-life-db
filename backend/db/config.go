@@ -10,6 +10,10 @@ type Config struct {
 	ConnMaxLifetime time.Duration
 	LogQueries      bool
 
+	// Role tags this database instance for routing migrations and for log/error
+	// messages. See DBRole.
+	Role DBRole
+
 	// SQLite extension loading.
 	// ExtensionPath is the absolute path to a SQLite extension shared library
 	// (e.g. /opt/.../libsimple.dylib on macOS, /opt/.../libsimple.so on Linux).
