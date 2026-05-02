@@ -4,7 +4,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
 	"github.com/xiaoyuanzhu-com/my-life-db/workers/digest"
 )
@@ -87,22 +86,6 @@ func (c *Config) PopulateDatabasePaths() {
 	}
 	if c.LegacyDatabasePath == "" {
 		c.LegacyDatabasePath = c.DatabasePath
-	}
-}
-
-// ToDBConfig converts server config to database config (legacy single-DB path).
-// Kept for compatibility with code paths that still reference the legacy
-// database. Most code should call db.Open directly with role-specific
-// configuration; see server.New.
-func (c *Config) ToDBConfig() db.Config {
-	return db.Config{
-		Path:             c.DatabasePath,
-		MaxOpenConns:     5,
-		MaxIdleConns:     2,
-		ConnMaxLifetime:  0, // Never expire
-		LogQueries:       c.DBLogQueries,
-		ExtensionPath:    c.SimpleExtensionPath,
-		ExtensionDictDir: c.SimpleDictDir,
 	}
 }
 
