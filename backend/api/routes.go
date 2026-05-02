@@ -92,9 +92,6 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		api.GET("/apps", h.GetApps)
 		api.GET("/apps/:id", h.GetApp)
 
-		// Vendor routes
-		api.GET("/vendors/openai/models", h.GetOpenAIModels)
-
 		// MyLifeDB Connect — owner-side management of third-party apps.
 		// (The OAuth dance itself uses /connect/* below; these endpoints
 		// power the Settings → Connected Apps panel.)

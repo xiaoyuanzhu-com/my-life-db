@@ -8,7 +8,6 @@
   },
   "tabs": {
     "general": "通用",
-    "vendors": "服务提供商",
     "connectedApps": "连接的应用",
     "stats": "统计"
   },
@@ -17,9 +16,7 @@
     "saving": "保存中…",
     "close": "关闭",
     "retry": "重试",
-    "cancel": "取消",
-    "selectModel": "选择模型",
-    "loadingModels": "加载中…"
+    "cancel": "取消"
   },
   "toast": {
     "saveSuccess": "设置已保存！",
@@ -28,47 +25,14 @@
   "general": {
     "title": "通用设置",
     "subtitle": "配置应用范围的偏好",
-    "userEmail": {
-      "label": "邮箱",
-      "hint": "用于在页头显示 Gravatar 头像。"
-    },
     "logLevel": {
       "label": "日志级别",
       "hint": "可能需要刷新浏览器或重启服务以生效。"
-    },
-    "languages": {
-      "label": "语言",
-      "hint": "你使用的语言，按偏好排序。可拖动重排。",
-      "searchPlaceholder": "搜索语言…"
     },
     "uiLanguage": {
       "label": "界面语言",
       "hint": "MyLifeDB 界面使用的语言。留空则跟随浏览器/系统。",
       "systemDefault": "跟随系统"
-    }
-  },
-  "vendors": {
-    "title": "服务提供商配置",
-    "subtitle": "配置第三方服务端点和凭证",
-    "openaiBaseUrl": {
-      "label": "OpenAI - 基础 URL"
-    },
-    "openaiApiKey": {
-      "label": "OpenAI - API 密钥"
-    },
-    "openaiModel": {
-      "label": "OpenAI - 模型",
-      "hint": "用于所有 LLM 任务。留空则使用默认值。"
-    },
-    "qdrantHost": {
-      "label": "搜索 - Qdrant 主机",
-      "hint": "用于语义搜索的 Qdrant 向量服务基础 URL。"
-    },
-    "modelSelector": {
-      "title": "选择 OpenAI 模型",
-      "filterPlaceholder": "筛选模型…",
-      "noModels": "未找到模型。请检查 API 密钥权限。",
-      "ownerLabel": "所有者：{{owner}}"
     }
   },
   "stats": {

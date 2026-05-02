@@ -11,11 +11,7 @@ import (
 )
 
 // Default settings
-var defaultSettings = map[string]string{
-	"openai_model":    "gpt-4o-mini",
-	"openai_base_url": "",
-	"qdrant_host":     "",
-}
+var defaultSettings = map[string]string{}
 
 // GetSetting retrieves a setting by key
 func (d *DB) GetSetting(key string) (string, error) {
@@ -115,6 +111,13 @@ func (d *DB) ResetSettings(ctx context.Context) error {
 		keys = append(keys, k)
 	}
 
+	if len(keys) == 0 {
+		return d.Write(ctx, func(tx *sql.Tx) error {
+			_, err := tx.Exec("DELETE FROM settings")
+			return err
+		})
+	}
+
 	// Build query with placeholders
 	placeholders := ""
 	args := make([]interface{}, len(keys))
@@ -185,40 +188,10 @@ func (d *DB) LoadUserSettings() (*models.UserSettings, error) {
 		LogLevel:    pickFromMap("preferences_log_level", "", "info"),
 	}
 
-	// Optional preference fields
-	if email := pickFromMap("preferences_user_email", "", ""); email != "" {
-		preferences.UserEmail = email
-	}
-
-	// Parse languages array
-	if langStr := pickFromMap("preferences_languages", "", ""); langStr != "" {
-		var langs []string
-		if err := json.Unmarshal([]byte(langStr), &langs); err == nil && len(langs) > 0 {
-			preferences.Languages = langs
-		}
-	}
-
 	// Parse UI language (singular). Empty/missing → leave nil so the
 	// frontend treats it as "system default".
 	if uiLang := pickFromMap("preferences_language", "", ""); uiLang != "" {
 		preferences.Language = &uiLang
-	}
-
-	// Build vendors
-	vendors := &models.Vendors{
-		OpenAI: &models.OpenAI{
-			BaseURL: pickFromMap("vendors_openai_base_url", "OPENAI_BASE_URL", "https://api.openai.com/v1"),
-			APIKey:  pickFromMap("vendors_openai_api_key", "OPENAI_API_KEY", ""),
-			Model:   pickFromMap("vendors_openai_model", "OPENAI_MODEL", "gpt-4o-mini"),
-		},
-		Aliyun: &models.Aliyun{
-			APIKey:             pickFromMap("vendors_aliyun_api_key", "DASHSCOPE_API_KEY", ""),
-			Region:             pickFromMap("vendors_aliyun_region", "ALIYUN_REGION", "beijing"),
-			OSSAccessKeyID:     pickFromMap("vendors_aliyun_oss_access_key_id", "OSS_ACCESS_KEY_ID", ""),
-			OSSAccessKeySecret: pickFromMap("vendors_aliyun_oss_access_key_secret", "OSS_ACCESS_KEY_SECRET", ""),
-			OSSRegion:          pickFromMap("vendors_aliyun_oss_region", "OSS_REGION", "oss-cn-beijing"),
-			OSSBucket:          pickFromMap("vendors_aliyun_oss_bucket", "OSS_BUCKET", ""),
-		},
 	}
 
 	// Build extraction
@@ -259,7 +232,6 @@ func (d *DB) LoadUserSettings() (*models.UserSettings, error) {
 
 	return &models.UserSettings{
 		Preferences: preferences,
-		Vendors:     vendors,
 		Extraction:  extraction,
 		Storage:     storage,
 	}, nil
@@ -275,14 +247,6 @@ func (d *DB) SaveUserSettings(ctx context.Context, settings *models.UserSettings
 	if settings.Preferences.LogLevel != "" {
 		updates["preferences_log_level"] = settings.Preferences.LogLevel
 	}
-	if settings.Preferences.UserEmail != "" {
-		updates["preferences_user_email"] = settings.Preferences.UserEmail
-	}
-	if len(settings.Preferences.Languages) > 0 {
-		if langJSON, err := json.Marshal(settings.Preferences.Languages); err == nil {
-			updates["preferences_languages"] = string(langJSON)
-		}
-	}
 	// nil → leave existing row untouched (no change requested).
 	// non-nil empty → explicit clear, drop the row.
 	// non-nil non-empty → upsert with the new value.
@@ -293,41 +257,6 @@ func (d *DB) SaveUserSettings(ctx context.Context, settings *models.UserSettings
 			}
 		} else {
 			updates["preferences_language"] = *settings.Preferences.Language
-		}
-	}
-
-	// Vendors
-	if settings.Vendors != nil {
-		if settings.Vendors.OpenAI != nil {
-			if settings.Vendors.OpenAI.BaseURL != "" {
-				updates["vendors_openai_base_url"] = settings.Vendors.OpenAI.BaseURL
-			}
-			if settings.Vendors.OpenAI.APIKey != "" {
-				updates["vendors_openai_api_key"] = settings.Vendors.OpenAI.APIKey
-			}
-			if settings.Vendors.OpenAI.Model != "" {
-				updates["vendors_openai_model"] = settings.Vendors.OpenAI.Model
-			}
-		}
-		if settings.Vendors.Aliyun != nil {
-			if settings.Vendors.Aliyun.APIKey != "" {
-				updates["vendors_aliyun_api_key"] = settings.Vendors.Aliyun.APIKey
-			}
-			if settings.Vendors.Aliyun.Region != "" {
-				updates["vendors_aliyun_region"] = settings.Vendors.Aliyun.Region
-			}
-			if settings.Vendors.Aliyun.OSSAccessKeyID != "" {
-				updates["vendors_aliyun_oss_access_key_id"] = settings.Vendors.Aliyun.OSSAccessKeyID
-			}
-			if settings.Vendors.Aliyun.OSSAccessKeySecret != "" {
-				updates["vendors_aliyun_oss_access_key_secret"] = settings.Vendors.Aliyun.OSSAccessKeySecret
-			}
-			if settings.Vendors.Aliyun.OSSRegion != "" {
-				updates["vendors_aliyun_oss_region"] = settings.Vendors.Aliyun.OSSRegion
-			}
-			if settings.Vendors.Aliyun.OSSBucket != "" {
-				updates["vendors_aliyun_oss_bucket"] = settings.Vendors.Aliyun.OSSBucket
-			}
 		}
 	}
 
@@ -348,56 +277,4 @@ func (d *DB) SaveUserSettings(ctx context.Context, settings *models.UserSettings
 	updates["storage_max_file_size"] = strconv.Itoa(settings.Storage.MaxFileSize)
 
 	return d.UpdateSettings(ctx, updates)
-}
-
-// SanitizeSettings masks sensitive data before sending to client
-func SanitizeSettings(settings *models.UserSettings) *models.UserSettings {
-	// Make a copy to avoid modifying the original
-	sanitized := *settings
-
-	// Deep copy vendors to modify API keys
-	if settings.Vendors != nil {
-		vendorsCopy := *settings.Vendors
-		sanitized.Vendors = &vendorsCopy
-
-		if settings.Vendors.OpenAI != nil {
-			openaiCopy := *settings.Vendors.OpenAI
-			sanitized.Vendors.OpenAI = &openaiCopy
-
-			// Mask API key if present
-			if openaiCopy.APIKey != "" {
-				sanitized.Vendors.OpenAI.APIKey = maskAPIKey(openaiCopy.APIKey)
-			}
-		}
-
-		if settings.Vendors.Aliyun != nil {
-			aliyunCopy := *settings.Vendors.Aliyun
-			sanitized.Vendors.Aliyun = &aliyunCopy
-
-			// Mask API keys if present
-			if aliyunCopy.APIKey != "" {
-				sanitized.Vendors.Aliyun.APIKey = maskAPIKey(aliyunCopy.APIKey)
-			}
-			if aliyunCopy.OSSAccessKeyID != "" {
-				sanitized.Vendors.Aliyun.OSSAccessKeyID = maskAPIKey(aliyunCopy.OSSAccessKeyID)
-			}
-			if aliyunCopy.OSSAccessKeySecret != "" {
-				sanitized.Vendors.Aliyun.OSSAccessKeySecret = maskAPIKey(aliyunCopy.OSSAccessKeySecret)
-			}
-		}
-	}
-
-	return &sanitized
-}
-
-// maskAPIKey replaces an API key with asterisks of the same length
-func maskAPIKey(apiKey string) string {
-	if apiKey == "" {
-		return ""
-	}
-	masked := ""
-	for range apiKey {
-		masked += "*"
-	}
-	return masked
 }

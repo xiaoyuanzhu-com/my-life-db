@@ -8,7 +8,6 @@
   },
   "tabs": {
     "general": "General",
-    "vendors": "Vendors",
     "connectedApps": "Connected Apps",
     "stats": "Stats"
   },
@@ -17,9 +16,7 @@
     "saving": "Saving...",
     "close": "Close",
     "retry": "Retry",
-    "cancel": "Cancel",
-    "selectModel": "Select Model",
-    "loadingModels": "Loading..."
+    "cancel": "Cancel"
   },
   "toast": {
     "saveSuccess": "Settings saved successfully!",
@@ -28,47 +25,14 @@
   "general": {
     "title": "General Settings",
     "subtitle": "Configure application-wide preferences",
-    "userEmail": {
-      "label": "User Email",
-      "hint": "Used for displaying your Gravatar avatar in the header."
-    },
     "logLevel": {
       "label": "Log Level",
       "hint": "A browser refresh or server restart may be required to apply."
-    },
-    "languages": {
-      "label": "Languages",
-      "hint": "Languages you use, in order of preference. Drag to reorder.",
-      "searchPlaceholder": "Search languages..."
     },
     "uiLanguage": {
       "label": "Display language",
       "hint": "The language used for MyLifeDB's interface. Empty follows your browser/system.",
       "systemDefault": "System default"
-    }
-  },
-  "vendors": {
-    "title": "Vendor Configuration",
-    "subtitle": "Configure third-party vendor endpoints and credentials",
-    "openaiBaseUrl": {
-      "label": "OpenAI - Base URL"
-    },
-    "openaiApiKey": {
-      "label": "OpenAI - API Key"
-    },
-    "openaiModel": {
-      "label": "OpenAI - Model",
-      "hint": "Used for all LLM tasks. Leave blank to use default."
-    },
-    "qdrantHost": {
-      "label": "Search - Qdrant Host",
-      "hint": "Base URL for the Qdrant vector service used by semantic search."
-    },
-    "modelSelector": {
-      "title": "Select OpenAI Model",
-      "filterPlaceholder": "Filter models...",
-      "noModels": "No models found. Check your API key permissions.",
-      "ownerLabel": "Owner: {{owner}}"
     }
   },
   "stats": {

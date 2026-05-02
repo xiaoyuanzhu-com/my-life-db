@@ -16,35 +16,6 @@ interface SettingsContextType {
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
 
-// Helper function to check if a string is masked (all asterisks)
-function isMaskedApiKey(apiKey: string | undefined): boolean {
-  if (!apiKey) return false;
-  return /^\*+$/.test(apiKey);
-}
-
-// Helper function to remove unchanged masked API keys from update payload
-function stripUnchangedMaskedKeys(
-  updates: Partial<UserSettings>,
-  original: Partial<UserSettings>
-): Partial<UserSettings> {
-  const cleaned = { ...updates };
-
-  // Check Vendor OpenAI API key
-  if (
-    cleaned.vendors?.openai?.apiKey &&
-    isMaskedApiKey(cleaned.vendors.openai.apiKey) &&
-    cleaned.vendors.openai.apiKey === original.vendors?.openai?.apiKey
-  ) {
-    const { apiKey: _apiKey, ...rest } = cleaned.vendors.openai;
-    cleaned.vendors = {
-      ...cleaned.vendors,
-      openai: Object.keys(rest).length > 0 ? (rest as any) : undefined,
-    };
-  }
-
-  return cleaned;
-}
-
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<Partial<UserSettings> | null>(null);
   const [originalSettings, setOriginalSettings] = useState<Partial<UserSettings> | null>(null);
@@ -84,19 +55,16 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
     try {
       // Merge only the provided fields with existing settings
-      const updatedSettings = { ...settings, ...partialSettings };
-
-      // Strip out unchanged masked API keys before sending
-      const cleanedSettings = stripUnchangedMaskedKeys(updatedSettings, originalSettings);
+      const updatedSettings: Partial<UserSettings> = { ...settings, ...partialSettings };
 
       // JSON.stringify drops `undefined`, so the backend can't tell "field
       // omitted" from "explicitly cleared". Send "" to signal a clear so the
       // server can drop the saved preference.
-      if (cleanedSettings.preferences && cleanedSettings.preferences.language === undefined) {
-        cleanedSettings.preferences = { ...cleanedSettings.preferences, language: "" as never };
+      if (updatedSettings.preferences && updatedSettings.preferences.language === undefined) {
+        updatedSettings.preferences = { ...updatedSettings.preferences, language: "" as never };
       }
 
-      const response = await api.put("/api/settings", cleanedSettings);
+      const response = await api.put("/api/settings", updatedSettings);
 
       if (response.ok) {
         setSaveMessage(i18n.t('settings:toast.saveSuccess', 'Settings saved successfully!'));

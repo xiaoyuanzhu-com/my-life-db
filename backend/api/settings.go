@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/models"
 )
@@ -18,9 +17,7 @@ func (h *Handlers) GetSettings(c *gin.Context) {
 		return
 	}
 
-	// Sanitize sensitive data before returning
-	sanitized := db.SanitizeSettings(settings)
-	c.JSON(http.StatusOK, sanitized)
+	c.JSON(http.StatusOK, settings)
 }
 
 // UpdateSettings handles PUT /api/settings
@@ -56,9 +53,7 @@ func (h *Handlers) UpdateSettings(c *gin.Context) {
 		log.Info().Str("level", merged.Preferences.LogLevel).Msg("log level updated")
 	}
 
-	// Return sanitized settings
-	sanitized := db.SanitizeSettings(merged)
-	c.JSON(http.StatusOK, sanitized)
+	c.JSON(http.StatusOK, merged)
 }
 
 // mergeSettings merges updates into current settings
@@ -75,63 +70,8 @@ func mergeSettings(current, updates *models.UserSettings) *models.UserSettings {
 	if updates.Preferences.LogLevel != "" {
 		merged.Preferences.LogLevel = updates.Preferences.LogLevel
 	}
-	if updates.Preferences.UserEmail != "" {
-		merged.Preferences.UserEmail = updates.Preferences.UserEmail
-	}
-	if len(updates.Preferences.Languages) > 0 {
-		merged.Preferences.Languages = updates.Preferences.Languages
-	}
 	if updates.Preferences.Language != nil {
 		merged.Preferences.Language = updates.Preferences.Language
-	}
-
-	// Merge vendors
-	if updates.Vendors != nil {
-		if merged.Vendors == nil {
-			merged.Vendors = &models.Vendors{}
-		}
-
-		if updates.Vendors.OpenAI != nil {
-			if merged.Vendors.OpenAI == nil {
-				merged.Vendors.OpenAI = &models.OpenAI{}
-			}
-			if updates.Vendors.OpenAI.BaseURL != "" {
-				merged.Vendors.OpenAI.BaseURL = updates.Vendors.OpenAI.BaseURL
-			}
-			// Only update API key if it's not masked (not all asterisks)
-			if updates.Vendors.OpenAI.APIKey != "" && !isMaskedAPIKey(updates.Vendors.OpenAI.APIKey) {
-				merged.Vendors.OpenAI.APIKey = updates.Vendors.OpenAI.APIKey
-			}
-			if updates.Vendors.OpenAI.Model != "" {
-				merged.Vendors.OpenAI.Model = updates.Vendors.OpenAI.Model
-			}
-		}
-
-		if updates.Vendors.Aliyun != nil {
-			if merged.Vendors.Aliyun == nil {
-				merged.Vendors.Aliyun = &models.Aliyun{}
-			}
-			// Only update API keys if they're not masked (not all asterisks)
-			if updates.Vendors.Aliyun.APIKey != "" && !isMaskedAPIKey(updates.Vendors.Aliyun.APIKey) {
-				merged.Vendors.Aliyun.APIKey = updates.Vendors.Aliyun.APIKey
-			}
-			if updates.Vendors.Aliyun.Region != "" {
-				merged.Vendors.Aliyun.Region = updates.Vendors.Aliyun.Region
-			}
-			if updates.Vendors.Aliyun.OSSAccessKeyID != "" && !isMaskedAPIKey(updates.Vendors.Aliyun.OSSAccessKeyID) {
-				merged.Vendors.Aliyun.OSSAccessKeyID = updates.Vendors.Aliyun.OSSAccessKeyID
-			}
-			if updates.Vendors.Aliyun.OSSAccessKeySecret != "" && !isMaskedAPIKey(updates.Vendors.Aliyun.OSSAccessKeySecret) {
-				merged.Vendors.Aliyun.OSSAccessKeySecret = updates.Vendors.Aliyun.OSSAccessKeySecret
-			}
-			if updates.Vendors.Aliyun.OSSRegion != "" {
-				merged.Vendors.Aliyun.OSSRegion = updates.Vendors.Aliyun.OSSRegion
-			}
-			if updates.Vendors.Aliyun.OSSBucket != "" {
-				merged.Vendors.Aliyun.OSSBucket = updates.Vendors.Aliyun.OSSBucket
-			}
-		}
-
 	}
 
 	// Merge extraction
@@ -157,19 +97,6 @@ func mergeSettings(current, updates *models.UserSettings) *models.UserSettings {
 	}
 
 	return &merged
-}
-
-// isMaskedAPIKey checks if a string is all asterisks (masked API key)
-func isMaskedAPIKey(key string) bool {
-	if key == "" {
-		return false
-	}
-	for _, ch := range key {
-		if ch != '*' {
-			return false
-		}
-	}
-	return true
 }
 
 // ResetSettings handles POST /api/settings
@@ -200,6 +127,5 @@ func (h *Handlers) ResetSettings(c *gin.Context) {
 		return
 	}
 
-	sanitized := db.SanitizeSettings(settings)
-	c.JSON(http.StatusOK, sanitized)
+	c.JSON(http.StatusOK, settings)
 }

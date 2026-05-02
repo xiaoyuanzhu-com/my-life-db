@@ -6,29 +6,7 @@ export interface UserSettings {
     theme: 'light' | 'dark' | 'auto';
     defaultView: 'home' | 'library';
     logLevel?: 'debug' | 'info' | 'warn' | 'error';
-    userEmail?: string;
-    language?: 'en' | 'zh-Hans'; // UI language (BCP-47). Distinct from `languages[]` (content languages).
-    languages?: string[]; // Ordered list of languages the user uses (e.g., ['en', 'zh', 'ja'])
-  };
-
-  // Vendor Configuration
-  vendors?: {
-    openai?: {
-      baseUrl?: string;
-      apiKey?: string;
-      model?: string;
-    };
-    aliyun?: {
-      apiKey?: string;
-      region?: 'beijing' | 'singapore';
-      ossAccessKeyId?: string;
-      ossAccessKeySecret?: string;
-      ossRegion?: string;
-      ossBucket?: string;
-    };
-    qdrant?: {
-      host?: string;
-    };
+    language?: 'en' | 'zh-Hans'; // UI language (BCP-47).
   };
 
   // Extraction Options (defaults for enrichment)
@@ -144,34 +122,3 @@ export const DEFAULT_SETTINGS: UserSettings = {
   },
 };
 
-// Helper function to mask API key with asterisks of the same length
-function maskApiKey(apiKey: string | undefined): string | undefined {
-  if (!apiKey) return apiKey;
-  return '*'.repeat(apiKey.length);
-}
-
-// Sanitize settings before sending to client (mask sensitive data)
-export function sanitizeSettings(settings: UserSettings): Partial<UserSettings> {
-  return {
-    ...settings,
-    vendors: settings.vendors
-      ? {
-          ...settings.vendors,
-          openai: settings.vendors.openai
-            ? {
-                ...settings.vendors.openai,
-                apiKey: maskApiKey(settings.vendors.openai.apiKey),
-              }
-            : undefined,
-          aliyun: settings.vendors.aliyun
-            ? {
-                ...settings.vendors.aliyun,
-                apiKey: maskApiKey(settings.vendors.aliyun.apiKey),
-                ossAccessKeyId: maskApiKey(settings.vendors.aliyun.ossAccessKeyId),
-                ossAccessKeySecret: maskApiKey(settings.vendors.aliyun.ossAccessKeySecret),
-              }
-            : undefined,
-        }
-      : undefined,
-  };
-}
