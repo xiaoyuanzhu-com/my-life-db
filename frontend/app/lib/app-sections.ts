@@ -27,7 +27,6 @@ export const SECTION_ORDER: SectionKey[] = [
 
 // Order here is the order shown in the Featured section.
 const FEATURED_ORDER: string[] = [
-  "apple-health",
   "garmin",
   "strava",
   "google",
@@ -46,7 +45,6 @@ const FEATURED_IDS = new Set<string>(FEATURED_ORDER);
 const AI_IDS = new Set<string>([
   "chatgpt",
   "claude",
-  "claude-code",
   "gemini",
   "copilot",
   "deepseek",
