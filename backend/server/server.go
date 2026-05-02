@@ -98,6 +98,18 @@ func New(cfg *Config) (*Server, error) {
 	//      its ATTACH needs app.sqlite to exist on disk.
 	cfg.PopulateDatabasePaths()
 
+	// Migrate any existing single-DB layout (database.sqlite) to the split
+	// layout. No-op on fresh installs and on already-migrated installs.
+	if err := db.MaybeRunSplitMigration(db.SplitConfig{
+		LegacyPath:       cfg.LegacyDatabasePath,
+		IndexPath:        cfg.IndexDatabasePath,
+		AppPath:          cfg.AppDatabasePath,
+		ExtensionPath:    cfg.SimpleExtensionPath,
+		ExtensionDictDir: cfg.SimpleDictDir,
+	}); err != nil {
+		return nil, fmt.Errorf("split migration: %w", err)
+	}
+
 	log.Info().Str("path", cfg.IndexDatabasePath).Msg("initializing index database")
 	indexDB, err := db.Open(db.Config{
 		Path:             cfg.IndexDatabasePath,
