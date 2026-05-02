@@ -419,7 +419,7 @@ http_headers = { "x-litellm-customer-id" = %q }
 	// 4. Create FS service
 	log.Info().Msg("initializing filesystem service")
 	fsCfg := cfg.ToFSConfig()
-	fsCfg.DB = fs.NewDBAdapter() // Inject database adapter
+	fsCfg.DB = fs.NewDBAdapter(s.database) // Inject database adapter
 	fsCfg.PreviewNotifier = func(filePath, previewType string) {
 		s.notifService.NotifyPreviewUpdated(filePath, previewType)
 	}
@@ -432,7 +432,7 @@ http_headers = { "x-litellm-customer-id" = %q }
 
 	// 5.5. Create text indexer (writes synchronously to SQLite FTS5 files_fts)
 	log.Info().Msg("initializing text indexer")
-	s.textIndexer = textindex.NewIndexer(s.fsService.DataRoot())
+	s.textIndexer = textindex.NewIndexer(s.fsService.DataRoot(), s.database)
 
 	// 7.5. MyLifeDB Connect store — third-party app authorization (OAuth 2.1
 	// + PKCE). Schema is owned by db/migration_026_connect.go; this just

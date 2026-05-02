@@ -117,7 +117,7 @@ func (h *Handlers) TriggerDigest(c *gin.Context) {
 	}
 
 	// Check if file exists
-	file, err := db.GetFileByPath(path)
+	file, err := h.server.DB().GetFileByPath(path)
 	if err != nil || file == nil {
 		RespondCoded(c, http.StatusNotFound, "DIGEST_FILE_NOT_FOUND", "File not found")
 		return

@@ -336,7 +336,7 @@ func (h *Handlers) GetLibraryFileInfo(c *gin.Context) {
 		return
 	}
 
-	file, err := db.GetFileWithDigests(path)
+	file, err := h.server.DB().GetFileWithDigests(path)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to get file info")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get file info"})
@@ -640,7 +640,7 @@ func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, curr
 	// Batch-load preview info if requested
 	var previewMap map[string]string
 	if fields["previewSqlar"] {
-		previewMap, _ = db.GetPreviewSqlarMap(relativePath)
+		previewMap, _ = h.server.DB().GetPreviewSqlarMap(relativePath)
 	}
 
 	// Batch-load DB created_at if requested. created_at is the time MyLifeDB
@@ -648,7 +648,7 @@ func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, curr
 	// since filesystem birthtime is not reliable on Linux/Docker.
 	var createdAtMap map[string]int64
 	if fields["createdAt"] {
-		createdAtMap, _ = db.GetCreatedAtMap(relativePath)
+		createdAtMap, _ = h.server.DB().GetCreatedAtMap(relativePath)
 	}
 
 	var nodes []FileNode

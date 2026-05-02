@@ -239,7 +239,7 @@ func (w *Worker) processFile(filePath string) {
 	log.Info().Str("path", filePath).Msg("processing file")
 
 	// Get file record
-	file, err := db.GetFileByPath(filePath)
+	file, err := w.db.GetFileByPath(filePath)
 	if err != nil || file == nil {
 		log.Error().Str("path", filePath).Msg("file not found")
 		return

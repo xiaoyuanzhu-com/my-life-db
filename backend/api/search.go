@@ -139,7 +139,7 @@ func (h *Handlers) Search(c *gin.Context) {
 
 		terms := extractSearchTerms(query)
 		for _, hit := range hits {
-			file, err := db.GetFileWithDigests(hit.FilePath)
+			file, err := h.server.DB().GetFileWithDigests(hit.FilePath)
 			if err != nil || file == nil {
 				continue
 			}

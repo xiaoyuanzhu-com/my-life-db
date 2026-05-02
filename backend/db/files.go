@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -13,7 +14,7 @@ import (
 
 // GetPreviewSqlarMap returns a map of filename -> previewSqlar for files in a directory.
 // Only returns entries where preview_status = 'ready' and preview_sqlar IS NOT NULL.
-func GetPreviewSqlarMap(dirPath string) (map[string]string, error) {
+func (d *DB) GetPreviewSqlarMap(dirPath string) (map[string]string, error) {
 	query := `
 		SELECT name, preview_sqlar
 		FROM files
@@ -27,7 +28,7 @@ func GetPreviewSqlarMap(dirPath string) (map[string]string, error) {
 		prefix += "/"
 	}
 
-	rows, err := GetDB().Query(query, prefix, prefix)
+	rows, err := d.conn.Query(query, prefix, prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +48,7 @@ func GetPreviewSqlarMap(dirPath string) (map[string]string, error) {
 // GetCreatedAtMap returns a map of name -> created_at (epoch ms) for direct
 // children of dirPath. Includes both files and folders. Used by the library
 // tree handler to surface "first seen" time as a sortable createdAt field.
-func GetCreatedAtMap(dirPath string) (map[string]int64, error) {
+func (d *DB) GetCreatedAtMap(dirPath string) (map[string]int64, error) {
 	query := `
 		SELECT name, created_at
 		FROM files
@@ -59,7 +60,7 @@ func GetCreatedAtMap(dirPath string) (map[string]int64, error) {
 		prefix += "/"
 	}
 
-	rows, err := GetDB().Query(query, prefix, prefix)
+	rows, err := d.conn.Query(query, prefix, prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +79,7 @@ func GetCreatedAtMap(dirPath string) (map[string]int64, error) {
 }
 
 // GetFileByPath retrieves a file record by path
-func GetFileByPath(path string) (*FileRecord, error) {
+func (d *DB) GetFileByPath(path string) (*FileRecord, error) {
 	query := `
 		SELECT path, name, is_folder, size, mime_type, hash,
 			   modified_at, created_at, last_scanned_at, text_preview, preview_sqlar, preview_status
@@ -86,7 +87,7 @@ func GetFileByPath(path string) (*FileRecord, error) {
 		WHERE path = ?
 	`
 
-	row := GetDB().QueryRow(query, path)
+	row := d.conn.QueryRow(query, path)
 
 	var f FileRecord
 	var isFolder int
@@ -119,10 +120,10 @@ func GetFileByPath(path string) (*FileRecord, error) {
 }
 
 // UpsertFile inserts or updates a file record
-func UpsertFile(f *FileRecord) (bool, error) {
+func (d *DB) UpsertFile(ctx context.Context, f *FileRecord) (bool, error) {
 	// Check if file exists before upsert to determine if this is a new insert
 	var existingPath string
-	err := GetDB().QueryRow("SELECT path FROM files WHERE path = ?", f.Path).Scan(&existingPath)
+	err := d.conn.QueryRow("SELECT path FROM files WHERE path = ?", f.Path).Scan(&existingPath)
 	isNewInsert := err != nil // If error (no rows), it's a new insert
 
 	query := `
@@ -145,18 +146,23 @@ func UpsertFile(f *FileRecord) (bool, error) {
 		isFolder = 1
 	}
 
-	_, err = GetDB().Exec(query,
-		f.Path, f.Name, isFolder, f.Size, f.MimeType,
-		f.Hash, f.ModifiedAt, f.CreatedAt, f.LastScannedAt,
-		f.TextPreview, f.PreviewSqlar, f.PreviewStatus,
-	)
-	return isNewInsert, err
+	if err := d.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(query,
+			f.Path, f.Name, isFolder, f.Size, f.MimeType,
+			f.Hash, f.ModifiedAt, f.CreatedAt, f.LastScannedAt,
+			f.TextPreview, f.PreviewSqlar, f.PreviewStatus,
+		)
+		return err
+	}); err != nil {
+		return false, err
+	}
+	return isNewInsert, nil
 }
 
 // BatchUpsertFiles efficiently upserts multiple file records and returns paths of new inserts
 // Uses a single IN-clause query to check existing files, then batch upserts in a transaction
 // Processes records in chunks of 500 to avoid parameter limits
-func BatchUpsertFiles(records []*FileRecord) (newInserts []string, err error) {
+func (d *DB) BatchUpsertFiles(ctx context.Context, records []*FileRecord) (newInserts []string, err error) {
 	if len(records) == 0 {
 		return nil, nil
 	}
@@ -171,7 +177,7 @@ func BatchUpsertFiles(records []*FileRecord) (newInserts []string, err error) {
 		}
 		chunk := records[i:end]
 
-		newInChunk, err := batchUpsertChunk(chunk)
+		newInChunk, err := d.batchUpsertChunk(ctx, chunk)
 		if err != nil {
 			return newInserts, err
 		}
@@ -182,7 +188,7 @@ func BatchUpsertFiles(records []*FileRecord) (newInserts []string, err error) {
 }
 
 // batchUpsertChunk processes a single chunk of file records
-func batchUpsertChunk(records []*FileRecord) ([]string, error) {
+func (d *DB) batchUpsertChunk(ctx context.Context, records []*FileRecord) ([]string, error) {
 	// 1. Build IN-clause query to check which files already exist
 	paths := make([]string, len(records))
 	for i, r := range records {
@@ -201,7 +207,7 @@ func batchUpsertChunk(records []*FileRecord) ([]string, error) {
 		args[i] = p
 	}
 
-	rows, err := GetDB().Query(query, args...)
+	rows, err := d.conn.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -217,54 +223,50 @@ func batchUpsertChunk(records []*FileRecord) ([]string, error) {
 	rows.Close()
 
 	// 2. Batch upsert in a transaction
-	tx, err := GetDB().Begin()
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-
-	stmt, err := tx.Prepare(`
-		INSERT INTO files (path, name, is_folder, size, mime_type, hash, modified_at, created_at, last_scanned_at, text_preview, preview_sqlar, preview_status)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(path) DO UPDATE SET
-			name = excluded.name,
-			is_folder = excluded.is_folder,
-			size = excluded.size,
-			mime_type = excluded.mime_type,
-			hash = COALESCE(NULLIF(excluded.hash, ''), files.hash),
-			modified_at = excluded.modified_at,
-			last_scanned_at = excluded.last_scanned_at,
-			text_preview = COALESCE(excluded.text_preview, files.text_preview),
-			preview_status = COALESCE(excluded.preview_status, files.preview_status)
-	`)
-	if err != nil {
-		return nil, err
-	}
-	defer stmt.Close()
-
 	var newInserts []string
-	for _, record := range records {
-		isFolder := 0
-		if record.IsFolder {
-			isFolder = 1
-		}
-
-		_, err := stmt.Exec(
-			record.Path, record.Name, isFolder, record.Size, record.MimeType,
-			record.Hash, record.ModifiedAt, record.CreatedAt, record.LastScannedAt,
-			record.TextPreview, record.PreviewSqlar, record.PreviewStatus,
-		)
+	err = d.Write(ctx, func(tx *sql.Tx) error {
+		stmt, err := tx.Prepare(`
+			INSERT INTO files (path, name, is_folder, size, mime_type, hash, modified_at, created_at, last_scanned_at, text_preview, preview_sqlar, preview_status)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(path) DO UPDATE SET
+				name = excluded.name,
+				is_folder = excluded.is_folder,
+				size = excluded.size,
+				mime_type = excluded.mime_type,
+				hash = COALESCE(NULLIF(excluded.hash, ''), files.hash),
+				modified_at = excluded.modified_at,
+				last_scanned_at = excluded.last_scanned_at,
+				text_preview = COALESCE(excluded.text_preview, files.text_preview),
+				preview_status = COALESCE(excluded.preview_status, files.preview_status)
+		`)
 		if err != nil {
-			return nil, err
+			return err
 		}
+		defer stmt.Close()
 
-		// Track new inserts
-		if !existingPaths[record.Path] {
-			newInserts = append(newInserts, record.Path)
+		for _, record := range records {
+			isFolder := 0
+			if record.IsFolder {
+				isFolder = 1
+			}
+
+			_, err := stmt.Exec(
+				record.Path, record.Name, isFolder, record.Size, record.MimeType,
+				record.Hash, record.ModifiedAt, record.CreatedAt, record.LastScannedAt,
+				record.TextPreview, record.PreviewSqlar, record.PreviewStatus,
+			)
+			if err != nil {
+				return err
+			}
+
+			// Track new inserts
+			if !existingPaths[record.Path] {
+				newInserts = append(newInserts, record.Path)
+			}
 		}
-	}
-
-	if err := tx.Commit(); err != nil {
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 
@@ -272,9 +274,11 @@ func batchUpsertChunk(records []*FileRecord) ([]string, error) {
 }
 
 // DeleteFile removes a file record
-func DeleteFile(path string) error {
-	_, err := GetDB().Exec("DELETE FROM files WHERE path = ?", path)
-	return err
+func (d *DB) DeleteFile(ctx context.Context, path string) error {
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec("DELETE FROM files WHERE path = ?", path)
+		return err
+	})
 }
 
 // Cursor represents a pagination cursor
@@ -322,7 +326,7 @@ type FileListResult struct {
 }
 
 // ListTopLevelFilesNewest lists top-level files in a directory, newest first
-func ListTopLevelFilesNewest(pathPrefix string, limit int) (*FileListResult, error) {
+func (d *DB) ListTopLevelFilesNewest(pathPrefix string, limit int) (*FileListResult, error) {
 	query := `
 		SELECT path, name, is_folder, size, mime_type, hash,
 			   modified_at, created_at, last_scanned_at, text_preview, preview_sqlar, preview_status
@@ -333,7 +337,7 @@ func ListTopLevelFilesNewest(pathPrefix string, limit int) (*FileListResult, err
 		LIMIT ?
 	`
 
-	rows, err := GetDB().Query(query, pathPrefix, pathPrefix, limit+1)
+	rows, err := d.conn.Query(query, pathPrefix, pathPrefix, limit+1)
 	if err != nil {
 		return nil, err
 	}
@@ -378,7 +382,7 @@ func ListTopLevelFilesNewest(pathPrefix string, limit int) (*FileListResult, err
 }
 
 // ListTopLevelFilesBefore lists files older than the cursor
-func ListTopLevelFilesBefore(pathPrefix string, cursor *Cursor, limit int) (*FileListResult, error) {
+func (d *DB) ListTopLevelFilesBefore(pathPrefix string, cursor *Cursor, limit int) (*FileListResult, error) {
 	query := `
 		SELECT path, name, is_folder, size, mime_type, hash,
 			   modified_at, created_at, last_scanned_at, text_preview, preview_sqlar, preview_status
@@ -390,7 +394,7 @@ func ListTopLevelFilesBefore(pathPrefix string, cursor *Cursor, limit int) (*Fil
 		LIMIT ?
 	`
 
-	rows, err := GetDB().Query(query, pathPrefix, pathPrefix, cursor.CreatedAt, cursor.CreatedAt, cursor.Path, limit+1)
+	rows, err := d.conn.Query(query, pathPrefix, pathPrefix, cursor.CreatedAt, cursor.CreatedAt, cursor.Path, limit+1)
 	if err != nil {
 		return nil, err
 	}
@@ -436,7 +440,7 @@ func ListTopLevelFilesBefore(pathPrefix string, cursor *Cursor, limit int) (*Fil
 }
 
 // ListTopLevelFilesAfter lists files newer than the cursor
-func ListTopLevelFilesAfter(pathPrefix string, cursor *Cursor, limit int) (*FileListResult, error) {
+func (d *DB) ListTopLevelFilesAfter(pathPrefix string, cursor *Cursor, limit int) (*FileListResult, error) {
 	query := `
 		SELECT path, name, is_folder, size, mime_type, hash,
 			   modified_at, created_at, last_scanned_at, text_preview, preview_sqlar, preview_status
@@ -448,7 +452,7 @@ func ListTopLevelFilesAfter(pathPrefix string, cursor *Cursor, limit int) (*File
 		LIMIT ?
 	`
 
-	rows, err := GetDB().Query(query, pathPrefix, pathPrefix, cursor.CreatedAt, cursor.CreatedAt, cursor.Path, limit+1)
+	rows, err := d.conn.Query(query, pathPrefix, pathPrefix, cursor.CreatedAt, cursor.CreatedAt, cursor.Path, limit+1)
 	if err != nil {
 		return nil, err
 	}
@@ -510,7 +514,7 @@ type FileListAroundResult struct {
 
 // ListTopLevelFilesAround loads items centered around a cursor
 // Used for pin navigation - returns a page containing the pinned item
-func ListTopLevelFilesAround(pathPrefix string, cursor *Cursor, limit int) (*FileListAroundResult, error) {
+func (d *DB) ListTopLevelFilesAround(pathPrefix string, cursor *Cursor, limit int) (*FileListAroundResult, error) {
 	halfLimit := limit / 2
 
 	// Load items BEFORE cursor (older, including cursor item)
@@ -525,7 +529,7 @@ func ListTopLevelFilesAround(pathPrefix string, cursor *Cursor, limit int) (*Fil
 		LIMIT ?
 	`
 
-	beforeRows, err := GetDB().Query(beforeQuery, pathPrefix, pathPrefix, cursor.CreatedAt, cursor.CreatedAt, cursor.Path, halfLimit+1)
+	beforeRows, err := d.conn.Query(beforeQuery, pathPrefix, pathPrefix, cursor.CreatedAt, cursor.CreatedAt, cursor.Path, halfLimit+1)
 	if err != nil {
 		return nil, err
 	}
@@ -572,7 +576,7 @@ func ListTopLevelFilesAround(pathPrefix string, cursor *Cursor, limit int) (*Fil
 		LIMIT ?
 	`
 
-	afterRows, err := GetDB().Query(afterQuery, pathPrefix, pathPrefix, cursor.CreatedAt, cursor.CreatedAt, cursor.Path, halfLimit+1)
+	afterRows, err := d.conn.Query(afterQuery, pathPrefix, pathPrefix, cursor.CreatedAt, cursor.CreatedAt, cursor.Path, halfLimit+1)
 	if err != nil {
 		return nil, err
 	}
@@ -643,21 +647,21 @@ func GeneratePathHash(path string) string {
 }
 
 // CountFilesInPath counts files in a path prefix
-func CountFilesInPath(pathPrefix string) (int64, error) {
+func (d *DB) CountFilesInPath(pathPrefix string) (int64, error) {
 	var count int64
-	err := GetDB().QueryRow(`
+	err := d.conn.QueryRow(`
 		SELECT COUNT(*) FROM files WHERE path LIKE ? || '%'
 	`, pathPrefix).Scan(&count)
 	return count, err
 }
 
 // GetFileStats returns statistics about files
-func GetFileStats() (map[string]interface{}, error) {
+func (d *DB) GetFileStats() (map[string]interface{}, error) {
 	stats := make(map[string]interface{})
 
 	// Total files
 	var totalFiles int64
-	err := GetDB().QueryRow("SELECT COUNT(*) FROM files WHERE is_folder = 0").Scan(&totalFiles)
+	err := d.conn.QueryRow("SELECT COUNT(*) FROM files WHERE is_folder = 0").Scan(&totalFiles)
 	if err != nil {
 		return nil, err
 	}
@@ -665,14 +669,14 @@ func GetFileStats() (map[string]interface{}, error) {
 
 	// Total folders
 	var totalFolders int64
-	err = GetDB().QueryRow("SELECT COUNT(*) FROM files WHERE is_folder = 1").Scan(&totalFolders)
+	err = d.conn.QueryRow("SELECT COUNT(*) FROM files WHERE is_folder = 1").Scan(&totalFolders)
 	if err != nil {
 		return nil, err
 	}
 	stats["totalFolders"] = totalFolders
 
 	// Files by type (top 10)
-	rows, err := GetDB().Query(`
+	rows, err := d.conn.Query(`
 		SELECT mime_type, COUNT(*) as count
 		FROM files
 		WHERE mime_type IS NOT NULL AND is_folder = 0
@@ -701,7 +705,7 @@ func GetFileStats() (map[string]interface{}, error) {
 
 	// Inbox files
 	var inboxFiles int64
-	err = GetDB().QueryRow("SELECT COUNT(*) FROM files WHERE path LIKE 'inbox/%' AND is_folder = 0").Scan(&inboxFiles)
+	err = d.conn.QueryRow("SELECT COUNT(*) FROM files WHERE path LIKE 'inbox/%' AND is_folder = 0").Scan(&inboxFiles)
 	if err != nil {
 		return nil, err
 	}
@@ -713,13 +717,13 @@ func GetFileStats() (map[string]interface{}, error) {
 // FileWithDigests represents a file with its digests
 type FileWithDigests struct {
 	FileRecord
-	Digests []Digest `json:"digests"`
-	IsPinned bool    `json:"isPinned"`
+	Digests  []Digest `json:"digests"`
+	IsPinned bool     `json:"isPinned"`
 }
 
 // GetFileWithDigests retrieves a file with all its digests
-func GetFileWithDigests(path string) (*FileWithDigests, error) {
-	file, err := GetFileByPath(path)
+func (d *DB) GetFileWithDigests(path string) (*FileWithDigests, error) {
+	file, err := d.GetFileByPath(path)
 	if err != nil || file == nil {
 		return nil, err
 	}
@@ -743,98 +747,82 @@ func GetFileWithDigests(path string) (*FileWithDigests, error) {
 
 // RenameFilePath updates a single file's path and name, including all related tables.
 // Updates: files, digests, pins, files_fts.
-func RenameFilePath(oldPath, newPath, newName string) error {
-	tx, err := GetDB().Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
+func (d *DB) RenameFilePath(ctx context.Context, oldPath, newPath, newName string) error {
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		// Update files
+		if _, err := tx.Exec(`UPDATE files SET path = ?, name = ? WHERE path = ?`, newPath, newName, oldPath); err != nil {
+			return fmt.Errorf("failed to update files: %w", err)
+		}
 
-	// Update files
-	_, err = tx.Exec(`UPDATE files SET path = ?, name = ? WHERE path = ?`, newPath, newName, oldPath)
-	if err != nil {
-		return fmt.Errorf("failed to update files: %w", err)
-	}
+		// Update digests
+		if _, err := tx.Exec(`UPDATE digests SET file_path = ? WHERE file_path = ?`, newPath, oldPath); err != nil {
+			return fmt.Errorf("failed to update digests: %w", err)
+		}
 
-	// Update digests
-	_, err = tx.Exec(`UPDATE digests SET file_path = ? WHERE file_path = ?`, newPath, oldPath)
-	if err != nil {
-		return fmt.Errorf("failed to update digests: %w", err)
-	}
+		// Update pins
+		if _, err := tx.Exec(`UPDATE pins SET file_path = ? WHERE file_path = ?`, newPath, oldPath); err != nil {
+			return fmt.Errorf("failed to update pins: %w", err)
+		}
 
-	// Update pins
-	_, err = tx.Exec(`UPDATE pins SET file_path = ? WHERE file_path = ?`, newPath, oldPath)
-	if err != nil {
-		return fmt.Errorf("failed to update pins: %w", err)
-	}
+		// Update FTS5 search index
+		if _, err := tx.Exec(`UPDATE files_fts SET file_path = ? WHERE file_path = ?`, newPath, oldPath); err != nil {
+			return fmt.Errorf("failed to update files_fts: %w", err)
+		}
 
-	// Update FTS5 search index
-	_, err = tx.Exec(`UPDATE files_fts SET file_path = ? WHERE file_path = ?`, newPath, oldPath)
-	if err != nil {
-		return fmt.Errorf("failed to update files_fts: %w", err)
-	}
-
-	return tx.Commit()
+		return nil
+	})
 }
 
 // RenameFilePaths updates all paths that start with oldPath prefix (for folder renames).
 // Updates all related tables: files, digests, pins, files_fts.
-func RenameFilePaths(oldPath, newPath string) error {
-	tx, err := GetDB().Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
+func (d *DB) RenameFilePaths(ctx context.Context, oldPath, newPath string) error {
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		// Update files table - all files and subfolders
+		if _, err := tx.Exec(`
+			UPDATE files
+			SET path = ? || substr(path, ?) ,
+				name = CASE
+					WHEN path = ? THEN ?
+					ELSE name
+				END
+			WHERE path = ? OR path LIKE ? || '/%'
+		`, newPath, len(oldPath)+1, oldPath, filepath.Base(newPath), oldPath, oldPath); err != nil {
+			return fmt.Errorf("failed to update files: %w", err)
+		}
 
-	// Update files table - all files and subfolders
-	_, err = tx.Exec(`
-		UPDATE files
-		SET path = ? || substr(path, ?) ,
-			name = CASE
-				WHEN path = ? THEN ?
-				ELSE name
-			END
-		WHERE path = ? OR path LIKE ? || '/%'
-	`, newPath, len(oldPath)+1, oldPath, filepath.Base(newPath), oldPath, oldPath)
-	if err != nil {
-		return fmt.Errorf("failed to update files: %w", err)
-	}
+		// Update digests
+		if _, err := tx.Exec(`
+			UPDATE digests
+			SET file_path = ? || substr(file_path, ?)
+			WHERE file_path = ? OR file_path LIKE ? || '/%'
+		`, newPath, len(oldPath)+1, oldPath, oldPath); err != nil {
+			return fmt.Errorf("failed to update digests: %w", err)
+		}
 
-	// Update digests
-	_, err = tx.Exec(`
-		UPDATE digests
-		SET file_path = ? || substr(file_path, ?)
-		WHERE file_path = ? OR file_path LIKE ? || '/%'
-	`, newPath, len(oldPath)+1, oldPath, oldPath)
-	if err != nil {
-		return fmt.Errorf("failed to update digests: %w", err)
-	}
+		// Update pins
+		if _, err := tx.Exec(`
+			UPDATE pins
+			SET file_path = ? || substr(file_path, ?)
+			WHERE file_path = ? OR file_path LIKE ? || '/%'
+		`, newPath, len(oldPath)+1, oldPath, oldPath); err != nil {
+			return fmt.Errorf("failed to update pins: %w", err)
+		}
 
-	// Update pins
-	_, err = tx.Exec(`
-		UPDATE pins
-		SET file_path = ? || substr(file_path, ?)
-		WHERE file_path = ? OR file_path LIKE ? || '/%'
-	`, newPath, len(oldPath)+1, oldPath, oldPath)
-	if err != nil {
-		return fmt.Errorf("failed to update pins: %w", err)
-	}
+		// Update FTS5 search index
+		if _, err := tx.Exec(`
+			UPDATE files_fts
+			SET file_path = ? || substr(file_path, ?)
+			WHERE file_path = ? OR file_path LIKE ? || '/%'
+		`, newPath, len(oldPath)+1, oldPath, oldPath); err != nil {
+			return fmt.Errorf("failed to update files_fts: %w", err)
+		}
 
-	// Update FTS5 search index
-	_, err = tx.Exec(`
-		UPDATE files_fts
-		SET file_path = ? || substr(file_path, ?)
-		WHERE file_path = ? OR file_path LIKE ? || '/%'
-	`, newPath, len(oldPath)+1, oldPath, oldPath)
-	if err != nil {
-		return fmt.Errorf("failed to update files_fts: %w", err)
-	}
-
-	return tx.Commit()
+		return nil
+	})
 }
 
 // UpdateFileField updates a single field on a file record
-func UpdateFileField(path string, field string, value interface{}) error {
+func (d *DB) UpdateFileField(ctx context.Context, path string, field string, value interface{}) error {
 	// Whitelist of allowed fields
 	allowedFields := map[string]bool{
 		"text_preview":   true,
@@ -850,74 +838,67 @@ func UpdateFileField(path string, field string, value interface{}) error {
 	}
 
 	query := fmt.Sprintf("UPDATE files SET %s = ? WHERE path = ?", field)
-	_, err := GetDB().Exec(query, value, path)
-	return err
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(query, value, path)
+		return err
+	})
 }
 
 // MoveFileAtomic atomically moves a file record from oldPath to newPath.
 // This is used when detecting external file moves via fsnotify.
 // It updates the file record and ALL related tables in a single transaction:
 // files, digests, pins, files_fts.
-func MoveFileAtomic(oldPath, newPath string, newRecord *FileRecord) error {
-	tx, err := GetDB().Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	// 1. Insert/update new path with smart COALESCE handling
-	isFolder := 0
-	if newRecord.IsFolder {
-		isFolder = 1
-	}
-
-	_, err = tx.Exec(`
-		INSERT INTO files (path, name, is_folder, size, mime_type, hash, modified_at, created_at, last_scanned_at, text_preview, preview_sqlar, preview_status)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(path) DO UPDATE SET
-			name = excluded.name,
-			is_folder = excluded.is_folder,
-			size = excluded.size,
-			mime_type = excluded.mime_type,
-			hash = COALESCE(NULLIF(excluded.hash, ''), files.hash),
-			modified_at = excluded.modified_at,
-			last_scanned_at = excluded.last_scanned_at,
-			text_preview = COALESCE(excluded.text_preview, files.text_preview),
-			preview_status = COALESCE(excluded.preview_status, files.preview_status)
-	`, newRecord.Path, newRecord.Name, isFolder, newRecord.Size, newRecord.MimeType,
-		newRecord.Hash, newRecord.ModifiedAt, newRecord.CreatedAt, newRecord.LastScannedAt,
-		newRecord.TextPreview, newRecord.PreviewSqlar, newRecord.PreviewStatus)
-	if err != nil {
-		return fmt.Errorf("failed to insert new path: %w", err)
-	}
-
-	// 2. Delete old path (if different from new path)
-	if oldPath != newPath {
-		_, err = tx.Exec(`DELETE FROM files WHERE path = ?`, oldPath)
-		if err != nil {
-			return fmt.Errorf("failed to delete old path: %w", err)
+func (d *DB) MoveFileAtomic(ctx context.Context, oldPath, newPath string, newRecord *FileRecord) error {
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		// 1. Insert/update new path with smart COALESCE handling
+		isFolder := 0
+		if newRecord.IsFolder {
+			isFolder = 1
 		}
-	}
 
-	// 3. Update related tables: digests
-	_, err = tx.Exec(`UPDATE digests SET file_path = ? WHERE file_path = ?`, newPath, oldPath)
-	if err != nil {
-		return fmt.Errorf("failed to update digests: %w", err)
-	}
+		if _, err := tx.Exec(`
+			INSERT INTO files (path, name, is_folder, size, mime_type, hash, modified_at, created_at, last_scanned_at, text_preview, preview_sqlar, preview_status)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(path) DO UPDATE SET
+				name = excluded.name,
+				is_folder = excluded.is_folder,
+				size = excluded.size,
+				mime_type = excluded.mime_type,
+				hash = COALESCE(NULLIF(excluded.hash, ''), files.hash),
+				modified_at = excluded.modified_at,
+				last_scanned_at = excluded.last_scanned_at,
+				text_preview = COALESCE(excluded.text_preview, files.text_preview),
+				preview_status = COALESCE(excluded.preview_status, files.preview_status)
+		`, newRecord.Path, newRecord.Name, isFolder, newRecord.Size, newRecord.MimeType,
+			newRecord.Hash, newRecord.ModifiedAt, newRecord.CreatedAt, newRecord.LastScannedAt,
+			newRecord.TextPreview, newRecord.PreviewSqlar, newRecord.PreviewStatus); err != nil {
+			return fmt.Errorf("failed to insert new path: %w", err)
+		}
 
-	// 4. Update related tables: pins
-	_, err = tx.Exec(`UPDATE pins SET file_path = ? WHERE file_path = ?`, newPath, oldPath)
-	if err != nil {
-		return fmt.Errorf("failed to update pins: %w", err)
-	}
+		// 2. Delete old path (if different from new path)
+		if oldPath != newPath {
+			if _, err := tx.Exec(`DELETE FROM files WHERE path = ?`, oldPath); err != nil {
+				return fmt.Errorf("failed to delete old path: %w", err)
+			}
+		}
 
-	// 5. Update related tables: files_fts
-	_, err = tx.Exec(`UPDATE files_fts SET file_path = ? WHERE file_path = ?`, newPath, oldPath)
-	if err != nil {
-		return fmt.Errorf("failed to update files_fts: %w", err)
-	}
+		// 3. Update related tables: digests
+		if _, err := tx.Exec(`UPDATE digests SET file_path = ? WHERE file_path = ?`, newPath, oldPath); err != nil {
+			return fmt.Errorf("failed to update digests: %w", err)
+		}
 
-	return tx.Commit()
+		// 4. Update related tables: pins
+		if _, err := tx.Exec(`UPDATE pins SET file_path = ? WHERE file_path = ?`, newPath, oldPath); err != nil {
+			return fmt.Errorf("failed to update pins: %w", err)
+		}
+
+		// 5. Update related tables: files_fts
+		if _, err := tx.Exec(`UPDATE files_fts SET file_path = ? WHERE file_path = ?`, newPath, oldPath); err != nil {
+			return fmt.Errorf("failed to update files_fts: %w", err)
+		}
+
+		return nil
+	})
 }
 
 // FileWithMime holds a file path and its MIME type.
@@ -928,8 +909,8 @@ type FileWithMime struct {
 
 // GetFilesMissingPreviews returns files with preview_status = 'pending'.
 // Results are limited to avoid overwhelming the preview queue.
-func GetFilesMissingPreviews(limit int) ([]FileWithMime, error) {
-	rows, err := GetDB().Query(`
+func (d *DB) GetFilesMissingPreviews(limit int) ([]FileWithMime, error) {
+	rows, err := d.conn.Query(`
 		SELECT path, mime_type FROM files
 		WHERE preview_status = 'pending'
 		LIMIT ?
@@ -953,8 +934,8 @@ func GetFilesMissingPreviews(limit int) ([]FileWithMime, error) {
 
 // ListAllFilePaths returns all file paths in the database (for reconciliation).
 // The caller is responsible for closing the returned rows.
-func ListAllFilePaths() ([]string, error) {
-	rows, err := GetDB().Query("SELECT path FROM files WHERE is_folder = 0")
+func (d *DB) ListAllFilePaths() ([]string, error) {
+	rows, err := d.conn.Query("SELECT path FROM files WHERE is_folder = 0")
 	if err != nil {
 		return nil, err
 	}
@@ -975,34 +956,30 @@ func ListAllFilePaths() ([]string, error) {
 // DeleteFileWithCascade removes a file record and all related records in a single transaction.
 // This includes: digests, pins, files_fts.
 // Used during reconciliation and file deletion to clean up all related data.
-func DeleteFileWithCascade(path string) error {
-	tx, err := GetDB().Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
+func (d *DB) DeleteFileWithCascade(ctx context.Context, path string) error {
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		// Delete search index documents first
+		if _, err := tx.Exec("DELETE FROM files_fts WHERE file_path = ?", path); err != nil {
+			return fmt.Errorf("failed to delete files_fts: %w", err)
+		}
 
-	// Delete search index documents first
-	if _, err := tx.Exec("DELETE FROM files_fts WHERE file_path = ?", path); err != nil {
-		return fmt.Errorf("failed to delete files_fts: %w", err)
-	}
+		// Delete digests
+		if _, err := tx.Exec("DELETE FROM digests WHERE file_path = ?", path); err != nil {
+			return fmt.Errorf("failed to delete digests: %w", err)
+		}
 
-	// Delete digests
-	if _, err := tx.Exec("DELETE FROM digests WHERE file_path = ?", path); err != nil {
-		return fmt.Errorf("failed to delete digests: %w", err)
-	}
+		// Delete pins
+		if _, err := tx.Exec("DELETE FROM pins WHERE file_path = ?", path); err != nil {
+			return fmt.Errorf("failed to delete pins: %w", err)
+		}
 
-	// Delete pins
-	if _, err := tx.Exec("DELETE FROM pins WHERE file_path = ?", path); err != nil {
-		return fmt.Errorf("failed to delete pins: %w", err)
-	}
+		// Delete file record
+		if _, err := tx.Exec("DELETE FROM files WHERE path = ?", path); err != nil {
+			return fmt.Errorf("failed to delete file: %w", err)
+		}
 
-	// Delete file record
-	if _, err := tx.Exec("DELETE FROM files WHERE path = ?", path); err != nil {
-		return fmt.Errorf("failed to delete file: %w", err)
-	}
-
-	return tx.Commit()
+		return nil
+	})
 }
 
 // BatchDeleteFilesWithCascade removes multiple file records and all related rows
@@ -1010,7 +987,7 @@ func DeleteFileWithCascade(path string) error {
 // avoid one-transaction-per-orphan when there are thousands of records to remove.
 // Caller is responsible for chunking to stay under SQLite's parameter limit
 // (SQLITE_MAX_VARIABLE_NUMBER, typically 999 on older builds, 32766 on newer).
-func BatchDeleteFilesWithCascade(paths []string) error {
+func (d *DB) BatchDeleteFilesWithCascade(ctx context.Context, paths []string) error {
 	if len(paths) == 0 {
 		return nil
 	}
@@ -1022,57 +999,48 @@ func BatchDeleteFilesWithCascade(paths []string) error {
 		args[i] = p
 	}
 
-	tx, err := GetDB().Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	if _, err := tx.Exec("DELETE FROM files_fts WHERE file_path IN ("+placeholders+")", args...); err != nil {
-		return fmt.Errorf("failed to delete files_fts: %w", err)
-	}
-	if _, err := tx.Exec("DELETE FROM digests WHERE file_path IN ("+placeholders+")", args...); err != nil {
-		return fmt.Errorf("failed to delete digests: %w", err)
-	}
-	if _, err := tx.Exec("DELETE FROM pins WHERE file_path IN ("+placeholders+")", args...); err != nil {
-		return fmt.Errorf("failed to delete pins: %w", err)
-	}
-	if _, err := tx.Exec("DELETE FROM files WHERE path IN ("+placeholders+")", args...); err != nil {
-		return fmt.Errorf("failed to delete files: %w", err)
-	}
-
-	return tx.Commit()
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.Exec("DELETE FROM files_fts WHERE file_path IN ("+placeholders+")", args...); err != nil {
+			return fmt.Errorf("failed to delete files_fts: %w", err)
+		}
+		if _, err := tx.Exec("DELETE FROM digests WHERE file_path IN ("+placeholders+")", args...); err != nil {
+			return fmt.Errorf("failed to delete digests: %w", err)
+		}
+		if _, err := tx.Exec("DELETE FROM pins WHERE file_path IN ("+placeholders+")", args...); err != nil {
+			return fmt.Errorf("failed to delete pins: %w", err)
+		}
+		if _, err := tx.Exec("DELETE FROM files WHERE path IN ("+placeholders+")", args...); err != nil {
+			return fmt.Errorf("failed to delete files: %w", err)
+		}
+		return nil
+	})
 }
 
 // DeleteFilesWithCascadePrefix removes a folder and all files/records under it in a single transaction.
 // Cleans up: files, digests, pins, files_fts.
 // Used for recursive folder deletion.
-func DeleteFilesWithCascadePrefix(pathPrefix string) error {
-	tx, err := GetDB().Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
+func (d *DB) DeleteFilesWithCascadePrefix(ctx context.Context, pathPrefix string) error {
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		// Delete search index documents
+		if _, err := tx.Exec("DELETE FROM files_fts WHERE file_path = ? OR file_path LIKE ? || '/%'", pathPrefix, pathPrefix); err != nil {
+			return fmt.Errorf("failed to delete files_fts: %w", err)
+		}
 
-	// Delete search index documents
-	if _, err := tx.Exec("DELETE FROM files_fts WHERE file_path = ? OR file_path LIKE ? || '/%'", pathPrefix, pathPrefix); err != nil {
-		return fmt.Errorf("failed to delete files_fts: %w", err)
-	}
+		// Delete digests
+		if _, err := tx.Exec("DELETE FROM digests WHERE file_path = ? OR file_path LIKE ? || '/%'", pathPrefix, pathPrefix); err != nil {
+			return fmt.Errorf("failed to delete digests: %w", err)
+		}
 
-	// Delete digests
-	if _, err := tx.Exec("DELETE FROM digests WHERE file_path = ? OR file_path LIKE ? || '/%'", pathPrefix, pathPrefix); err != nil {
-		return fmt.Errorf("failed to delete digests: %w", err)
-	}
+		// Delete pins
+		if _, err := tx.Exec("DELETE FROM pins WHERE file_path = ? OR file_path LIKE ? || '/%'", pathPrefix, pathPrefix); err != nil {
+			return fmt.Errorf("failed to delete pins: %w", err)
+		}
 
-	// Delete pins
-	if _, err := tx.Exec("DELETE FROM pins WHERE file_path = ? OR file_path LIKE ? || '/%'", pathPrefix, pathPrefix); err != nil {
-		return fmt.Errorf("failed to delete pins: %w", err)
-	}
+		// Delete file records
+		if _, err := tx.Exec("DELETE FROM files WHERE path = ? OR path LIKE ? || '/%'", pathPrefix, pathPrefix); err != nil {
+			return fmt.Errorf("failed to delete files: %w", err)
+		}
 
-	// Delete file records
-	if _, err := tx.Exec("DELETE FROM files WHERE path = ? OR path LIKE ? || '/%'", pathPrefix, pathPrefix); err != nil {
-		return fmt.Errorf("failed to delete files: %w", err)
-	}
-
-	return tx.Commit()
+		return nil
+	})
 }

@@ -13,7 +13,6 @@ import (
 	"github.com/tus/tusd/v2/pkg/filestore"
 	tusd "github.com/tus/tusd/v2/pkg/handler"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
-	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/utils"
@@ -178,7 +177,7 @@ func (h *Handlers) FinalizeUpload(c *gin.Context) {
 		// Content-aware deduplication: skip if identical file already exists
 		dedup := utils.DeduplicateFileWithHash(destDir, filename, incomingHash, func(name string) string {
 			relPath := filepath.Join(destination, name)
-			rec, _ := db.GetFileByPath(relPath)
+			rec, _ := h.server.DB().GetFileByPath(relPath)
 			if rec != nil && rec.Hash != nil {
 				return *rec.Hash
 			}
@@ -307,7 +306,7 @@ func (h *Handlers) SimpleUpload(c *gin.Context) {
 	// Content-aware deduplication: skip if identical file already exists
 	dedup := utils.DeduplicateFileWithHash(destDir, filename, incomingHash, func(name string) string {
 		relPath := filepath.Join(dir, name)
-		rec, _ := db.GetFileByPath(relPath)
+		rec, _ := h.server.DB().GetFileByPath(relPath)
 		if rec != nil && rec.Hash != nil {
 			return *rec.Hash
 		}

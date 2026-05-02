@@ -14,13 +14,14 @@ import (
 // service.
 type Indexer struct {
 	dataRoot string
+	db       *db.DB
 }
 
 // NewIndexer creates a text indexer rooted at the user's data directory.
 // dataRoot is the absolute filesystem path; relative file paths in
 // db.files are joined against it to read content.
-func NewIndexer(dataRoot string) *Indexer {
-	return &Indexer{dataRoot: dataRoot}
+func NewIndexer(dataRoot string, database *db.DB) *Indexer {
+	return &Indexer{dataRoot: dataRoot, db: database}
 }
 
 // OnFileChange is called by the FS service when a file is created,
@@ -49,7 +50,7 @@ func (idx *Indexer) OnFileDelete(filePath string) {
 // Folders and binary files are skipped; for text files the content is
 // read up to MaxContentBytes.
 func (idx *Indexer) indexFile(filePath string) error {
-	file, err := db.GetFileByPath(filePath)
+	file, err := idx.db.GetFileByPath(filePath)
 	if err != nil || file == nil {
 		// File was removed from the DB between events — nothing to index.
 		return nil
