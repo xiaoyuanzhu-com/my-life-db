@@ -9,6 +9,7 @@ func init() {
 		Version:     12,
 		Description: "Consolidate claude session tables into unified claude_sessions",
 		Up:          migration012_claudeSessions,
+		Target:      DBRoleApp,
 	})
 }
 

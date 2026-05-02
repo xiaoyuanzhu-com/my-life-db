@@ -6,6 +6,7 @@ func init() {
 	RegisterMigration(Migration{
 		Version:     22,
 		Description: "Add trigger_kind and trigger_data columns to agent_sessions for per-run trigger context",
+		Target:      DBRoleApp,
 		Up: func(db *sql.DB) error {
 			tx, err := db.Begin()
 			if err != nil {

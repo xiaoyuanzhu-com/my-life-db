@@ -6,6 +6,7 @@ func init() {
 	RegisterMigration(Migration{
 		Version:     20,
 		Description: "Add source and agent_file columns to agent_sessions",
+		Target:      DBRoleApp,
 		Up: func(db *sql.DB) error {
 			_, err := db.Exec(`ALTER TABLE agent_sessions ADD COLUMN source TEXT NOT NULL DEFAULT 'user'`)
 			if err != nil {

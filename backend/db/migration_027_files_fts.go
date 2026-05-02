@@ -27,6 +27,7 @@ func init() {
 	RegisterMigration(Migration{
 		Version:     27,
 		Description: "Replace meili_documents with files_fts FTS5 virtual table",
+		Target:      DBRoleIndex,
 		Up:          migration027Up,
 	})
 }

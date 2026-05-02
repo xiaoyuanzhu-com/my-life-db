@@ -6,6 +6,7 @@ func init() {
 	RegisterMigration(Migration{
 		Version:     19,
 		Description: "Create explore_posts and explore_comments tables",
+		Target:      DBRoleApp,
 		Up: func(db *sql.DB) error {
 			tx, err := db.Begin()
 			if err != nil {

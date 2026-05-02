@@ -6,6 +6,7 @@ func init() {
 	RegisterMigration(Migration{
 		Version:     21,
 		Description: "Rename agent_sessions.agent_file to agent_name and strip .md suffix from existing values",
+		Target:      DBRoleApp,
 		Up: func(db *sql.DB) error {
 			tx, err := db.Begin()
 			if err != nil {

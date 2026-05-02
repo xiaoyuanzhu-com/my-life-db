@@ -11,6 +11,7 @@ func init() {
 		Version:     3,
 		Description: "Fix pins table schema - add id, file_path, and pinned_at columns",
 		Up:          migration003_fixPinsSchema,
+		Target:      DBRoleApp,
 	})
 }
 

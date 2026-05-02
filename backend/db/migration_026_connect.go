@@ -6,6 +6,7 @@ func init() {
 	RegisterMigration(Migration{
 		Version:     26,
 		Description: "Add MyLifeDB Connect tables (third-party app OAuth)",
+		Target:      DBRoleApp,
 		Up: func(db *sql.DB) error {
 			stmts := []string{
 				// connect_clients: third-party apps that have ever asked for authorization.

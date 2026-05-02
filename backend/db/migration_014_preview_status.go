@@ -7,6 +7,7 @@ func init() {
 		Version:     14,
 		Description: "Add preview_status column for explicit preview state tracking",
 		Up:          migration014_previewStatus,
+		Target:      DBRoleIndex,
 	})
 }
 

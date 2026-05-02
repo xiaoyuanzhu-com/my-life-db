@@ -9,6 +9,7 @@ func init() {
 		Version:     13,
 		Description: "Add share_token and shared_at columns to claude_sessions",
 		Up:          migration013_shareSessions,
+		Target:      DBRoleApp,
 	})
 }
 

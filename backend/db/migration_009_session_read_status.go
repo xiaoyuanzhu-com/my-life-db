@@ -9,6 +9,7 @@ func init() {
 		Version:     9,
 		Description: "Add session_read_status table for cross-device unread tracking",
 		Up:          migration009_sessionReadStatus,
+		Target:      DBRoleApp,
 	})
 }
 

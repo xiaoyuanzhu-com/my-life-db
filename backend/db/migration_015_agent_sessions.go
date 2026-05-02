@@ -8,6 +8,7 @@ func init() {
 	RegisterMigration(Migration{
 		Version:     15,
 		Description: "Rename claude_sessions to agent_sessions, add agent_type column",
+		Target:      DBRoleApp,
 		Up: func(db *sql.DB) error {
 			tx, err := db.Begin()
 			if err != nil {

@@ -6,6 +6,7 @@ func init() {
 	RegisterMigration(Migration{
 		Version:     24,
 		Description: "Create agent_session_groups table for grouping agent sessions",
+		Target:      DBRoleApp,
 		Up: func(db *sql.DB) error {
 			_, err := db.Exec(`
 				CREATE TABLE IF NOT EXISTS agent_session_groups (

@@ -7,6 +7,7 @@ func init() {
 		Version:     11,
 		Description: "Rename screenshot_sqlar to preview_sqlar",
 		Up:          migration011_previewSqlar,
+		Target:      DBRoleIndex,
 	})
 }
 

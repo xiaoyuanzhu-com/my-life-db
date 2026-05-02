@@ -8,6 +8,7 @@ func init() {
 	RegisterMigration(Migration{
 		Version:     16,
 		Description: "Add working_dir, title, created_at to agent_sessions for session resume and display",
+		Target:      DBRoleApp,
 		Up: func(db *sql.DB) error {
 			tx, err := db.Begin()
 			if err != nil {

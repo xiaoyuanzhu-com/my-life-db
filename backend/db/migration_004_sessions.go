@@ -9,6 +9,7 @@ func init() {
 		Version:     4,
 		Description: "Add sessions table for password authentication",
 		Up:          migration004_sessions,
+		Target:      DBRoleApp,
 	})
 }
 

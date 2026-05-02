@@ -6,6 +6,7 @@ func init() {
 	RegisterMigration(Migration{
 		Version:     25,
 		Description: "Add group_id and pinned_at columns to agent_sessions",
+		Target:      DBRoleApp,
 		Up: func(db *sql.DB) error {
 			if _, err := db.Exec(`ALTER TABLE agent_sessions ADD COLUMN group_id TEXT`); err != nil {
 				return err

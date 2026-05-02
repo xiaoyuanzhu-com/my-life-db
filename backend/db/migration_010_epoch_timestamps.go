@@ -12,6 +12,7 @@ func init() {
 		Version:     10,
 		Description: "Convert all TEXT timestamp columns to INTEGER (epoch milliseconds)",
 		Up:          migration010_epochTimestamps,
+		Target:      DBRoleApp,
 	})
 }
 

@@ -11,6 +11,7 @@ func init() {
 		Version:     1,
 		Description: "Initial schema - create or upgrade from Node.js backend",
 		Up:          migration001_initial,
+		Target:      DBRoleApp,
 	})
 }
 

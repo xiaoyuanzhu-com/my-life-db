@@ -15,6 +15,7 @@ func init() {
 	RegisterMigration(Migration{
 		Version:     17,
 		Description: "Backfill working_dir, title, created_at for pre-ACP sessions from Claude session index files",
+		Target:      DBRoleApp,
 		Up: func(db *sql.DB) error {
 			// Find sessions that need backfill (empty working_dir or title)
 			rows, err := db.Query(

@@ -9,6 +9,7 @@ func init() {
 		Version:     8,
 		Description: "Add collectors table for data collector configuration",
 		Up:          migration008_collectors,
+		Target:      DBRoleApp,
 	})
 }
 

@@ -9,6 +9,7 @@ func init() {
 		Version:     6,
 		Description: "Add hidden Claude sessions table",
 		Up:          migration006_hiddenSessions,
+		Target:      DBRoleApp,
 	})
 }
 

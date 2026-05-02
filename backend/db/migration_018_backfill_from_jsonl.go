@@ -16,6 +16,7 @@ func init() {
 	RegisterMigration(Migration{
 		Version:     18,
 		Description: "Backfill working_dir, title, created_at from JSONL session files",
+		Target:      DBRoleApp,
 		Up: func(db *sql.DB) error {
 			// Find sessions that still need backfill
 			rows, err := db.Query(

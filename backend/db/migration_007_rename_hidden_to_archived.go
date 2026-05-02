@@ -9,6 +9,7 @@ func init() {
 		Version:     7,
 		Description: "Rename hidden_claude_sessions to archived_claude_sessions",
 		Up:          migration007_renameHiddenToArchived,
+		Target:      DBRoleApp,
 	})
 }
 

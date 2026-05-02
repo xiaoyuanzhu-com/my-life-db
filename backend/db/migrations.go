@@ -14,6 +14,7 @@ type Migration struct {
 	Version     int
 	Description string
 	Up          func(db *sql.DB) error
+	Target      DBRole // DBRoleIndex or DBRoleApp — used by Task 9 to filter; ignored here
 }
 
 // migrations is the list of all migrations to apply

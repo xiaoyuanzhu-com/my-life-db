@@ -9,6 +9,7 @@ func init() {
 		Version:     5,
 		Description: "Add agent tables for inbox automation",
 		Up:          migration005_agent,
+		Target:      DBRoleApp,
 	})
 }
 
