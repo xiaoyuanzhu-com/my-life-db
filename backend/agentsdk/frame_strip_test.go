@@ -99,6 +99,126 @@ func TestStrip_ReadUpdate_RemovesToolResponseFileContent(t *testing.T) {
 	}
 }
 
+func TestStrip_ReadUpdate_RemovesToolResponseFileBase64(t *testing.T) {
+	// Image reads put the encoded image bytes in toolResponse.file.base64
+	// instead of toolResponse.file.content.
+	frame := map[string]interface{}{
+		"sessionUpdate": "tool_call_update",
+		"toolCallId":    "tc-read-3",
+		"_meta": map[string]interface{}{
+			"claudeCode": map[string]interface{}{
+				"toolName": "Read",
+				"toolResponse": map[string]interface{}{
+					"type": "image",
+					"file": map[string]interface{}{
+						"base64": strings.Repeat("A", 200000),
+						"type":   "image/png",
+						"dimensions": map[string]interface{}{
+							"displayHeight":  2000,
+							"displayWidth":   924,
+							"originalHeight": 2532,
+							"originalWidth":  1170,
+						},
+						"originalSize": 127137,
+					},
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(frame)
+	stripped := StripHeavyToolCallContent(data)
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(stripped, &result); err != nil {
+		t.Fatalf("invalid stripped JSON: %v", err)
+	}
+
+	cc := result["_meta"].(map[string]interface{})["claudeCode"].(map[string]interface{})
+	resp := cc["toolResponse"].(map[string]interface{})
+	file := resp["file"].(map[string]interface{})
+
+	if _, has := file["base64"]; has {
+		t.Error("Read+update: toolResponse.file.base64 should be stripped")
+	}
+	if file["type"] != "image/png" {
+		t.Error("toolResponse.file.type should be preserved")
+	}
+	if _, has := file["dimensions"]; !has {
+		t.Error("toolResponse.file.dimensions should be preserved")
+	}
+	if _, has := file["originalSize"]; !has {
+		t.Error("toolResponse.file.originalSize should be preserved")
+	}
+}
+
+func TestStrip_WriteUpdate_StripsContentAndRawInput(t *testing.T) {
+	// Write tool_call_update: strip content[*].newText (diff block) and
+	// rawInput.content (the file body). Preserve path, type, file_path,
+	// locations, and other metadata.
+	frame := map[string]interface{}{
+		"sessionUpdate": "tool_call_update",
+		"toolCallId":    "tc-write-1",
+		"kind":          "edit",
+		"title":         "Write /src/Dockerfile",
+		"_meta": map[string]interface{}{
+			"claudeCode": map[string]interface{}{
+				"toolName": "Write",
+			},
+		},
+		"content": []interface{}{
+			map[string]interface{}{
+				"type":    "diff",
+				"path":    "/src/Dockerfile",
+				"newText": strings.Repeat("d", 50000),
+			},
+		},
+		"locations": []interface{}{
+			map[string]interface{}{"path": "/src/Dockerfile"},
+		},
+		"rawInput": map[string]interface{}{
+			"file_path": "/src/Dockerfile",
+			"content":   strings.Repeat("d", 50000),
+		},
+	}
+	data, _ := json.Marshal(frame)
+	stripped := StripHeavyToolCallContent(data)
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(stripped, &result); err != nil {
+		t.Fatalf("invalid stripped JSON: %v", err)
+	}
+
+	contents := result["content"].([]interface{})
+	first := contents[0].(map[string]interface{})
+	if _, has := first["newText"]; has {
+		t.Error("Write: content[0].newText should be stripped")
+	}
+	if first["path"] != "/src/Dockerfile" {
+		t.Error("Write: content[0].path should be preserved")
+	}
+	if first["type"] != "diff" {
+		t.Error("Write: content[0].type should be preserved")
+	}
+
+	rawInput := result["rawInput"].(map[string]interface{})
+	if _, has := rawInput["content"]; has {
+		t.Error("Write: rawInput.content should be stripped")
+	}
+	if rawInput["file_path"] != "/src/Dockerfile" {
+		t.Error("Write: rawInput.file_path should be preserved")
+	}
+
+	if result["title"] != "Write /src/Dockerfile" {
+		t.Error("Write: title should be preserved")
+	}
+	if result["kind"] != "edit" {
+		t.Error("Write: kind should be preserved")
+	}
+	if _, has := result["locations"]; !has {
+		t.Error("Write: locations should be preserved")
+	}
+}
+
 func TestStrip_GrepCompleted_RemovesContentAndRawOutput(t *testing.T) {
 	frame := map[string]interface{}{
 		"sessionUpdate": "tool_call_update",
@@ -384,7 +504,7 @@ func TestStrip_EditToolResponse_StripsResponseAndDiff(t *testing.T) {
 
 func TestStrip_OtherTool_PassesThrough(t *testing.T) {
 	// Tools not in the allowlist must not be touched.
-	for _, toolName := range []string{"Write", "Glob", "WebSearch", "MultiEdit"} {
+	for _, toolName := range []string{"Glob", "WebSearch", "MultiEdit"} {
 		frame := map[string]interface{}{
 			"sessionUpdate": "tool_call_update",
 			"toolCallId":    "tc-1",

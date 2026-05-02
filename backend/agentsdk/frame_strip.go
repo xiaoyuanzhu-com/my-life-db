@@ -15,7 +15,7 @@ import "encoding/json"
 //
 // Frames NOT modified:
 //   - Any sessionUpdate other than tool_call_update (including tool_call)
-//   - Any tool not in the allowlist (Read, Grep, Bash, Edit)
+//   - Any tool not in the allowlist (Read, Grep, Bash, Edit, Write)
 //   - Permission frames (handled separately if/when re-enabled)
 //
 // Per-tool rules (tool_call_update only). Each rule strips a specific field
@@ -24,6 +24,7 @@ import "encoding/json"
 //   Read:
 //     - top-level "content" and "rawOutput"
 //     - _meta.claudeCode.toolResponse.file.content
+//     - _meta.claudeCode.toolResponse.file.base64 (image reads)
 //
 //   Grep:
 //     - top-level "content" and "rawOutput"
@@ -37,6 +38,10 @@ import "encoding/json"
 //     - rawInput.old_string, rawInput.new_string
 //     - toolResponse.oldString, toolResponse.newString,
 //       toolResponse.originalFile, toolResponse.structuredPatch
+//
+//   Write:
+//     - content[*].newText (the diff block)
+//     - rawInput.content (the file body)
 //
 // All preserved fields are what the frontend renderers actually consume:
 // titles, file paths, line numbers, tool names, status, etc.
@@ -73,6 +78,9 @@ func StripHeavyToolCallContent(data []byte) []byte {
 				if deleteIfPresent(file, "content") {
 					stripped = true
 				}
+				if deleteIfPresent(file, "base64") {
+					stripped = true
+				}
 			}
 		}
 
@@ -92,7 +100,7 @@ func StripHeavyToolCallContent(data []byte) []byte {
 		}
 
 	case "Edit":
-		if stripEditDiffContent(msg) {
+		if stripDiffContent(msg) {
 			stripped = true
 		}
 		if rawInput, ok := msg["rawInput"].(map[string]interface{}); ok {
@@ -108,6 +116,16 @@ func StripHeavyToolCallContent(data []byte) []byte {
 				if deleteIfPresent(resp, key) {
 					stripped = true
 				}
+			}
+		}
+
+	case "Write":
+		if stripDiffContent(msg) {
+			stripped = true
+		}
+		if rawInput, ok := msg["rawInput"].(map[string]interface{}); ok {
+			if deleteIfPresent(rawInput, "content") {
+				stripped = true
 			}
 		}
 
@@ -140,9 +158,10 @@ func stripTopLevelOutput(msg map[string]interface{}) bool {
 	return stripped
 }
 
-// stripEditDiffContent removes oldText/newText from each entry of the top-level
-// "content" array (the ACP diff blocks). Returns true if anything was removed.
-func stripEditDiffContent(msg map[string]interface{}) bool {
+// stripDiffContent removes oldText/newText from each entry of the top-level
+// "content" array (the ACP diff blocks emitted by Edit and Write tools).
+// Returns true if anything was removed.
+func stripDiffContent(msg map[string]interface{}) bool {
 	contents, ok := msg["content"].([]interface{})
 	if !ok {
 		return false
