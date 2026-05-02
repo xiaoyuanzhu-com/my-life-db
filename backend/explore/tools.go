@@ -67,7 +67,7 @@ func RegisterTools(reg *mcp.Registry, svc *Service) {
 			},
 		},
 		Handler: func(ctx context.Context, args map[string]any) (mcp.Result, error) {
-			return callCreatePost(svc, args), nil
+			return callCreatePost(ctx, svc, args), nil
 		},
 	})
 
@@ -85,7 +85,7 @@ func RegisterTools(reg *mcp.Registry, svc *Service) {
 			},
 		},
 		Handler: func(ctx context.Context, args map[string]any) (mcp.Result, error) {
-			return callDeletePost(svc, args), nil
+			return callDeletePost(ctx, svc, args), nil
 		},
 	})
 
@@ -106,7 +106,7 @@ func RegisterTools(reg *mcp.Registry, svc *Service) {
 			},
 		},
 		Handler: func(ctx context.Context, args map[string]any) (mcp.Result, error) {
-			return callListPosts(args), nil
+			return callListPosts(svc, args), nil
 		},
 	})
 
@@ -132,7 +132,7 @@ func RegisterTools(reg *mcp.Registry, svc *Service) {
 			},
 		},
 		Handler: func(ctx context.Context, args map[string]any) (mcp.Result, error) {
-			return callAddComment(svc, args), nil
+			return callAddComment(ctx, svc, args), nil
 		},
 	})
 
@@ -155,12 +155,12 @@ func RegisterTools(reg *mcp.Registry, svc *Service) {
 			},
 		},
 		Handler: func(ctx context.Context, args map[string]any) (mcp.Result, error) {
-			return callAddTags(svc, args), nil
+			return callAddTags(ctx, svc, args), nil
 		},
 	})
 }
 
-func callCreatePost(svc *Service, args map[string]any) mcp.Result {
+func callCreatePost(ctx context.Context, svc *Service, args map[string]any) mcp.Result {
 	author, _ := args["author"].(string)
 	title, _ := args["title"].(string)
 
@@ -211,26 +211,26 @@ func callCreatePost(svc *Service, args map[string]any) mcp.Result {
 		}
 	}
 
-	post, err := svc.CreatePost(input)
+	post, err := svc.CreatePost(ctx, input)
 	if err != nil {
 		return mcp.ErrorResult("Error: " + err.Error())
 	}
 	return mcp.JSONResult(post)
 }
 
-func callDeletePost(svc *Service, args map[string]any) mcp.Result {
+func callDeletePost(ctx context.Context, svc *Service, args map[string]any) mcp.Result {
 	postID, _ := args["post_id"].(string)
 	if postID == "" {
 		return mcp.ErrorResult("Error: post_id is required")
 	}
 
-	if err := svc.DeletePost(postID); err != nil {
+	if err := svc.DeletePost(ctx, postID); err != nil {
 		return mcp.ErrorResult("Error: " + err.Error())
 	}
 	return mcp.TextResult(fmt.Sprintf("Deleted post %s", postID))
 }
 
-func callListPosts(args map[string]any) mcp.Result {
+func callListPosts(svc *Service, args map[string]any) mcp.Result {
 	limit := 30
 	if limitRaw, ok := args["limit"]; ok {
 		switch v := limitRaw.(type) {
@@ -255,9 +255,9 @@ func callListPosts(args map[string]any) mcp.Result {
 	var err error
 
 	if cursor != "" {
-		result, err = db.ListExplorePostsBefore(cursor, limit)
+		result, err = svc.db.ListExplorePostsBefore(cursor, limit)
 	} else {
-		result, err = db.ListExplorePostsNewest(limit)
+		result, err = svc.db.ListExplorePostsNewest(limit)
 	}
 	if err != nil {
 		return mcp.ErrorResult("Error: " + err.Error())
@@ -278,7 +278,7 @@ func callListPosts(args map[string]any) mcp.Result {
 	return mcp.TextResult(string(data))
 }
 
-func callAddComment(svc *Service, args map[string]any) mcp.Result {
+func callAddComment(ctx context.Context, svc *Service, args map[string]any) mcp.Result {
 	postID, _ := args["post_id"].(string)
 	author, _ := args["author"].(string)
 	content, _ := args["content"].(string)
@@ -287,14 +287,14 @@ func callAddComment(svc *Service, args map[string]any) mcp.Result {
 		return mcp.ErrorResult("Error: post_id, author, and content are required")
 	}
 
-	comment, err := svc.AddComment(postID, author, content)
+	comment, err := svc.AddComment(ctx, postID, author, content)
 	if err != nil {
 		return mcp.ErrorResult("Error: " + err.Error())
 	}
 	return mcp.JSONResult(comment)
 }
 
-func callAddTags(svc *Service, args map[string]any) mcp.Result {
+func callAddTags(ctx context.Context, svc *Service, args map[string]any) mcp.Result {
 	postID, _ := args["post_id"].(string)
 	if postID == "" {
 		return mcp.ErrorResult("Error: post_id is required")
@@ -312,7 +312,7 @@ func callAddTags(svc *Service, args map[string]any) mcp.Result {
 		return mcp.ErrorResult("Error: tags array is required and must not be empty")
 	}
 
-	merged, err := svc.AddTags(postID, tags)
+	merged, err := svc.AddTags(ctx, postID, tags)
 	if err != nil {
 		return mcp.ErrorResult("Error: " + err.Error())
 	}

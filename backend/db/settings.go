@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"os"
@@ -18,9 +19,9 @@ var defaultSettings = map[string]string{
 }
 
 // GetSetting retrieves a setting by key
-func GetSetting(key string) (string, error) {
+func (d *DB) GetSetting(key string) (string, error) {
 	var value string
-	err := GetDB().QueryRow("SELECT value FROM settings WHERE key = ?", key).Scan(&value)
+	err := d.conn.QueryRow("SELECT value FROM settings WHERE key = ?", key).Scan(&value)
 	if err == sql.ErrNoRows {
 		if defaultValue, ok := defaultSettings[key]; ok {
 			return defaultValue, nil
@@ -34,25 +35,29 @@ func GetSetting(key string) (string, error) {
 }
 
 // SetSetting updates or creates a setting
-func SetSetting(key, value string) error {
-	_, err := GetDB().Exec(`
-		INSERT INTO settings (key, value, updated_at)
-		VALUES (?, ?, ?)
-		ON CONFLICT(key) DO UPDATE SET
-			value = excluded.value,
-			updated_at = excluded.updated_at
-	`, key, value, NowMs())
-	return err
+func (d *DB) SetSetting(ctx context.Context, key, value string) error {
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO settings (key, value, updated_at)
+			VALUES (?, ?, ?)
+			ON CONFLICT(key) DO UPDATE SET
+				value = excluded.value,
+				updated_at = excluded.updated_at
+		`, key, value, NowMs())
+		return err
+	})
 }
 
 // DeleteSetting removes a setting
-func DeleteSetting(key string) error {
-	_, err := GetDB().Exec("DELETE FROM settings WHERE key = ?", key)
-	return err
+func (d *DB) DeleteSetting(ctx context.Context, key string) error {
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec("DELETE FROM settings WHERE key = ?", key)
+		return err
+	})
 }
 
 // GetAllSettings retrieves all settings
-func GetAllSettings() (map[string]string, error) {
+func (d *DB) GetAllSettings() (map[string]string, error) {
 	// Start with defaults
 	settings := make(map[string]string)
 	for k, v := range defaultSettings {
@@ -60,7 +65,7 @@ func GetAllSettings() (map[string]string, error) {
 	}
 
 	// Override with stored settings
-	rows, err := GetDB().Query("SELECT key, value FROM settings")
+	rows, err := d.conn.Query("SELECT key, value FROM settings")
 	if err != nil {
 		return nil, err
 	}
@@ -78,8 +83,8 @@ func GetAllSettings() (map[string]string, error) {
 }
 
 // UpdateSettings updates multiple settings at once
-func UpdateSettings(settings map[string]string) error {
-	return Transaction(func(tx *sql.Tx) error {
+func (d *DB) UpdateSettings(ctx context.Context, settings map[string]string) error {
+	return d.Write(ctx, func(tx *sql.Tx) error {
 		stmt, err := tx.Prepare(`
 			INSERT INTO settings (key, value, updated_at)
 			VALUES (?, ?, ?)
@@ -104,7 +109,7 @@ func UpdateSettings(settings map[string]string) error {
 }
 
 // ResetSettings removes all non-default settings
-func ResetSettings() error {
+func (d *DB) ResetSettings(ctx context.Context) error {
 	// Keep only default settings
 	keys := make([]string, 0, len(defaultSettings))
 	for k := range defaultSettings {
@@ -123,13 +128,15 @@ func ResetSettings() error {
 	}
 
 	query := "DELETE FROM settings WHERE key NOT IN (" + placeholders + ")"
-	_, err := GetDB().Exec(query, args...)
-	return err
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(query, args...)
+		return err
+	})
 }
 
 // GetSettingJSON retrieves a setting and unmarshals it from JSON
-func GetSettingJSON(key string, v interface{}) error {
-	value, err := GetSetting(key)
+func (d *DB) GetSettingJSON(key string, v interface{}) error {
+	value, err := d.GetSetting(key)
 	if err != nil {
 		return err
 	}
@@ -140,34 +147,18 @@ func GetSettingJSON(key string, v interface{}) error {
 }
 
 // SetSettingJSON marshals a value to JSON and stores it
-func SetSettingJSON(key string, v interface{}) error {
+func (d *DB) SetSettingJSON(ctx context.Context, key string, v interface{}) error {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
-	return SetSetting(key, string(data))
-}
-
-// Helper function to pick setting value: DB > Env > Default
-func pickFromMap(dbKey string, envKey string, defaultValue string) string {
-	// First try DB
-	if val, err := GetSetting(dbKey); err == nil && val != "" {
-		return val
-	}
-	// Then try env
-	if envKey != "" {
-		if envVal := os.Getenv(envKey); envVal != "" {
-			return envVal
-		}
-	}
-	// Finally use default
-	return defaultValue
+	return d.SetSetting(ctx, key, string(data))
 }
 
 // LoadUserSettings loads settings from DB and converts to structured UserSettings
-func LoadUserSettings() (*models.UserSettings, error) {
+func (d *DB) LoadUserSettings() (*models.UserSettings, error) {
 	// Load all settings once to avoid N+1 queries
-	allSettings, err := GetAllSettings()
+	allSettings, err := d.GetAllSettings()
 	if err != nil {
 		return nil, err
 	}
@@ -295,7 +286,7 @@ func LoadUserSettings() (*models.UserSettings, error) {
 }
 
 // SaveUserSettings converts UserSettings to flat key-value pairs and saves to DB
-func SaveUserSettings(settings *models.UserSettings) error {
+func (d *DB) SaveUserSettings(ctx context.Context, settings *models.UserSettings) error {
 	updates := make(map[string]string)
 
 	// Preferences
@@ -319,7 +310,7 @@ func SaveUserSettings(settings *models.UserSettings) error {
 	// non-nil non-empty → upsert with the new value.
 	if settings.Preferences.Language != nil {
 		if *settings.Preferences.Language == "" {
-			if err := DeleteSetting("preferences_language"); err != nil {
+			if err := d.DeleteSetting(ctx, "preferences_language"); err != nil {
 				return err
 			}
 		} else {
@@ -388,7 +379,7 @@ func SaveUserSettings(settings *models.UserSettings) error {
 	updates["storage_auto_backup"] = strconv.FormatBool(settings.Storage.AutoBackup)
 	updates["storage_max_file_size"] = strconv.Itoa(settings.Storage.MaxFileSize)
 
-	return UpdateSettings(updates)
+	return d.UpdateSettings(ctx, updates)
 }
 
 // SanitizeSettings masks sensitive data before sending to client

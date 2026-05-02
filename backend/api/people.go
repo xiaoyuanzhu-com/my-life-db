@@ -21,7 +21,7 @@ type PersonResponse struct {
 
 // GetPeople handles GET /api/people
 func (h *Handlers) GetPeople(c *gin.Context) {
-	rows, err := db.GetDB().Query(`
+	rows, err := h.server.DB().Read().Query(`
 		SELECT id, display_name, created_at, updated_at
 		FROM people
 		ORDER BY display_name
@@ -72,10 +72,13 @@ func (h *Handlers) CreatePerson(c *gin.Context) {
 		UpdatedAt:   now,
 	}
 
-	_, err := db.GetDB().Exec(`
-		INSERT INTO people (id, display_name, created_at, updated_at)
-		VALUES (?, ?, ?, ?)
-	`, person.ID, person.DisplayName, person.CreatedAt, person.UpdatedAt)
+	err := h.server.DB().Write(c.Request.Context(), func(tx *sql.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO people (id, display_name, created_at, updated_at)
+			VALUES (?, ?, ?, ?)
+		`, person.ID, person.DisplayName, person.CreatedAt, person.UpdatedAt)
+		return err
+	})
 	if err != nil {
 		log.Error().Err(err).Msg("failed to create person")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create person"})
@@ -90,7 +93,7 @@ func (h *Handlers) GetPerson(c *gin.Context) {
 	id := c.Param("id")
 
 	var p PersonResponse
-	err := db.GetDB().QueryRow(`
+	err := h.server.DB().Read().QueryRow(`
 		SELECT id, display_name, created_at, updated_at
 		FROM people
 		WHERE id = ?
@@ -106,7 +109,7 @@ func (h *Handlers) GetPerson(c *gin.Context) {
 	}
 
 	// Get clusters for this person
-	rows, err := db.GetDB().Query(`
+	rows, err := h.server.DB().Read().Query(`
 		SELECT id, people_id, cluster_type, sample_count, created_at, updated_at
 		FROM people_clusters
 		WHERE people_id = ?
@@ -146,15 +149,22 @@ func (h *Handlers) UpdatePerson(c *gin.Context) {
 		return
 	}
 
-	result, err := db.GetDB().Exec(`
-		UPDATE people SET display_name = ?, updated_at = ? WHERE id = ?
-	`, body.DisplayName, db.NowMs(), id)
+	var affected int64
+	err := h.server.DB().Write(c.Request.Context(), func(tx *sql.Tx) error {
+		result, err := tx.Exec(`
+			UPDATE people SET display_name = ?, updated_at = ? WHERE id = ?
+		`, body.DisplayName, db.NowMs(), id)
+		if err != nil {
+			return err
+		}
+		affected, _ = result.RowsAffected()
+		return nil
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update person"})
 		return
 	}
 
-	affected, _ := result.RowsAffected()
 	if affected == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Person not found"})
 		return
@@ -167,22 +177,28 @@ func (h *Handlers) UpdatePerson(c *gin.Context) {
 func (h *Handlers) DeletePerson(c *gin.Context) {
 	id := c.Param("id")
 
-	// First unassign all clusters
-	_, err := db.GetDB().Exec(`
-		UPDATE people_clusters SET people_id = NULL WHERE people_id = ?
-	`, id)
-	if err != nil {
-		log.Warn().Err(err).Msg("failed to unassign clusters")
-	}
+	var affected int64
+	err := h.server.DB().Write(c.Request.Context(), func(tx *sql.Tx) error {
+		// First unassign all clusters
+		if _, err := tx.Exec(`
+			UPDATE people_clusters SET people_id = NULL WHERE people_id = ?
+		`, id); err != nil {
+			log.Warn().Err(err).Msg("failed to unassign clusters")
+		}
 
-	// Delete person
-	result, err := db.GetDB().Exec("DELETE FROM people WHERE id = ?", id)
+		// Delete person
+		result, err := tx.Exec("DELETE FROM people WHERE id = ?", id)
+		if err != nil {
+			return err
+		}
+		affected, _ = result.RowsAffected()
+		return nil
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete person"})
 		return
 	}
 
-	affected, _ := result.RowsAffected()
 	if affected == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Person not found"})
 		return
@@ -208,17 +224,20 @@ func (h *Handlers) MergePeople(c *gin.Context) {
 		return
 	}
 
-	// Move all clusters from source to target
-	_, err := db.GetDB().Exec(`
-		UPDATE people_clusters SET people_id = ? WHERE people_id = ?
-	`, targetID, body.SourceID)
+	// Move all clusters from source to target, then delete source person
+	err := h.server.DB().Write(c.Request.Context(), func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`
+			UPDATE people_clusters SET people_id = ? WHERE people_id = ?
+		`, targetID, body.SourceID); err != nil {
+			return err
+		}
+		_, _ = tx.Exec("DELETE FROM people WHERE id = ?", body.SourceID)
+		return nil
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to merge clusters"})
 		return
 	}
-
-	// Delete source person
-	db.GetDB().Exec("DELETE FROM people WHERE id = ?", body.SourceID)
 
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
@@ -237,10 +256,13 @@ func (h *Handlers) AssignEmbedding(c *gin.Context) {
 
 	// This would typically involve cluster management
 	// For now, just update the cluster's person_id
-	_, err := db.GetDB().Exec(`
-		UPDATE people_clusters SET people_id = ?, updated_at = ?
-		WHERE id = (SELECT cluster_id FROM people_embeddings WHERE id = ?)
-	`, body.PersonID, db.NowMs(), embeddingID)
+	err := h.server.DB().Write(c.Request.Context(), func(tx *sql.Tx) error {
+		_, err := tx.Exec(`
+			UPDATE people_clusters SET people_id = ?, updated_at = ?
+			WHERE id = (SELECT cluster_id FROM people_embeddings WHERE id = ?)
+		`, body.PersonID, db.NowMs(), embeddingID)
+		return err
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to assign embedding"})
 		return
@@ -253,10 +275,13 @@ func (h *Handlers) AssignEmbedding(c *gin.Context) {
 func (h *Handlers) UnassignEmbedding(c *gin.Context) {
 	embeddingID := c.Param("id")
 
-	_, err := db.GetDB().Exec(`
-		UPDATE people_clusters SET people_id = NULL, updated_at = ?
-		WHERE id = (SELECT cluster_id FROM people_embeddings WHERE id = ?)
-	`, db.NowMs(), embeddingID)
+	err := h.server.DB().Write(c.Request.Context(), func(tx *sql.Tx) error {
+		_, err := tx.Exec(`
+			UPDATE people_clusters SET people_id = NULL, updated_at = ?
+			WHERE id = (SELECT cluster_id FROM people_embeddings WHERE id = ?)
+		`, db.NowMs(), embeddingID)
+		return err
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to unassign embedding"})
 		return

@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -94,25 +95,27 @@ func scanExplorePost(row interface{ Scan(...any) error }) (ExplorePost, error) {
 }
 
 // InsertExplorePost inserts a new explore post.
-func InsertExplorePost(p *ExplorePost) error {
+func (d *DB) InsertExplorePost(ctx context.Context, p *ExplorePost) error {
 	mediaPathsJSON, _ := json.Marshal(p.MediaPaths)
 	tagsJSON, _ := json.Marshal(p.Tags)
 
-	_, err := GetDB().Exec(`
-		INSERT INTO explore_posts (id, author, title, content, media_type, media_paths, media_dir, tags, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`,
-		p.ID, p.Author, p.Title,
-		NullString(p.Content), NullString(p.MediaType),
-		string(mediaPathsJSON), NullString(p.MediaDir),
-		string(tagsJSON), p.CreatedAt,
-	)
-	return err
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO explore_posts (id, author, title, content, media_type, media_paths, media_dir, tags, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`,
+			p.ID, p.Author, p.Title,
+			NullString(p.Content), NullString(p.MediaType),
+			string(mediaPathsJSON), NullString(p.MediaDir),
+			string(tagsJSON), p.CreatedAt,
+		)
+		return err
+	})
 }
 
 // GetExplorePost retrieves a single explore post by ID, with its comments.
-func GetExplorePost(id string) (*ExplorePostWithComments, error) {
-	row := GetDB().QueryRow(`
+func (d *DB) GetExplorePost(id string) (*ExplorePostWithComments, error) {
+	row := d.conn.QueryRow(`
 		SELECT id, author, title, content, media_type, media_paths, media_dir, tags, created_at
 		FROM explore_posts
 		WHERE id = ?
@@ -126,7 +129,7 @@ func GetExplorePost(id string) (*ExplorePostWithComments, error) {
 		return nil, err
 	}
 
-	comments, err := ListExploreComments(id)
+	comments, err := d.ListExploreComments(id)
 	if err != nil {
 		return nil, err
 	}
@@ -138,28 +141,32 @@ func GetExplorePost(id string) (*ExplorePostWithComments, error) {
 }
 
 // DeleteExplorePost deletes an explore post by ID.
-func DeleteExplorePost(id string) error {
-	_, err := GetDB().Exec(`DELETE FROM explore_posts WHERE id = ?`, id)
-	return err
+func (d *DB) DeleteExplorePost(ctx context.Context, id string) error {
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(`DELETE FROM explore_posts WHERE id = ?`, id)
+		return err
+	})
 }
 
 // UpdateExplorePostTags replaces the tags on an explore post.
-func UpdateExplorePostTags(id string, tags []string) error {
+func (d *DB) UpdateExplorePostTags(ctx context.Context, id string, tags []string) error {
 	tagsJSON, _ := json.Marshal(tags)
-	_, err := GetDB().Exec(`UPDATE explore_posts SET tags = ? WHERE id = ?`, string(tagsJSON), id)
-	return err
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(`UPDATE explore_posts SET tags = ? WHERE id = ?`, string(tagsJSON), id)
+		return err
+	})
 }
 
 const explorePostColumns = `id, author, title, content, media_type, media_paths, media_dir, tags, created_at`
 const defaultExploreLimit = 20
 
 // ListExplorePostsNewest returns the most recent posts (first page).
-func ListExplorePostsNewest(limit int) (*ExplorePostListResult, error) {
+func (d *DB) ListExplorePostsNewest(limit int) (*ExplorePostListResult, error) {
 	if limit <= 0 {
 		limit = defaultExploreLimit
 	}
 
-	rows, err := GetDB().Query(fmt.Sprintf(`
+	rows, err := d.conn.Query(fmt.Sprintf(`
 		SELECT %s FROM explore_posts
 		ORDER BY created_at DESC, id DESC
 		LIMIT ?
@@ -187,7 +194,7 @@ func ListExplorePostsNewest(limit int) (*ExplorePostListResult, error) {
 }
 
 // ListExplorePostsBefore returns posts older than the given cursor.
-func ListExplorePostsBefore(cursor string, limit int) (*ExplorePostListResult, error) {
+func (d *DB) ListExplorePostsBefore(cursor string, limit int) (*ExplorePostListResult, error) {
 	if limit <= 0 {
 		limit = defaultExploreLimit
 	}
@@ -197,7 +204,7 @@ func ListExplorePostsBefore(cursor string, limit int) (*ExplorePostListResult, e
 		return nil, err
 	}
 
-	rows, err := GetDB().Query(fmt.Sprintf(`
+	rows, err := d.conn.Query(fmt.Sprintf(`
 		SELECT %s FROM explore_posts
 		WHERE (created_at < ? OR (created_at = ? AND id < ?))
 		ORDER BY created_at DESC, id DESC
@@ -226,7 +233,7 @@ func ListExplorePostsBefore(cursor string, limit int) (*ExplorePostListResult, e
 }
 
 // ListExplorePostsAfter returns posts newer than the given cursor.
-func ListExplorePostsAfter(cursor string, limit int) (*ExplorePostListResult, error) {
+func (d *DB) ListExplorePostsAfter(cursor string, limit int) (*ExplorePostListResult, error) {
 	if limit <= 0 {
 		limit = defaultExploreLimit
 	}
@@ -237,7 +244,7 @@ func ListExplorePostsAfter(cursor string, limit int) (*ExplorePostListResult, er
 	}
 
 	// Query in ascending order to get the next page, then reverse.
-	rows, err := GetDB().Query(fmt.Sprintf(`
+	rows, err := d.conn.Query(fmt.Sprintf(`
 		SELECT %s FROM explore_posts
 		WHERE (created_at > ? OR (created_at = ? AND id > ?))
 		ORDER BY created_at ASC, id ASC
@@ -287,17 +294,19 @@ func collectExplorePosts(rows *sql.Rows) ([]ExplorePost, error) {
 }
 
 // InsertExploreComment inserts a new comment on a post.
-func InsertExploreComment(c *ExploreComment) error {
-	_, err := GetDB().Exec(`
-		INSERT INTO explore_comments (id, post_id, author, content, created_at)
-		VALUES (?, ?, ?, ?, ?)
-	`, c.ID, c.PostID, c.Author, c.Content, c.CreatedAt)
-	return err
+func (d *DB) InsertExploreComment(ctx context.Context, c *ExploreComment) error {
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO explore_comments (id, post_id, author, content, created_at)
+			VALUES (?, ?, ?, ?, ?)
+		`, c.ID, c.PostID, c.Author, c.Content, c.CreatedAt)
+		return err
+	})
 }
 
 // ListExploreComments returns all comments for a post, ordered by creation time.
-func ListExploreComments(postID string) ([]ExploreComment, error) {
-	rows, err := GetDB().Query(`
+func (d *DB) ListExploreComments(postID string) ([]ExploreComment, error) {
+	rows, err := d.conn.Query(`
 		SELECT id, post_id, author, content, created_at
 		FROM explore_comments
 		WHERE post_id = ?

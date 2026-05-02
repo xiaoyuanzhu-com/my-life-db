@@ -1,6 +1,7 @@
 package explore
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"os"
@@ -34,12 +35,13 @@ var allowedVideoExts = map[string]bool{
 // Service manages explore posts and their media files.
 type Service struct {
 	baseDir string // e.g. /path/to/user-data/explore
+	db      *db.DB
 }
 
 // NewService creates a new explore service.
-func NewService(userDataDir string) *Service {
+func NewService(userDataDir string, database *db.DB) *Service {
 	dir := filepath.Join(userDataDir, "explore")
-	return &Service{baseDir: dir}
+	return &Service{baseDir: dir, db: database}
 }
 
 // BaseDir returns the base directory for explore media.
@@ -106,7 +108,7 @@ func sanitizeForPath(s string) string {
 }
 
 // CreatePost creates a new explore post, writes media files, and inserts into the database.
-func (s *Service) CreatePost(input CreatePostInput) (*db.ExplorePostWithComments, error) {
+func (s *Service) CreatePost(ctx context.Context, input CreatePostInput) (*db.ExplorePostWithComments, error) {
 	id := ulid.Make().String()
 	now := time.Now().UnixMilli()
 
@@ -197,7 +199,7 @@ func (s *Service) CreatePost(input CreatePostInput) (*db.ExplorePostWithComments
 		post.MediaPaths = []string{}
 	}
 
-	if err := db.InsertExplorePost(post); err != nil {
+	if err := s.db.InsertExplorePost(ctx, post); err != nil {
 		return nil, fmt.Errorf("failed to insert post: %w", err)
 	}
 
@@ -210,9 +212,9 @@ func (s *Service) CreatePost(input CreatePostInput) (*db.ExplorePostWithComments
 }
 
 // DeletePost deletes a post from the database and removes its media directory.
-func (s *Service) DeletePost(id string) error {
+func (s *Service) DeletePost(ctx context.Context, id string) error {
 	// Get the post first to find its media dir
-	post, err := db.GetExplorePost(id)
+	post, err := s.db.GetExplorePost(id)
 	if err != nil {
 		return fmt.Errorf("failed to get post: %w", err)
 	}
@@ -221,7 +223,7 @@ func (s *Service) DeletePost(id string) error {
 	}
 
 	// Delete from database (CASCADE will remove comments)
-	if err := db.DeleteExplorePost(id); err != nil {
+	if err := s.db.DeleteExplorePost(ctx, id); err != nil {
 		return fmt.Errorf("failed to delete post from db: %w", err)
 	}
 
@@ -240,9 +242,9 @@ func (s *Service) DeletePost(id string) error {
 }
 
 // AddComment adds a comment to an existing post.
-func (s *Service) AddComment(postID, author, content string) (*db.ExploreComment, error) {
+func (s *Service) AddComment(ctx context.Context, postID, author, content string) (*db.ExploreComment, error) {
 	// Validate post exists
-	post, err := db.GetExplorePost(postID)
+	post, err := s.db.GetExplorePost(postID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get post: %w", err)
 	}
@@ -258,7 +260,7 @@ func (s *Service) AddComment(postID, author, content string) (*db.ExploreComment
 		CreatedAt: time.Now().UnixMilli(),
 	}
 
-	if err := db.InsertExploreComment(comment); err != nil {
+	if err := s.db.InsertExploreComment(ctx, comment); err != nil {
 		return nil, fmt.Errorf("failed to insert comment: %w", err)
 	}
 
@@ -267,8 +269,8 @@ func (s *Service) AddComment(postID, author, content string) (*db.ExploreComment
 }
 
 // AddTags merges new tags into a post's existing tags idempotently.
-func (s *Service) AddTags(postID string, tags []string) ([]string, error) {
-	post, err := db.GetExplorePost(postID)
+func (s *Service) AddTags(ctx context.Context, postID string, tags []string) ([]string, error) {
+	post, err := s.db.GetExplorePost(postID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get post: %w", err)
 	}
@@ -292,7 +294,7 @@ func (s *Service) AddTags(postID string, tags []string) ([]string, error) {
 		}
 	}
 
-	if err := db.UpdateExplorePostTags(postID, merged); err != nil {
+	if err := s.db.UpdateExplorePostTags(ctx, postID, merged); err != nil {
 		return nil, fmt.Errorf("failed to update tags: %w", err)
 	}
 

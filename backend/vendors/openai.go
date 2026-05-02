@@ -55,10 +55,10 @@ type CompletionResponse struct {
 }
 
 // GetOpenAIClient returns the singleton OpenAI client
-func GetOpenAIClient() *OpenAIClient {
+func GetOpenAIClient(database *db.DB) *OpenAIClient {
 	openaiClientOnce.Do(func() {
 		// Load settings from database first, fall back to env vars
-		settings, err := db.LoadUserSettings()
+		settings, err := database.LoadUserSettings()
 		if err != nil {
 			log.Error().Err(err).Msg("failed to load user settings for OpenAI")
 			return
@@ -277,8 +277,8 @@ func (o *OpenAIClient) ListModels() (map[string]interface{}, error) {
 }
 
 // GetOpenAI returns the OpenAI client (wrapper for digest workers)
-func GetOpenAI() *OpenAIClient {
-	return GetOpenAIClient()
+func GetOpenAI(database *db.DB) *OpenAIClient {
+	return GetOpenAIClient(database)
 }
 
 // Summarize generates a summary of the text (for URL crawl summary)

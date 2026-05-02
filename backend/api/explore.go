@@ -44,16 +44,16 @@ func (h *Handlers) GetExplorePosts(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid before cursor format"})
 			return
 		}
-		result, err = db.ListExplorePostsBefore(before, limit)
+		result, err = h.server.DB().ListExplorePostsBefore(before, limit)
 	} else if after != "" {
 		_, _, parseErr := db.ParseExploreCursor(after)
 		if parseErr != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid after cursor format"})
 			return
 		}
-		result, err = db.ListExplorePostsAfter(after, limit)
+		result, err = h.server.DB().ListExplorePostsAfter(after, limit)
 	} else {
-		result, err = db.ListExplorePostsNewest(limit)
+		result, err = h.server.DB().ListExplorePostsNewest(limit)
 	}
 
 	if err != nil {
@@ -87,7 +87,7 @@ func (h *Handlers) GetExplorePosts(c *gin.Context) {
 func (h *Handlers) GetExplorePost(c *gin.Context) {
 	id := c.Param("id")
 
-	post, err := db.GetExplorePost(id)
+	post, err := h.server.DB().GetExplorePost(id)
 	if err != nil {
 		log.Error().Err(err).Str("id", id).Msg("get explore post failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get explore post"})
@@ -105,7 +105,7 @@ func (h *Handlers) GetExplorePost(c *gin.Context) {
 func (h *Handlers) GetExploreComments(c *gin.Context) {
 	postID := c.Param("id")
 
-	comments, err := db.ListExploreComments(postID)
+	comments, err := h.server.DB().ListExploreComments(postID)
 	if err != nil {
 		log.Error().Err(err).Str("postId", postID).Msg("list explore comments failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list comments"})
@@ -119,7 +119,7 @@ func (h *Handlers) GetExploreComments(c *gin.Context) {
 func (h *Handlers) DeleteExplorePost(c *gin.Context) {
 	id := c.Param("id")
 
-	if err := h.server.Explore().DeletePost(id); err != nil {
+	if err := h.server.Explore().DeletePost(c.Request.Context(), id); err != nil {
 		log.Error().Err(err).Str("id", id).Msg("delete explore post failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete post"})
 		return

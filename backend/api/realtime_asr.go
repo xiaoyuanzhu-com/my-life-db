@@ -9,7 +9,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/models"
 )
@@ -63,7 +62,7 @@ func (h *Handlers) RealtimeASR(c *gin.Context) {
 	defer clientConn.Close()
 
 	// Load settings for Aliyun credentials
-	settings, err := db.LoadUserSettings()
+	settings, err := h.server.DB().LoadUserSettings()
 	if err != nil {
 		sendError(clientConn, "failed to load settings: "+err.Error())
 		return

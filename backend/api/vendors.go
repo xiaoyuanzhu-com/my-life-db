@@ -9,7 +9,7 @@ import (
 
 // GetOpenAIModels handles GET /api/vendors/openai/models
 func (h *Handlers) GetOpenAIModels(c *gin.Context) {
-	client := vendors.GetOpenAIClient()
+	client := vendors.GetOpenAIClient(h.server.DB())
 	if client == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{
 			"error": "OpenAI is not configured",

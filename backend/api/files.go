@@ -134,7 +134,7 @@ func (h *Handlers) ServeSqlarFile(c *gin.Context) {
 
 	// Query sqlar table
 	var sqlarFile db.SqlarFile
-	err := db.GetDB().QueryRow(`
+	err := h.server.DB().Read().QueryRow(`
 		SELECT name, mode, mtime, sz, data FROM sqlar WHERE name = ?
 	`, name).Scan(&sqlarFile.Name, &sqlarFile.Mode, &sqlarFile.Mtime, &sqlarFile.Size, &sqlarFile.Data)
 

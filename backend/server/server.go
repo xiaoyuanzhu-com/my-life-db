@@ -100,7 +100,7 @@ func New(cfg *Config) (*Server, error) {
 	// registry is populated below.
 
 	// 1.5. Initialize explore service
-	s.explore = explore.NewService(cfg.UserDataDir)
+	s.explore = explore.NewService(cfg.UserDataDir, s.database)
 
 	// 1.6. Initialize Agent Client (ACP-based)
 	{
@@ -406,7 +406,7 @@ http_headers = { "x-litellm-customer-id" = %q }
 	})
 
 	// 2. Load user settings from database and apply log level
-	settings, err := db.LoadUserSettings()
+	settings, err := s.database.LoadUserSettings()
 	if err == nil && settings.Preferences.LogLevel != "" {
 		log.SetLevel(settings.Preferences.LogLevel)
 		log.Info().Str("level", settings.Preferences.LogLevel).Msg("log level set from settings")

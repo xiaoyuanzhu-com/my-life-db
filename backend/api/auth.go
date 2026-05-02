@@ -30,7 +30,7 @@ func (h *Handlers) Login(c *gin.Context) {
 	}
 
 	// Get stored password hash
-	storedHash, err := db.GetSetting("auth_password_hash")
+	storedHash, err := h.server.DB().GetSetting("auth_password_hash")
 	if err != nil {
 		log.Error().Err(err).Msg("failed to get password hash")
 		RespondCoded(c, http.StatusInternalServerError, "AUTH_SESSION_FAILED", "Authentication error")
@@ -40,7 +40,7 @@ func (h *Handlers) Login(c *gin.Context) {
 	// If no password is set, create one (first login sets the password)
 	if storedHash == "" {
 		hash := hashPassword(body.Password)
-		if err := db.SetSetting("auth_password_hash", hash); err != nil {
+		if err := h.server.DB().SetSetting(c.Request.Context(), "auth_password_hash", hash); err != nil {
 			log.Error().Err(err).Msg("failed to save password hash")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set password"})
 			return
