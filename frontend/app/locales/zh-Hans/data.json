@@ -17,7 +17,16 @@
     "uploadFile": "上传文件",
     "uploadFolder": "上传文件夹",
     "newFolder": "新建文件夹",
-    "importFromApps": "从应用导入"
+    "importFromApps": "从应用导入",
+    "more": "更多",
+    "view": "视图",
+    "viewGrid": "网格",
+    "viewList": "列表",
+    "sortBy": "排序方式",
+    "sortName": "名称",
+    "sortModified": "修改时间",
+    "sortCreated": "创建时间",
+    "refresh": "刷新"
   },
   "dropzone": {
     "prompt": "拖放文件以上传",
