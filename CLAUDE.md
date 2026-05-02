@@ -230,6 +230,18 @@ APP_DATA_DIR/           # Rebuildable app data (separate from user data)
 - Custom hooks in `app/hooks/`
 - shadcn/ui components in `app/components/ui/`
 
+### i18n (CRITICAL)
+
+UI chrome (buttons, menus, labels, placeholders, tooltips, toasts) is translated via `react-i18next`. Locale files live in `frontend/app/locales/<lang>/<namespace>.json` — currently `en` and `zh-Hans`.
+
+**Rule: when you add or change a `t('key', 'English fallback')` call, update EVERY locale file in the same edit.** The English fallback inside `t()` masks missing keys in English, so it's easy to ship a feature that looks fine in English but shows raw key paths (or English) in `zh-Hans`. After touching any `t(...)` call, grep all locale files to confirm coverage.
+
+**Scope** — translate UI chrome only. Do NOT translate:
+- Content rendered inside the agent message stream (tool labels, status strings shown mid-conversation) — keep hardcoded English there.
+- User-generated content, file paths, or data values.
+
+When adding a new key, mirror the namespace structure across all locales and keep keys grouped semantically (e.g., `actions.*`, `errors.*`).
+
 ## Dark Mode (IMPORTANT)
 
 This project uses **class-based dark mode** with `.dark` class on `<html>` element.
