@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -262,5 +263,133 @@ func TestSplitMigration_RecoversFromHalfMigratedState(t *testing.T) {
 	var n int
 	if err := app.QueryRow("SELECT COUNT(*) FROM files").Scan(&n); err == nil {
 		t.Fatalf("app.files should be dropped after recovery, got %d rows", n)
+	}
+}
+
+// TestRewriteCreateForSchema covers the identifier-quoting variants SQLite
+// stores in sqlite_master.sql. Bare identifiers come from CREATE TABLE foo;
+// double-quoted identifiers come from ALTER TABLE foo_new RENAME TO foo
+// (the historical migration 010 pattern). Backtick and bracket forms aren't
+// produced by our migrations but are valid SQLite identifier syntax.
+func TestRewriteCreateForSchema(t *testing.T) {
+	cases := []struct {
+		name      string
+		input     string
+		tableName string
+		want      string
+	}{
+		{
+			name:      "bare table name",
+			input:     `CREATE TABLE files (path TEXT)`,
+			tableName: "files",
+			want:      `CREATE TABLE idx.files (path TEXT)`,
+		},
+		{
+			name:      "double-quoted table name (post-RENAME form)",
+			input:     "CREATE TABLE \"files\" (\n\t\t\tpath TEXT PRIMARY KEY\n\t\t)",
+			tableName: "files",
+			want:      "CREATE TABLE idx.files (\n\t\t\tpath TEXT PRIMARY KEY\n\t\t)",
+		},
+		{
+			name:      "IF NOT EXISTS bare",
+			input:     `CREATE TABLE IF NOT EXISTS files (a INT)`,
+			tableName: "files",
+			want:      `CREATE TABLE IF NOT EXISTS idx.files (a INT)`,
+		},
+		{
+			name:      "VIRTUAL TABLE bare",
+			input:     `CREATE VIRTUAL TABLE files_fts USING fts5(content)`,
+			tableName: "files_fts",
+			want:      `CREATE VIRTUAL TABLE idx.files_fts USING fts5(content)`,
+		},
+		{
+			name:      "VIRTUAL TABLE IF NOT EXISTS quoted",
+			input:     `CREATE VIRTUAL TABLE IF NOT EXISTS "files_fts" USING fts5(content, tokenize='simple 0')`,
+			tableName: "files_fts",
+			want:      `CREATE VIRTUAL TABLE IF NOT EXISTS idx.files_fts USING fts5(content, tokenize='simple 0')`,
+		},
+		{
+			name:      "backtick identifier",
+			input:     "CREATE TABLE `files` (a INT)",
+			tableName: "files",
+			want:      `CREATE TABLE idx.files (a INT)`,
+		},
+		{
+			name:      "bracket identifier",
+			input:     `CREATE TABLE [files] (a INT)`,
+			tableName: "files",
+			want:      `CREATE TABLE idx.files (a INT)`,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := rewriteCreateForSchema(c.input, c.tableName, "idx")
+			if err != nil {
+				t.Fatalf("rewriteCreateForSchema: %v", err)
+			}
+			if got != c.want {
+				t.Fatalf("got:\n%s\nwant:\n%s", got, c.want)
+			}
+		})
+	}
+}
+
+// TestExistingUserMigratesQuotedNames simulates the production failure: a
+// legacy DB whose tables were created via ALTER TABLE … RENAME TO …, leaving
+// sqlite_master.sql with double-quoted identifiers. The migration must
+// recognize and rewrite those.
+func TestSplitMigration_ExistingUserMigratesQuotedNames(t *testing.T) {
+	dir := t.TempDir()
+	cfg := SplitConfig{
+		LegacyPath: filepath.Join(dir, "database.sqlite"),
+		IndexPath:  filepath.Join(dir, "index.sqlite"),
+		AppPath:    filepath.Join(dir, "app.sqlite"),
+	}
+
+	// Seed a legacy DB whose `files` table was renamed (mimicking migration
+	// 010). After RENAME, sqlite_master stores the CREATE with quotes.
+	conn, err := sql.Open("sqlite3", cfg.LegacyPath+"?_journal_mode=WAL")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	stmts := []string{
+		`CREATE TABLE files_new (path TEXT PRIMARY KEY, name TEXT, modified_at INTEGER NOT NULL, created_at INTEGER NOT NULL)`,
+		`ALTER TABLE files_new RENAME TO files`,
+		`CREATE TABLE digests_new (id TEXT PRIMARY KEY, file_path TEXT)`,
+		`ALTER TABLE digests_new RENAME TO digests`,
+		`CREATE TABLE sqlar (name TEXT PRIMARY KEY, mode INT, mtime INT, sz INT, data BLOB)`,
+		`CREATE TABLE pins (id TEXT PRIMARY KEY)`,
+		`INSERT INTO files VALUES ('a.txt','a.txt',1,1)`,
+		`INSERT INTO digests VALUES ('d1','a.txt')`,
+		`INSERT INTO sqlar VALUES ('p',0,0,0,X'00')`,
+		`INSERT INTO pins VALUES ('p1')`,
+	}
+	for _, s := range stmts {
+		if _, err := conn.Exec(s); err != nil {
+			t.Fatalf("seed %q: %v", s[:60], err)
+		}
+	}
+	// Sanity: confirm sqlite_master stored the renamed tables with quotes.
+	var storedCreate string
+	if err := conn.QueryRow(`SELECT sql FROM sqlite_master WHERE name='files'`).Scan(&storedCreate); err != nil {
+		t.Fatalf("read sqlite_master: %v", err)
+	}
+	conn.Close()
+	if !strings.Contains(storedCreate, `"files"`) {
+		t.Fatalf("expected quoted identifier in stored CREATE, got: %s", storedCreate)
+	}
+
+	if err := MaybeRunSplitMigration(cfg); err != nil {
+		t.Fatalf("MaybeRunSplitMigration: %v", err)
+	}
+
+	idx, _ := sql.Open("sqlite3", cfg.IndexPath)
+	defer idx.Close()
+	var n int
+	if err := idx.QueryRow(`SELECT COUNT(*) FROM files`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("idx.files: want 1 row, got %d (err=%v)", n, err)
+	}
+	if err := idx.QueryRow(`SELECT COUNT(*) FROM digests`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("idx.digests: want 1 row, got %d (err=%v)", n, err)
 	}
 }

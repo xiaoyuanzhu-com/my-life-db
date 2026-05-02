@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
-	"strings"
+	"regexp"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
@@ -237,49 +237,55 @@ func copyTable(legacyConn *sql.DB, table string) error {
 	return nil
 }
 
-// rewriteCreateForSchema turns "CREATE TABLE files (...)" into
-// "CREATE TABLE idx.files (...)". Handles CREATE TABLE, CREATE VIRTUAL TABLE,
-// and IF NOT EXISTS variants. Case-insensitive on the keywords; preserves
-// the original casing in the rewritten statement.
+// createTableHeadRE matches the leading clause of a CREATE TABLE / CREATE
+// VIRTUAL TABLE statement and captures the table-name token. The token may
+// be a quoted identifier (double-quote, backtick, or square-bracket form
+// per SQLite's identifier rules) or a bare unquoted name. SQLite stores
+// the schema text as it was last executed, and ALTER TABLE ... RENAME TO ...
+// (used by historical migrations like 010) leaves the stored CREATE with
+// the new name in DOUBLE-QUOTED form — which is why bare-identifier matching
+// alone misses production tables.
+var createTableHeadRE = regexp.MustCompile(
+	`(?is)^(\s*CREATE\s+(?:VIRTUAL\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?)(\"[^\"]+\"|` + "`[^`]+`" + `|\[[^\]]+\]|[A-Za-z_][A-Za-z0-9_]*)`,
+)
+
+// rewriteCreateForSchema turns CREATE TABLE statements (whether the table
+// name is bare like `files` or quoted like `"files"`) into the equivalent
+// statement targeting another schema. Output uses bare schema-qualified
+// form (idx.files) — SQLite parses that fine regardless of how the
+// original was stored.
 func rewriteCreateForSchema(createSQL, tableName, schema string) (string, error) {
-	upper := strings.ToUpper(createSQL)
-	prefixes := []string{
-		"CREATE TABLE IF NOT EXISTS " + strings.ToUpper(tableName),
-		"CREATE TABLE " + strings.ToUpper(tableName),
-		"CREATE VIRTUAL TABLE IF NOT EXISTS " + strings.ToUpper(tableName),
-		"CREATE VIRTUAL TABLE " + strings.ToUpper(tableName),
+	loc := createTableHeadRE.FindStringSubmatchIndex(createSQL)
+	if loc == nil {
+		return "", fmt.Errorf("could not locate CREATE [VIRTUAL] TABLE prefix in: %s", createSQL[:min(120, len(createSQL))])
 	}
-	for _, p := range prefixes {
-		if i := strings.Index(upper, p); i >= 0 {
-			// Everything up to and including the original prefix in the
-			// real (non-uppercased) statement.
-			origPrefix := createSQL[i : i+len(p)]
-			// Replace the table-name suffix of the prefix with schema.tableName.
-			rest := origPrefix[:len(origPrefix)-len(tableName)]
-			return createSQL[:i] + rest + schema + "." + tableName + createSQL[i+len(p):], nil
-		}
-	}
-	return "", fmt.Errorf("could not locate CREATE [VIRTUAL] TABLE prefix in: %s", createSQL[:min(80, len(createSQL))])
+	// loc[2:4] = match of group 1 (the prefix up to the name)
+	// loc[4:6] = match of group 2 (the captured name token)
+	prefix := createSQL[loc[2]:loc[3]]
+	rest := createSQL[loc[5]:]
+	return prefix + schema + "." + tableName + rest, nil
 }
 
+// createIndexHeadRE matches the leading clause of a CREATE INDEX statement
+// and captures the index-name token (same identifier-quoting rules as
+// table names).
+var createIndexHeadRE = regexp.MustCompile(
+	`(?is)^(\s*CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?)(\"[^\"]+\"|` + "`[^`]+`" + `|\[[^\]]+\]|[A-Za-z_][A-Za-z0-9_]*)`,
+)
+
 // rewriteIndexForSchema turns "CREATE INDEX foo ON ..." into
-// "CREATE INDEX idx.foo ON ...". The ON clause's table reference is
-// unqualified and resolves to the index's own schema, so it doesn't need
-// rewriting.
+// "CREATE INDEX idx.foo ON ..." (handling quoted-identifier forms too).
+// The ON clause's table reference is unqualified and resolves to the
+// index's own schema, so it doesn't need rewriting.
 func rewriteIndexForSchema(createSQL, schema string) string {
-	upper := strings.ToUpper(createSQL)
-	prefixes := []string{
-		"CREATE UNIQUE INDEX IF NOT EXISTS ",
-		"CREATE INDEX IF NOT EXISTS ",
-		"CREATE UNIQUE INDEX ",
-		"CREATE INDEX ",
+	loc := createIndexHeadRE.FindStringSubmatchIndex(createSQL)
+	if loc == nil {
+		return createSQL
 	}
-	for _, p := range prefixes {
-		if strings.HasPrefix(upper, p) {
-			return createSQL[:len(p)] + schema + "." + createSQL[len(p):]
-		}
-	}
-	return createSQL
+	prefix := createSQL[loc[2]:loc[3]]
+	name := createSQL[loc[4]:loc[5]]
+	rest := createSQL[loc[5]:]
+	return prefix + schema + "." + name + rest
 }
 
 func min(a, b int) int {
