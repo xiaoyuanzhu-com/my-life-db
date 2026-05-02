@@ -57,6 +57,11 @@ func (a *dbAdapter) DeleteFileWithCascade(path string) error {
 	return db.DeleteFileWithCascade(path)
 }
 
+// BatchDeleteFilesWithCascade removes multiple files and related records in one transaction
+func (a *dbAdapter) BatchDeleteFilesWithCascade(paths []string) error {
+	return db.BatchDeleteFilesWithCascade(paths)
+}
+
 // DeleteFilesWithCascadePrefix removes a folder and all files/records under it
 func (a *dbAdapter) DeleteFilesWithCascadePrefix(pathPrefix string) error {
 	return db.DeleteFilesWithCascadePrefix(pathPrefix)

@@ -1005,6 +1005,45 @@ func DeleteFileWithCascade(path string) error {
 	return tx.Commit()
 }
 
+// BatchDeleteFilesWithCascade removes multiple file records and all related rows
+// (files_fts, digests, pins) in a single transaction. Used by reconciliation to
+// avoid one-transaction-per-orphan when there are thousands of records to remove.
+// Caller is responsible for chunking to stay under SQLite's parameter limit
+// (SQLITE_MAX_VARIABLE_NUMBER, typically 999 on older builds, 32766 on newer).
+func BatchDeleteFilesWithCascade(paths []string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+
+	placeholders := strings.Repeat("?,", len(paths))
+	placeholders = placeholders[:len(placeholders)-1]
+	args := make([]interface{}, len(paths))
+	for i, p := range paths {
+		args[i] = p
+	}
+
+	tx, err := GetDB().Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec("DELETE FROM files_fts WHERE file_path IN ("+placeholders+")", args...); err != nil {
+		return fmt.Errorf("failed to delete files_fts: %w", err)
+	}
+	if _, err := tx.Exec("DELETE FROM digests WHERE file_path IN ("+placeholders+")", args...); err != nil {
+		return fmt.Errorf("failed to delete digests: %w", err)
+	}
+	if _, err := tx.Exec("DELETE FROM pins WHERE file_path IN ("+placeholders+")", args...); err != nil {
+		return fmt.Errorf("failed to delete pins: %w", err)
+	}
+	if _, err := tx.Exec("DELETE FROM files WHERE path IN ("+placeholders+")", args...); err != nil {
+		return fmt.Errorf("failed to delete files: %w", err)
+	}
+
+	return tx.Commit()
+}
+
 // DeleteFilesWithCascadePrefix removes a folder and all files/records under it in a single transaction.
 // Cleans up: files, digests, pins, files_fts.
 // Used for recursive folder deletion.

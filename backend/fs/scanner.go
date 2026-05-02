@@ -19,6 +19,11 @@ const (
 
 	// Max concurrent metadata processing during scan
 	maxScanConcurrency = 10
+
+	// Batch size for orphan reconciliation deletes. Stays well under SQLite's
+	// SQLITE_MAX_VARIABLE_NUMBER (999 on older builds) since each row uses one
+	// parameter per DELETE statement.
+	orphanDeleteBatchSize = 200
 )
 
 // scanner handles periodic filesystem scanning
@@ -26,6 +31,10 @@ type scanner struct {
 	service  *Service
 	interval time.Duration
 	stopChan chan struct{}
+	// scanMu serializes scan() invocations. The initial AfterFunc-driven scan
+	// and the periodic ticker run in separate goroutines, so without this guard
+	// they can overlap when reconciliation outlasts the scan interval.
+	scanMu sync.Mutex
 }
 
 // newScanner creates a new filesystem scanner
@@ -80,6 +89,12 @@ func (s *scanner) Stop() {
 // Phase 1: Walk filesystem, identify files needing processing, track all seen paths
 // Phase 2: Reconcile - remove DB records for files that no longer exist on disk
 func (s *scanner) scan() {
+	if !s.scanMu.TryLock() {
+		log.Info().Msg("filesystem scan already in progress, skipping this invocation")
+		return
+	}
+	defer s.scanMu.Unlock()
+
 	log.Info().Str("root", s.service.cfg.DataRoot).Msg("starting filesystem scan")
 	startTime := time.Now()
 
@@ -291,26 +306,39 @@ func (s *scanner) reconcileOrphans(seenPaths map[string]bool) int {
 
 	log.Info().
 		Int("count", len(orphans)).
-		Msg("found orphaned DB records, removing")
+		Int("batchSize", orphanDeleteBatchSize).
+		Msg("found orphaned DB records, removing in batches")
 
-	// Delete orphans with cascade (removes related digests, pins)
+	// Delete orphans in chunks. One transaction per batch keeps the writer
+	// lock release frequent enough to not starve concurrent scan workers,
+	// while still cutting reconcile time from O(orphans) transactions to
+	// O(orphans/batchSize).
 	removed := 0
-	for _, path := range orphans {
-		if err := s.service.cfg.DB.DeleteFileWithCascade(path); err != nil {
+	for i := 0; i < len(orphans); i += orphanDeleteBatchSize {
+		end := i + orphanDeleteBatchSize
+		if end > len(orphans) {
+			end = len(orphans)
+		}
+		batch := orphans[i:end]
+
+		if err := s.service.cfg.DB.BatchDeleteFilesWithCascade(batch); err != nil {
 			log.Warn().
 				Err(err).
-				Str("path", path).
-				Msg("failed to delete orphaned record")
+				Int("batchStart", i).
+				Int("batchSize", len(batch)).
+				Msg("failed to delete orphan batch")
 			continue
 		}
 
-		log.Info().
-			Str("path", path).
-			Msg("removed orphaned DB record")
-		removed++
+		removed += len(batch)
+		for _, path := range batch {
+			s.service.fileLock.releaseFileLock(path)
+		}
 
-		// Release any file locks for this path
-		s.service.fileLock.releaseFileLock(path)
+		log.Info().
+			Int("removed", removed).
+			Int("total", len(orphans)).
+			Msg("orphan batch removed")
 	}
 
 	return removed

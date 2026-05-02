@@ -68,6 +68,7 @@ type Database interface {
 	// Reconciliation methods
 	ListAllFilePaths() ([]string, error)
 	DeleteFileWithCascade(path string) error
+	BatchDeleteFilesWithCascade(paths []string) error
 	DeleteFilesWithCascadePrefix(pathPrefix string) error
 
 	// Preview operations
