@@ -30,7 +30,9 @@ import {
   SquareIcon,
   SquareSlash,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type FC } from "react";
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, type FC } from "react";
+import TextareaAutosize, { type TextareaAutosizeProps } from "react-textarea-autosize";
+import { useMessageInputKeyboard } from "~/hooks/use-message-input-keyboard";
 import { useNavigate } from "react-router";
 import type { PlanEntry } from "~/hooks/use-agent-runtime";
 import { useHasTouch } from "~/hooks/use-has-touch";
@@ -324,12 +326,6 @@ const SendButton: FC<{
  * cause the restore to read a stale localStorage value and overwrite the
  * composer text the user is actively typing.
  */
-// --- Instrumentation: module-level live-instance counter for diagnosing duplicated input ---
-// Tracks how many DraftPersistenceSync components are currently mounted.
-// Two-instance scenarios (desktop+mobile branches both mounted) show up as liveCount=2.
-let dsLiveInstanceCount = 0;
-// --- End instrumentation ---
-
 const DraftPersistenceSync: FC = () => {
   const composerRuntime = useComposerRuntime();
   const text = useComposer((s) => s.text);
@@ -347,78 +343,14 @@ const DraftPersistenceSync: FC = () => {
   // draft from localStorage before the deferred setTimeout restores it.
   const hasRestoredRef = useRef(false);
 
-  // --- Instrumentation: per-instance identity + seq counter ---
-  // Short random ID so multiple simultaneous instances are distinguishable in logs.
-  const instIdRef = useRef<string | null>(null);
-  if (instIdRef.current === null) {
-    instIdRef.current = Math.random().toString(36).slice(2, 6);
-  }
-  const inst = instIdRef.current;
-  const seqRef = useRef(0);
-  const prevTextRef = useRef(text);
-  const trunc = (s: string) =>
-    s.length > 100 ? `${s.slice(0, 100)}…(${s.length})` : s;
-
-  // Mount / unmount — use string-only logs so they're easy to copy from console.
-  // liveCount tells us how many instances exist at once. A visibility snapshot
-  // helps figure out which layout branch (desktop hidden vs mobile visible)
-  // spawned each instance.
-  useEffect(() => {
-    dsLiveInstanceCount += 1;
-    const vw = typeof window !== "undefined" ? window.innerWidth : -1;
-    console.info(
-      `[draft-sync] [${inst}] MOUNT liveCount=${dsLiveInstanceCount} vw=${vw} key=${storageKey}`,
-    );
-    return () => {
-      dsLiveInstanceCount -= 1;
-      console.info(
-        `[draft-sync] [${inst}] UNMOUNT liveCount=${dsLiveInstanceCount} key=${storageKey}`,
-      );
-    };
-    // Mount/unmount only — do not re-run on storageKey change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    const seq = ++seqRef.current;
-    const prev = prevTextRef.current;
-    prevTextRef.current = text;
-    const dup =
-      text.length > 0 && prev.length > 0 && text.includes(prev) && text !== prev
-        ? `DUP@${text.indexOf(prev)}`
-        : "no";
-    console.info(
-      `[draft-sync] [${inst}] #${seq} text-changed prevLen=${prev.length} newLen=${text.length} hasRestored=${hasRestoredRef.current} dup=${dup} liveCount=${dsLiveInstanceCount}`,
-    );
-    console.info(`[draft-sync] [${inst}] #${seq}   prev="${trunc(prev)}"`);
-    console.info(`[draft-sync] [${inst}] #${seq}   text="${trunc(text)}"`);
-  }, [text, storageKey, inst]);
-  // --- End instrumentation ---
-
   // Restore from localStorage when session changes (mount, navigation).
   // Deferred via setTimeout so it runs AFTER assistant-ui's internal
   // thread-switch reset, which would otherwise overwrite our setText.
   useEffect(() => {
     hasRestoredRef.current = false;
     const draft = localStorage.getItem(storageKey);
-    console.info(
-      `[draft-sync] [${inst}] restore-effect fired key=${storageKey} hasDraft=${!!draft} draftLen=${draft?.length ?? 0}`,
-    );
     if (draft) {
       const timer = setTimeout(() => {
-        // Capture composer's CURRENT text right before we overwrite it. If
-        // it's non-empty, the deferred restore is potentially stomping on
-        // user input — a "false restore" — and we want to know.
-        const currentText = composerRef.current.getState().text ?? "";
-        const stomp = currentText.length > 0 && currentText !== draft;
-        console.info(
-          `[draft-sync] [${inst}] SETTEXT(localStorage) key=${storageKey} draftLen=${draft.length} draft="${trunc(draft)}" currentLen=${currentText.length} stomp=${stomp}`,
-        );
-        if (stomp) {
-          console.warn(
-            `[draft-sync] [${inst}] SETTEXT(localStorage) STOMP — overwriting non-empty composer key=${storageKey} currentLen=${currentText.length} draftLen=${draft.length}`,
-          );
-        }
         composerRef.current.setText(draft);
         hasRestoredRef.current = true;
       }, 0);
@@ -429,210 +361,147 @@ const DraftPersistenceSync: FC = () => {
     } else {
       hasRestoredRef.current = true;
     }
-    // composerRuntime accessed via ref; adding it here causes a race condition.
-    // inst is also a stable per-instance id used only for logging.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey]);
 
   // Persist as-you-type. Suppressed until the restore phase completes and
   // when storageKey just changed (text may be stale from the previous session).
   const activeKeyRef = useRef(storageKey);
-  // Track prev length so the persist log shows the transition (e.g. 132 → 0).
-  const prevPersistLenRef = useRef(text.length);
   useEffect(() => {
-    const prevLen = prevPersistLenRef.current;
-    prevPersistLenRef.current = text.length;
-    if (!hasRestoredRef.current) {
-      console.info(
-        `[draft-sync] [${inst}] persist SKIPPED (not yet restored) key=${storageKey} prevLen=${prevLen} textLen=${text.length}`,
-      );
-      return;
-    }
+    if (!hasRestoredRef.current) return;
     if (activeKeyRef.current !== storageKey) {
-      console.info(
-        `[draft-sync] [${inst}] persist SKIPPED (key changed) activeKey=${activeKeyRef.current} newKey=${storageKey} prevLen=${prevLen} textLen=${text.length}`,
-      );
       activeKeyRef.current = storageKey;
       return;
     }
     if (text) {
-      const prevStored = localStorage.getItem(storageKey);
       localStorage.setItem(storageKey, text);
-      console.info(
-        `[draft-sync] [${inst}] persist SET key=${storageKey} prevLen=${prevLen} textLen=${text.length} prevStoredLen=${prevStored?.length ?? 0}`,
-      );
     } else {
-      // CRITICAL: this is the moment the localStorage recovery breadcrumb is
-      // destroyed. If text just dropped from N → 0 here without an explicit
-      // send-clear, recovery falls back to pendingComposerText only — and if
-      // that ALSO doesn't fire, the user's draft is lost.
-      const prevStored = localStorage.getItem(storageKey);
       localStorage.removeItem(storageKey);
-      console.warn(
-        `[draft-sync] [${inst}] persist REMOVE (text=='') key=${storageKey} prevLen=${prevLen} prevStoredLen=${prevStored?.length ?? 0} — DRAFT BREADCRUMB WIPED`,
-      );
     }
-  }, [text, storageKey, inst]);
+  }, [text, storageKey]);
 
   // Restore from failed send (runtime signals via pendingComposerText)
   useEffect(() => {
     if (pendingComposerText && clearPendingComposerText) {
-      console.info(
-        `[draft-sync] [${inst}] SETTEXT(pendingComposerText) len=${pendingComposerText.length} text="${trunc(pendingComposerText)}" hasRestored=${hasRestoredRef.current} key=${storageKey} liveCount=${dsLiveInstanceCount}`,
-      );
       composerRef.current.setText(pendingComposerText);
       clearPendingComposerText();
     }
-    // storageKey intentionally omitted — only used for diagnostic context.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingComposerText, clearPendingComposerText, inst]);
+  }, [pendingComposerText, clearPendingComposerText]);
 
   return null;
 };
 
 /**
- * VoiceInputDiagnostics — fills the visibility gap for the long-standing
- * voice-input duplicate bug.
+ * PlainComposerInput — uncontrolled textarea backed by composer runtime.
  *
- * Existing logs (`[draft-sync]`) cover the React/state layer. They show what
- * the composer state ends up being, but not WHO wrote it or WHAT the OS-level
- * voice-input pipeline did to the textarea.
+ * Replacement for `ComposerPrimitive.Input`.
  *
- * This component instruments three layers that are currently silent:
- *   1. The textarea DOM (input / beforeinput / composition* / focus / blur /
- *      keydown). iOS keyboard mic + macOS dictation drive these events; if
- *      duplication originates in the OS-React boundary, it shows up here.
- *   2. composer.setText callers. We monkey-patch the runtime's setText with
- *      a stack-tagged logger so any call (DraftPersistenceSync, ComposerInput
- *      onChange, internal assistant-ui code, anything else) is traceable.
- *   3. textarea.value vs composer.text agreement after each event — exposes
- *      cases where the OS sees stale content and re-inserts text.
+ * IMPORTANT: this textarea is INTENTIONALLY UNCONTROLLED (no `value` prop —
+ * just `defaultValue` for initial render). We discovered the controlled form
+ * fights the IME during rapid-fire deletes:
  *
- * Logs are prefixed `[voice-diag]`. Prune or guard with a flag once the bug
- * is identified.
+ *   - User types → composer.text updates → React's value prop = N+1.
+ *   - IME fires fake `deleteContentBackward` → DOM goes N+1 → N.
+ *   - Our onChange calls `composer.setText(N)` (state update is scheduled).
+ *   - **Between commits**, React's controlled-input value-tracker compares
+ *     DOM to its STALE prop (still N+1) and restores DOM back to N+1.
+ *   - The IME's next event sees DOM=N+1, fires another delete → N. Loop.
+ *   - After ~10 unsuccessful deletes the IME gives up and just inserts the
+ *     polished text at the cursor → **duplication**.
+ *
+ * In a vanilla (uncontrolled) textarea, the same IME flow works correctly
+ * because there's no value-prop tracker to fight. So we mirror that here:
+ * the OS / IME fully owns the textarea value during typing; we sync changes
+ * back to composer state via `onChange`. External writes (draft restore,
+ * send-clear, /clear command) are applied to `textarea.value` imperatively
+ * via a `useEffect`, which won't interfere with the OS / IME's edit cycles.
+ *
+ * Other features we drop intentionally vs. ComposerPrimitive.Input:
+ *   - mention popover keyboard routing (we use our own popovers)
+ *   - addAttachmentOnPaste (we accept files via drag-drop / picker only)
+ *   - composer.cancel on Escape (no edit-then-cancel flow here)
+ *   - focus-on-runStart / focus-on-scroll-to-bottom / focus-on-threadSwitched
+ *     (minor UX; can be re-added with small effects if anyone misses them)
  */
-const VoiceInputDiagnostics: FC<{
-  textareaRef: React.RefObject<HTMLTextAreaElement | null>
-}> = ({ textareaRef }) => {
-  const composerRuntime = useComposerRuntime();
-  const { sessionId } = useAgentContext();
+type PlainComposerInputProps = Omit<
+  TextareaAutosizeProps,
+  "value" | "defaultValue" | "disabled"
+> & {
+  /** Optional onChange runs BEFORE composer.setText (useful for diagnostics). */
+  onChange?: React.ChangeEventHandler<HTMLTextAreaElement>
+}
 
-  const instIdRef = useRef<string | null>(null);
-  if (instIdRef.current === null) {
-    instIdRef.current = Math.random().toString(36).slice(2, 6);
-  }
-  const inst = instIdRef.current;
+const PlainComposerInput = forwardRef<HTMLTextAreaElement, PlainComposerInputProps>(
+  function PlainComposerInput({ onChange, onKeyDown, onCompositionStart, onCompositionEnd, ...rest }, forwardedRef) {
+    const composerRuntime = useComposerRuntime();
+    const text = useAuiState((s) => (s.composer.isEditing ? s.composer.text : ""));
+    const isDisabled = useAuiState((s) => s.thread.isDisabled ?? false);
+    const keyboard = useMessageInputKeyboard();
 
-  const trunc = (s: string) =>
-    s.length > 80 ? `${s.slice(0, 80)}…(${s.length})` : s;
-
-  // Layer 2: monkey-patch composer.setText to log every caller.
-  // The runtime instance is stable (useExternalStoreRuntime creates it once
-  // via useState), but we re-patch defensively if it ever changes.
-  useEffect(() => {
-    if (!composerRuntime) return;
-    const original = composerRuntime.setText;
-    let setTextSeq = 0;
-    composerRuntime.setText = function (value: string) {
-      const s = ++setTextSeq;
-      const before = composerRuntime.getState?.()?.text ?? "";
-      const stack =
-        new Error().stack
-          ?.split("\n")
-          .slice(2, 6)
-          .map((l) => l.trim())
-          .join(" | ") ?? "";
-      const noop = before === value;
-      console.info(
-        `[voice-diag] [${inst}] setText#${s} prevLen=${before.length} newLen=${value.length} noop=${noop} prev="${trunc(before)}" next="${trunc(value)}"`,
-      );
-      console.info(`[voice-diag] [${inst}] setText#${s}   stack=${trunc(stack)}`);
-      return original.call(this, value);
-    };
-    console.info(
-      `[voice-diag] [${inst}] setText patched sessionId=${sessionId}`,
-    );
-    return () => {
-      // Restore by deleting the instance shadow so the prototype method shows through.
-      // (Original was captured from the prototype chain; this is the cleanest revert.)
-      try {
-        delete (composerRuntime as { setText?: unknown }).setText;
-      } catch {
-        composerRuntime.setText = original;
-      }
-      console.info(`[voice-diag] [${inst}] setText unpatched`);
-    };
-  }, [composerRuntime, inst, sessionId]);
-
-  // Layer 1+3: DOM-level events on the textarea.
-  // We attach in the capture phase so we see events before React's synthetic
-  // handlers and before assistant-ui's onChange consumes them.
-  useEffect(() => {
-    const ta = textareaRef.current;
-    if (!ta) {
-      console.info(
-        `[voice-diag] [${inst}] textarea ref is NULL — listeners NOT attached`,
-      );
-      return;
-    }
-    let evtSeq = 0;
-    const log = (evt: Event) => {
-      const s = ++evtSeq;
-      const ie = evt as InputEvent;
-      const ke = evt as KeyboardEvent;
-      const ce = evt as CompositionEvent;
-      const inputType = (ie as InputEvent).inputType;
-      const data = (ie as InputEvent | CompositionEvent).data ?? null;
-      const isComposing = (evt as { isComposing?: boolean }).isComposing;
-      const value = ta.value;
-      const selStart = ta.selectionStart;
-      const selEnd = ta.selectionEnd;
-      const composerText = composerRuntime?.getState?.()?.text ?? "";
-      const mismatch = value !== composerText;
-      const key = ke.key;
-      console.info(
-        `[voice-diag] [${inst}] dom#${s} ${evt.type} key=${key ?? "-"} inputType=${inputType ?? "-"} data=${JSON.stringify(data)} isComposing=${isComposing} sel=[${selStart},${selEnd}] mismatch=${mismatch} valLen=${value.length} composerLen=${composerText.length}`,
-      );
-      if (mismatch) {
-        console.warn(
-          `[voice-diag] [${inst}] dom#${s}   MISMATCH val="${trunc(value)}" composer="${trunc(composerText)}"`,
-        );
-      } else if (evt.type === "input" || evt.type === "compositionend") {
-        console.info(`[voice-diag] [${inst}] dom#${s}   val="${trunc(value)}"`);
-      }
-    };
-
-    const events: (keyof HTMLElementEventMap)[] = [
-      "input",
-      "beforeinput",
-      "compositionstart",
-      "compositionupdate",
-      "compositionend",
-      "keydown",
-      "focus",
-      "blur",
-      "select",
-    ];
-
-    events.forEach((evt) =>
-      ta.addEventListener(evt, log as EventListener, true),
-    );
-    console.info(
-      `[voice-diag] [${inst}] DOM listeners ATTACHED to textarea sessionId=${sessionId} events=[${events.join(",")}]`,
+    // Hold an internal ref for imperative sync; still forward to the caller.
+    const internalRef = useRef<HTMLTextAreaElement | null>(null);
+    const setRef = useCallback(
+      (el: HTMLTextAreaElement | null) => {
+        internalRef.current = el;
+        if (typeof forwardedRef === "function") {
+          forwardedRef(el);
+        } else if (forwardedRef) {
+          forwardedRef.current = el;
+        }
+      },
+      [forwardedRef],
     );
 
-    return () => {
-      events.forEach((evt) =>
-        ta.removeEventListener(evt, log as EventListener, true),
-      );
-      console.info(
-        `[voice-diag] [${inst}] DOM listeners DETACHED from textarea`,
-      );
-    };
-  }, [textareaRef, composerRuntime, inst, sessionId]);
+    // Capture the initial composer text so we can use it as `defaultValue`
+    // without re-applying it on every render. After mount, composer-state
+    // changes are routed through the useEffect below — never via React props.
+    const initialTextRef = useRef(text);
 
-  return null;
-};
+    // Sync external composer.text changes (draft restore, send-clear, etc.)
+    // to the textarea imperatively. The typing path is a no-op here because
+    // by the time this effect runs, our onChange has already pushed the
+    // user's input into composer.text — so `text === ta.value` and we skip.
+    useEffect(() => {
+      const ta = internalRef.current;
+      if (!ta) return;
+      if (ta.value === text) return;
+      // External change: overwrite. Cursor goes to end of new text.
+      ta.value = text;
+    }, [text]);
+
+    return (
+      <TextareaAutosize
+        {...rest}
+        ref={setRef}
+        defaultValue={initialTextRef.current}
+        disabled={isDisabled}
+        enterKeyHint={keyboard.enterKeyHint}
+        onChange={(e) => {
+          // Caller's onChange (if any) runs first, then we sync to composer
+          // state. Direct call — no flushResourcesSync, no value prop, no
+          // React-controlled-input restoration.
+          onChange?.(e);
+          composerRuntime.setText(e.currentTarget.value);
+        }}
+        onKeyDown={(e) => {
+          onKeyDown?.(e);
+          if (e.defaultPrevented) return;
+          if (keyboard.shouldSend(e)) {
+            e.preventDefault();
+            e.currentTarget.closest("form")?.requestSubmit();
+          }
+        }}
+        onCompositionStart={(e) => {
+          onCompositionStart?.(e);
+          keyboard.onCompositionStart();
+        }}
+        onCompositionEnd={(e) => {
+          onCompositionEnd?.(e);
+          keyboard.onCompositionEnd();
+        }}
+      />
+    );
+  },
+);
 
 const MCPServerRow: FC<{
   server: MCPServerEntry
@@ -899,8 +768,6 @@ const Composer: FC<ComposerProps> = ({ onAttachmentsStorageIdChange, existingSto
     resultCount,
   } = useAgentContext();
   const hasSession = useAuiState((s) => !s.thread.isEmpty);
-  const threadIsRunning = useAuiState((s) => s.thread.isRunning);
-  const composerIsEmpty = useAuiState((s) => s.composer.isEmpty);
   const composerRuntime = useComposerRuntime();
   const aui = useAui();
   const attachments = useAgentAttachments({ initialStorageId: existingStorageId ?? null });
@@ -975,22 +842,6 @@ const Composer: FC<ComposerProps> = ({ onAttachmentsStorageIdChange, existingSto
     composerRuntime.reset();
     attachments.clear();
   };
-  const lastMsgStatus = useAuiState((s) => {
-    const msgs = s.thread.messages;
-    const last = msgs[msgs.length - 1];
-    if (!last) return null;
-    const status = (last as { status?: { type: string } }).status?.type ?? "none";
-    return `${last.role}:${status}`;
-  });
-
-  // Diagnostic: log whenever send-ability changes
-  useEffect(() => {
-    const canSend = !threadIsRunning && !composerIsEmpty;
-    console.info(
-      `[agent-diag] [${sessionId}] composer-state`,
-      { threadIsRunning, composerIsEmpty, canSend, connected, lastMsgStatus },
-    );
-  }, [threadIsRunning, composerIsEmpty, connected, sessionId, lastMsgStatus]);
 
   return (
     <ComposerPrimitive.Root
@@ -1021,7 +872,6 @@ const Composer: FC<ComposerProps> = ({ onAttachmentsStorageIdChange, existingSto
       }}
     >
       <DraftPersistenceSync />
-      <VoiceInputDiagnostics textareaRef={textareaRef} />
       <SlashCommandPopover commands={sessionCommands} textareaRef={textareaRef} />
       <FileTagPopover textareaRef={textareaRef} workingDir={workingDir} />
       <input
@@ -1059,29 +909,13 @@ const Composer: FC<ComposerProps> = ({ onAttachmentsStorageIdChange, existingSto
         <ConnectionStatusBanner connected={connected} hasSession={hasSession} />
         <AttachmentStrip items={attachments.items} onRemove={attachments.remove} />
         <div className="flex flex-col gap-2 p-(--composer-padding)">
-          <ComposerPrimitive.Input
+          <PlainComposerInput
             ref={textareaRef}
             placeholder={t('thread.messagePlaceholder')}
             className="aui-composer-input max-h-32 min-h-10 w-full resize-none bg-transparent px-1.75 py-1 text-sm outline-none placeholder:text-muted-foreground/80"
             rows={1}
             autoFocus={!hasTouch}
             aria-label={t('thread.messageInput')}
-            onChange={(e) => {
-              // [voice-diag] React onChange — runs before assistant-ui's
-              // internal onChange (composeEventHandlers chains ours first).
-              // Captures what value React sees from the textarea right before
-              // assistant-ui calls composer.setText(e.target.value).
-              const ta = e.currentTarget;
-              const composerText = aui.composer().getState().text ?? "";
-              const ne = e.nativeEvent as InputEvent;
-              const valLen = ta.value.length;
-              const composerLen = composerText.length;
-              const truncS = (s: string) =>
-                s.length > 80 ? `${s.slice(0, 80)}…(${s.length})` : s;
-              console.info(
-                `[voice-diag] [composer-onChange] sid=${sessionId} inputType=${ne.inputType ?? "-"} data=${JSON.stringify(ne.data ?? null)} isComposing=${(ne as InputEvent & { isComposing?: boolean }).isComposing} sel=[${ta.selectionStart},${ta.selectionEnd}] valLen=${valLen} composerLen=${composerLen} delta=${valLen - composerLen} val="${truncS(ta.value)}"`,
-              );
-            }}
           />
           <div className="aui-composer-action-wrapper relative flex items-center justify-between">
             <div className="flex items-center gap-1">
