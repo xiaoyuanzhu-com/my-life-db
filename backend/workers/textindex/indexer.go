@@ -1,6 +1,7 @@
 package textindex
 
 import (
+	"context"
 	"path/filepath"
 
 	"github.com/google/uuid"
@@ -41,7 +42,7 @@ func (idx *Indexer) OnFileChange(filePath string, isNew bool, contentChanged boo
 
 // OnFileDelete removes the file's row from files_fts.
 func (idx *Indexer) OnFileDelete(filePath string) {
-	if err := db.DeleteFileFromIndex(filePath); err != nil {
+	if err := idx.db.DeleteFileFromIndex(context.Background(), filePath); err != nil {
 		log.Error().Err(err).Str("path", filePath).Msg("text indexer: failed to delete from index")
 	}
 }
@@ -77,7 +78,7 @@ func (idx *Indexer) indexFile(filePath string) error {
 	// doesn't care, but the DocumentID column in files_fts exists for
 	// future use (e.g., linking to a future docs table).
 	documentID := stableDocID(filePath)
-	return db.IndexFile(documentID, filePath, content)
+	return idx.db.IndexFile(context.Background(), documentID, filePath, content)
 }
 
 // Backfill walks the files table and indexes any row missing from
@@ -85,7 +86,7 @@ func (idx *Indexer) indexFile(filePath string) error {
 func (idx *Indexer) Backfill() {
 	log.Info().Msg("text indexer: starting backfill")
 
-	rows, err := db.GetDB().Query(`SELECT path FROM files WHERE is_folder = 0`)
+	rows, err := idx.db.Read().Query(`SELECT path FROM files WHERE is_folder = 0`)
 	if err != nil {
 		log.Error().Err(err).Msg("text indexer: failed to query files for backfill")
 		return
@@ -100,7 +101,7 @@ func (idx *Indexer) Backfill() {
 		}
 		total++
 
-		already, err := db.IsFileIndexed(path)
+		already, err := idx.db.IsFileIndexed(path)
 		if err != nil {
 			continue
 		}

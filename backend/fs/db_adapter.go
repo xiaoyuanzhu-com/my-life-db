@@ -78,10 +78,10 @@ func (a *dbAdapter) GetFilesMissingPreviews(limit int) ([]db.FileWithMime, error
 
 // SqlarStore stores data in the SQLAR table
 func (a *dbAdapter) SqlarStore(name string, data []byte, mode int) bool {
-	return db.SqlarStore(name, data, mode)
+	return a.db.SqlarStore(context.Background(), name, data, mode)
 }
 
 // SqlarExists checks if a name exists in the SQLAR table
 func (a *dbAdapter) SqlarExists(name string) bool {
-	return db.SqlarExists(name)
+	return a.db.SqlarExists(name)
 }

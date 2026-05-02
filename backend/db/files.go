@@ -728,12 +728,12 @@ func (d *DB) GetFileWithDigests(path string) (*FileWithDigests, error) {
 		return nil, err
 	}
 
-	digests, err := GetDigestsForFile(path)
+	digests, err := d.GetDigestsForFile(path)
 	if err != nil {
 		return nil, err
 	}
 
-	isPinned, err := IsPinned(path)
+	isPinned, err := d.IsPinned(path)
 	if err != nil {
 		return nil, err
 	}

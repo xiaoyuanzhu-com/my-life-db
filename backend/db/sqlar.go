@@ -3,6 +3,8 @@ package db
 import (
 	"bytes"
 	"compress/zlib"
+	"context"
+	"database/sql"
 	"io"
 	"time"
 
@@ -10,7 +12,7 @@ import (
 )
 
 // SqlarStore stores a file in SQLAR format with zlib compression
-func SqlarStore(name string, data []byte, mode int) bool {
+func (d *DB) SqlarStore(ctx context.Context, name string, data []byte, mode int) bool {
 	if mode == 0 {
 		mode = 0644
 	}
@@ -28,11 +30,13 @@ func SqlarStore(name string, data []byte, mode int) bool {
 	mtime := time.Now().Unix()
 	originalSize := len(data)
 
-	db := GetDB()
-	_, err = db.Exec(`
-		INSERT OR REPLACE INTO sqlar (name, mode, mtime, sz, data)
-		VALUES (?, ?, ?, ?, ?)
-	`, name, mode, mtime, originalSize, compressed.Bytes())
+	err = d.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(`
+			INSERT OR REPLACE INTO sqlar (name, mode, mtime, sz, data)
+			VALUES (?, ?, ?, ?, ?)
+		`, name, mode, mtime, originalSize, compressed.Bytes())
+		return err
+	})
 
 	if err != nil {
 		log.Error().Err(err).Str("name", name).Msg("failed to store file in sqlar")
@@ -48,12 +52,10 @@ func SqlarStore(name string, data []byte, mode int) bool {
 }
 
 // SqlarGet retrieves and decompresses a file from SQLAR
-func SqlarGet(name string) []byte {
-	db := GetDB()
-
+func (d *DB) SqlarGet(name string) []byte {
 	var compressedData []byte
 	var sz int
-	err := db.QueryRow("SELECT data, sz FROM sqlar WHERE name = ?", name).Scan(&compressedData, &sz)
+	err := d.conn.QueryRow("SELECT data, sz FROM sqlar WHERE name = ?", name).Scan(&compressedData, &sz)
 	if err != nil {
 		log.Debug().Str("name", name).Msg("file not found in sqlar")
 		return nil
@@ -78,25 +80,28 @@ func SqlarGet(name string) []byte {
 }
 
 // SqlarExists checks if a file exists in SQLAR
-func SqlarExists(name string) bool {
-	db := GetDB()
-
+func (d *DB) SqlarExists(name string) bool {
 	var exists int
-	err := db.QueryRow("SELECT 1 FROM sqlar WHERE name = ? LIMIT 1", name).Scan(&exists)
+	err := d.conn.QueryRow("SELECT 1 FROM sqlar WHERE name = ? LIMIT 1", name).Scan(&exists)
 	return err == nil
 }
 
 // SqlarDelete removes a file from SQLAR
-func SqlarDelete(name string) bool {
-	db := GetDB()
-
-	result, err := db.Exec("DELETE FROM sqlar WHERE name = ?", name)
+func (d *DB) SqlarDelete(ctx context.Context, name string) bool {
+	var changes int64
+	err := d.Write(ctx, func(tx *sql.Tx) error {
+		result, err := tx.Exec("DELETE FROM sqlar WHERE name = ?", name)
+		if err != nil {
+			return err
+		}
+		changes, _ = result.RowsAffected()
+		return nil
+	})
 	if err != nil {
 		log.Error().Err(err).Str("name", name).Msg("failed to delete file from sqlar")
 		return false
 	}
 
-	changes, _ := result.RowsAffected()
 	log.Debug().Str("name", name).Int64("changes", changes).Msg("deleted file from sqlar")
 	return changes > 0
 }
@@ -109,10 +114,8 @@ type SqlarFileInfo struct {
 }
 
 // SqlarList lists all files in SQLAR with a given prefix
-func SqlarList(prefix string) []SqlarFileInfo {
-	db := GetDB()
-
-	rows, err := db.Query(`
+func (d *DB) SqlarList(prefix string) []SqlarFileInfo {
+	rows, err := d.conn.Query(`
 		SELECT name, sz as size, mtime
 		FROM sqlar
 		WHERE name LIKE ?
@@ -137,16 +140,21 @@ func SqlarList(prefix string) []SqlarFileInfo {
 }
 
 // SqlarDeletePrefix deletes all files with a given prefix
-func SqlarDeletePrefix(prefix string) int {
-	db := GetDB()
-
-	result, err := db.Exec("DELETE FROM sqlar WHERE name LIKE ?", prefix+"%")
+func (d *DB) SqlarDeletePrefix(ctx context.Context, prefix string) int {
+	var changes int64
+	err := d.Write(ctx, func(tx *sql.Tx) error {
+		result, err := tx.Exec("DELETE FROM sqlar WHERE name LIKE ?", prefix+"%")
+		if err != nil {
+			return err
+		}
+		changes, _ = result.RowsAffected()
+		return nil
+	})
 	if err != nil {
 		log.Error().Err(err).Str("prefix", prefix).Msg("failed to delete files by prefix from sqlar")
 		return 0
 	}
 
-	changes, _ := result.RowsAffected()
 	log.Debug().Str("prefix", prefix).Int64("changes", changes).Msg("deleted files by prefix from sqlar")
 	return int(changes)
 }
@@ -160,11 +168,9 @@ type SqlarMetadata struct {
 }
 
 // SqlarGetMetadata gets file metadata without decompressing
-func SqlarGetMetadata(name string) *SqlarMetadata {
-	db := GetDB()
-
+func (d *DB) SqlarGetMetadata(name string) *SqlarMetadata {
 	var meta SqlarMetadata
-	err := db.QueryRow(`
+	err := d.conn.QueryRow(`
 		SELECT name, mode, mtime, sz as size
 		FROM sqlar
 		WHERE name = ?

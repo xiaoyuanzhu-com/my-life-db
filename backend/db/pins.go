@@ -1,15 +1,16 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 
 	"github.com/google/uuid"
 )
 
 // IsPinned checks if a file is pinned
-func IsPinned(path string) (bool, error) {
+func (d *DB) IsPinned(path string) (bool, error) {
 	var count int
-	err := GetDB().QueryRow("SELECT COUNT(*) FROM pins WHERE file_path = ?", path).Scan(&count)
+	err := d.conn.QueryRow("SELECT COUNT(*) FROM pins WHERE file_path = ?", path).Scan(&count)
 	if err != nil {
 		return false, err
 	}
@@ -17,27 +18,31 @@ func IsPinned(path string) (bool, error) {
 }
 
 // AddPin pins a file
-func AddPin(path string) error {
+func (d *DB) AddPin(ctx context.Context, path string) error {
 	// Generate a unique ID for the pin
 	id := uuid.New().String()
 	now := NowMs()
-	_, err := GetDB().Exec(`
-		INSERT INTO pins (id, file_path, pinned_at, created_at)
-		VALUES (?, ?, ?, ?)
-		ON CONFLICT(file_path) DO NOTHING
-	`, id, path, now, now)
-	return err
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO pins (id, file_path, pinned_at, created_at)
+			VALUES (?, ?, ?, ?)
+			ON CONFLICT(file_path) DO NOTHING
+		`, id, path, now, now)
+		return err
+	})
 }
 
 // RemovePin unpins a file
-func RemovePin(path string) error {
-	_, err := GetDB().Exec("DELETE FROM pins WHERE file_path = ?", path)
-	return err
+func (d *DB) RemovePin(ctx context.Context, path string) error {
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec("DELETE FROM pins WHERE file_path = ?", path)
+		return err
+	})
 }
 
 // GetAllPins retrieves all pinned files
-func GetAllPins() ([]Pin, error) {
-	rows, err := GetDB().Query(`
+func (d *DB) GetAllPins() ([]Pin, error) {
+	rows, err := d.conn.Query(`
 		SELECT file_path, pinned_at FROM pins ORDER BY pinned_at DESC
 	`)
 	if err != nil {
@@ -58,7 +63,7 @@ func GetAllPins() ([]Pin, error) {
 }
 
 // GetPinnedFiles retrieves all pinned files with their file records
-func GetPinnedFiles() ([]FileWithDigests, error) {
+func (d *DB) GetPinnedFiles() ([]FileWithDigests, error) {
 	query := `
 		SELECT f.path, f.name, f.is_folder, f.size, f.mime_type, f.hash,
 			   f.modified_at, f.created_at, f.last_scanned_at, f.text_preview, f.preview_sqlar, f.preview_status,
@@ -68,7 +73,7 @@ func GetPinnedFiles() ([]FileWithDigests, error) {
 		ORDER BY p.pinned_at DESC
 	`
 
-	rows, err := GetDB().Query(query)
+	rows, err := d.conn.Query(query)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +106,7 @@ func GetPinnedFiles() ([]FileWithDigests, error) {
 		f.LastScannedAt = lastScannedAt.Int64
 
 		// Get digests for this file
-		digests, err := GetDigestsForFile(f.Path)
+		digests, err := d.GetDigestsForFile(f.Path)
 		if err != nil {
 			return nil, err
 		}
@@ -117,8 +122,8 @@ func GetPinnedFiles() ([]FileWithDigests, error) {
 }
 
 // CountPins returns the number of pinned files
-func CountPins() (int64, error) {
+func (d *DB) CountPins() (int64, error) {
 	var count int64
-	err := GetDB().QueryRow("SELECT COUNT(*) FROM pins").Scan(&count)
+	err := d.conn.QueryRow("SELECT COUNT(*) FROM pins").Scan(&count)
 	return count, err
 }

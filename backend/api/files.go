@@ -368,7 +368,7 @@ func (h *Handlers) PinFile(c *gin.Context) {
 	}
 
 	// Check current pin state
-	isPinned, err := db.IsPinned(body.Path)
+	isPinned, err := h.server.DB().IsPinned(body.Path)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to check pin state")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check pin state"})
@@ -377,14 +377,14 @@ func (h *Handlers) PinFile(c *gin.Context) {
 
 	// Toggle pin state
 	if isPinned {
-		if err := db.RemovePin(body.Path); err != nil {
+		if err := h.server.DB().RemovePin(c.Request.Context(), body.Path); err != nil {
 			log.Error().Err(err).Msg("failed to unpin file")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to unpin file"})
 			return
 		}
 		isPinned = false
 	} else {
-		if err := db.AddPin(body.Path); err != nil {
+		if err := h.server.DB().AddPin(c.Request.Context(), body.Path); err != nil {
 			log.Error().Err(err).Msg("failed to pin file")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to pin file"})
 			return
@@ -409,7 +409,7 @@ func (h *Handlers) UnpinFile(c *gin.Context) {
 		return
 	}
 
-	if err := db.RemovePin(path); err != nil {
+	if err := h.server.DB().RemovePin(c.Request.Context(), path); err != nil {
 		log.Error().Err(err).Msg("failed to unpin file")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to unpin file"})
 		return

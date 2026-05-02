@@ -1,6 +1,7 @@
 package digest
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -132,7 +133,7 @@ func (w *Worker) EnsureDigestersForFile(filePath string) (added int, orphanedSki
 	}
 
 	// Get existing digests
-	existing := db.ListDigestsForPath(filePath)
+	existing := w.db.ListDigestsForPath(filePath)
 	existingTypes := make(map[string]bool)
 	for _, d := range existing {
 		existingTypes[d.Digester] = true
@@ -143,7 +144,7 @@ func (w *Worker) EnsureDigestersForFile(filePath string) (added int, orphanedSki
 		if existingTypes[digestType] {
 			continue
 		}
-		getOrCreateDigestID(filePath, digestType)
+		w.getOrCreateDigestID(filePath, digestType)
 		added++
 	}
 
@@ -151,7 +152,7 @@ func (w *Worker) EnsureDigestersForFile(filePath string) (added int, orphanedSki
 	now := db.NowMs()
 	for _, digest := range existing {
 		if !validTypes[digest.Digester] && (digest.Status == "todo" || digest.Status == "failed") {
-			db.UpdateDigestMap(digest.ID, map[string]interface{}{
+			w.db.UpdateDigestMap(context.Background(), digest.ID, map[string]interface{}{
 				"status":     "skipped",
 				"error":      "Digester no longer registered",
 				"updated_at": now,
@@ -184,7 +185,7 @@ func (w *Worker) ensureAllFilesHaveDigests() {
 
 	// Query all non-folder files in inbox directory
 	query := `SELECT path FROM files WHERE is_folder = 0 AND (path = 'inbox' OR path LIKE 'inbox/%')`
-	rows, err := db.GetDB().Query(query)
+	rows, err := w.db.Read().Query(query)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to query files for digest placeholder creation")
 		return
@@ -257,7 +258,7 @@ func (w *Worker) processFile(filePath string) {
 		outputNames := getOutputNames(digester)
 
 		// Load existing digests
-		existingDigests := db.ListDigestsForPath(filePath)
+		existingDigests := w.db.ListDigestsForPath(filePath)
 		digestsByName := make(map[string]db.Digest)
 		for _, d := range existingDigests {
 			digestsByName[d.Digester] = d
@@ -306,7 +307,7 @@ func (w *Worker) processFile(filePath string) {
 		if !can {
 			// Mark as skipped
 			for _, name := range pendingOutputs {
-				markDigest(filePath, name, DigestStatusSkipped, "Not applicable")
+				w.markDigest(filePath, name, DigestStatusSkipped, "Not applicable")
 			}
 			log.Debug().Str("path", filePath).Str("digester", digesterName).Msg("skipped")
 			skipped++
@@ -315,14 +316,14 @@ func (w *Worker) processFile(filePath string) {
 
 		// Mark as in-progress
 		for _, name := range pendingOutputs {
-			markDigestInProgress(filePath, name)
+			w.markDigestInProgress(filePath, name)
 		}
 
 		// Execute digester
 		outputs, err := digester.Digest(filePath, file, existingDigests, nil)
 		if err != nil {
 			for _, name := range pendingOutputs {
-				markDigest(filePath, name, DigestStatusFailed, err.Error())
+				w.markDigest(filePath, name, DigestStatusFailed, err.Error())
 			}
 			log.Error().Err(err).Str("path", filePath).Str("digester", digesterName).Msg("digest failed")
 			failed++
@@ -331,7 +332,7 @@ func (w *Worker) processFile(filePath string) {
 
 		if len(outputs) == 0 {
 			for _, name := range pendingOutputs {
-				markDigest(filePath, name, DigestStatusFailed, "No output")
+				w.markDigest(filePath, name, DigestStatusFailed, "No output")
 			}
 			failed++
 			continue
@@ -351,7 +352,7 @@ func (w *Worker) processFile(filePath string) {
 		// Mark missing outputs as failed
 		for _, name := range pendingOutputs {
 			if !producedNames[name] {
-				markDigest(filePath, name, DigestStatusFailed, "Output not produced")
+				w.markDigest(filePath, name, DigestStatusFailed, "Output not produced")
 			}
 		}
 
@@ -396,7 +397,7 @@ func (w *Worker) supervisorLoop() {
 // checkPendingDigests finds and queues files with pending digests
 func (w *Worker) checkPendingDigests() {
 	// Get files with pending or failed (retriable) digests
-	files := db.GetFilesWithPendingDigests()
+	files := w.db.GetFilesWithPendingDigests()
 	for _, path := range files {
 		select {
 		case w.queue <- path:
@@ -416,8 +417,8 @@ func getOutputNames(d Digester) []string {
 	return []string{d.Name()}
 }
 
-func markDigest(filePath, digester string, status DigestStatus, errorMsg string) {
-	id := getOrCreateDigestID(filePath, digester)
+func (w *Worker) markDigest(filePath, digester string, status DigestStatus, errorMsg string) {
+	id := w.getOrCreateDigestID(filePath, digester)
 	now := db.NowMs()
 
 	var errPtr *string
@@ -425,24 +426,24 @@ func markDigest(filePath, digester string, status DigestStatus, errorMsg string)
 		errPtr = &errorMsg
 	}
 
-	db.UpdateDigestMap(id, map[string]interface{}{
+	w.db.UpdateDigestMap(context.Background(), id, map[string]interface{}{
 		"status":     string(status),
 		"error":      errPtr,
 		"updated_at": now,
 	})
 }
 
-func markDigestInProgress(filePath, digester string) {
-	id := getOrCreateDigestID(filePath, digester)
+func (w *Worker) markDigestInProgress(filePath, digester string) {
+	id := w.getOrCreateDigestID(filePath, digester)
 	now := db.NowMs()
 
-	existing, _ := db.GetDigestByID(id)
+	existing, _ := w.db.GetDigestByID(id)
 	attempts := 0
 	if existing != nil {
 		attempts = existing.Attempts + 1
 	}
 
-	db.UpdateDigestMap(id, map[string]interface{}{
+	w.db.UpdateDigestMap(context.Background(), id, map[string]interface{}{
 		"status":     "in-progress",
 		"attempts":   attempts,
 		"updated_at": now,
@@ -450,9 +451,9 @@ func markDigestInProgress(filePath, digester string) {
 }
 
 func (w *Worker) saveDigestOutput(filePath string, output DigestInput) {
-	id := getOrCreateDigestID(filePath, output.Digester)
+	id := w.getOrCreateDigestID(filePath, output.Digester)
 
-	existing, _ := db.GetDigestByID(id)
+	existing, _ := w.db.GetDigestByID(id)
 
 	update := map[string]interface{}{
 		"status":     string(output.Status),
@@ -470,7 +471,7 @@ func (w *Worker) saveDigestOutput(filePath string, output DigestInput) {
 			// Construct full SQLAR path: {file_hash}/{digester}/{filename}
 			fileHash := db.GeneratePathHash(filePath)
 			sqlarPath := fileHash + "/" + output.Digester + "/" + *output.SqlarName
-			db.SqlarStore(sqlarPath, output.SqlarData, 0644)
+			w.db.SqlarStore(context.Background(), sqlarPath, output.SqlarData, 0644)
 		}
 	}
 	if output.Error != nil {
@@ -490,22 +491,22 @@ func (w *Worker) saveDigestOutput(filePath string, output DigestInput) {
 		update["attempts"] = attempts
 	}
 
-	db.UpdateDigestMap(id, update)
+	w.db.UpdateDigestMap(context.Background(), id, update)
 
 	// Trigger cascading resets if completed with content
 	if output.Status == DigestStatusCompleted && output.Content != nil && *output.Content != "" {
-		triggerCascadingResets(filePath, output.Digester)
+		w.triggerCascadingResets(filePath, output.Digester)
 	}
 }
 
 // triggerCascadingResets resets downstream digesters when an upstream digester completes with content
-func triggerCascadingResets(filePath, digesterName string) {
+func (w *Worker) triggerCascadingResets(filePath, digesterName string) {
 	downstreamDigesters, ok := CascadingResets[digesterName]
 	if !ok || len(downstreamDigesters) == 0 {
 		return
 	}
 
-	existingDigests := db.ListDigestsForPath(filePath)
+	existingDigests := w.db.ListDigestsForPath(filePath)
 	digestsByName := make(map[string]db.Digest)
 	for _, d := range existingDigests {
 		digestsByName[d.Digester] = d
@@ -532,7 +533,7 @@ func triggerCascadingResets(filePath, digesterName string) {
 		now := db.NowMs()
 		for _, target := range resetTargets {
 			digest := digestsByName[target]
-			db.UpdateDigestMap(digest.ID, map[string]interface{}{
+			w.db.UpdateDigestMap(context.Background(), digest.ID, map[string]interface{}{
 				"status":     "todo",
 				"content":    nil,
 				"error":      nil,
@@ -543,8 +544,8 @@ func triggerCascadingResets(filePath, digesterName string) {
 	}
 }
 
-func getOrCreateDigestID(filePath, digester string) string {
-	existing := db.GetDigestByPathAndDigester(filePath, digester)
+func (w *Worker) getOrCreateDigestID(filePath, digester string) string {
+	existing := w.db.GetDigestByPathAndDigester(filePath, digester)
 	if existing != nil {
 		return existing.ID
 	}
@@ -552,7 +553,7 @@ func getOrCreateDigestID(filePath, digester string) string {
 	id := uuid.New().String()
 	now := db.NowMs()
 
-	db.CreateDigest(&db.Digest{
+	w.db.CreateDigest(context.Background(), &db.Digest{
 		ID:        id,
 		FilePath:  filePath,
 		Digester:  digester,

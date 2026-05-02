@@ -1,27 +1,28 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 
 	"github.com/google/uuid"
 )
 
 // GetDigestByID retrieves a digest by ID
-func GetDigestByID(id string) (*Digest, error) {
+func (d *DB) GetDigestByID(id string) (*Digest, error) {
 	query := `
 		SELECT id, file_path, digester, status, content, sqlar_name, error, attempts, created_at, updated_at
 		FROM digests
 		WHERE id = ?
 	`
 
-	row := GetDB().QueryRow(query, id)
+	row := d.conn.QueryRow(query, id)
 
-	var d Digest
+	var dg Digest
 	var content, sqlarName, digestError sql.NullString
 
 	err := row.Scan(
-		&d.ID, &d.FilePath, &d.Digester, &d.Status, &content,
-		&sqlarName, &digestError, &d.Attempts, &d.CreatedAt, &d.UpdatedAt,
+		&dg.ID, &dg.FilePath, &dg.Digester, &dg.Status, &content,
+		&sqlarName, &digestError, &dg.Attempts, &dg.CreatedAt, &dg.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -30,15 +31,15 @@ func GetDigestByID(id string) (*Digest, error) {
 		return nil, err
 	}
 
-	d.Content = StringPtr(content)
-	d.SqlarName = StringPtr(sqlarName)
-	d.Error = StringPtr(digestError)
+	dg.Content = StringPtr(content)
+	dg.SqlarName = StringPtr(sqlarName)
+	dg.Error = StringPtr(digestError)
 
-	return &d, nil
+	return &dg, nil
 }
 
 // GetDigestsForFile retrieves all digests for a file
-func GetDigestsForFile(filePath string) ([]Digest, error) {
+func (d *DB) GetDigestsForFile(filePath string) ([]Digest, error) {
 	query := `
 		SELECT id, file_path, digester, status, content, sqlar_name, error, attempts, created_at, updated_at
 		FROM digests
@@ -46,7 +47,7 @@ func GetDigestsForFile(filePath string) ([]Digest, error) {
 		ORDER BY digester
 	`
 
-	rows, err := GetDB().Query(query, filePath)
+	rows, err := d.conn.Query(query, filePath)
 	if err != nil {
 		return nil, err
 	}
@@ -54,43 +55,43 @@ func GetDigestsForFile(filePath string) ([]Digest, error) {
 
 	var digests []Digest
 	for rows.Next() {
-		var d Digest
+		var dg Digest
 		var content, sqlarName, digestError sql.NullString
 
 		err := rows.Scan(
-			&d.ID, &d.FilePath, &d.Digester, &d.Status, &content,
-			&sqlarName, &digestError, &d.Attempts, &d.CreatedAt, &d.UpdatedAt,
+			&dg.ID, &dg.FilePath, &dg.Digester, &dg.Status, &content,
+			&sqlarName, &digestError, &dg.Attempts, &dg.CreatedAt, &dg.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
 		}
 
-		d.Content = StringPtr(content)
-		d.SqlarName = StringPtr(sqlarName)
-		d.Error = StringPtr(digestError)
+		dg.Content = StringPtr(content)
+		dg.SqlarName = StringPtr(sqlarName)
+		dg.Error = StringPtr(digestError)
 
-		digests = append(digests, d)
+		digests = append(digests, dg)
 	}
 
 	return digests, nil
 }
 
 // GetDigestByFileAndDigester retrieves a specific digest
-func GetDigestByFileAndDigester(filePath, digester string) (*Digest, error) {
+func (d *DB) GetDigestByFileAndDigester(filePath, digester string) (*Digest, error) {
 	query := `
 		SELECT id, file_path, digester, status, content, sqlar_name, error, attempts, created_at, updated_at
 		FROM digests
 		WHERE file_path = ? AND digester = ?
 	`
 
-	row := GetDB().QueryRow(query, filePath, digester)
+	row := d.conn.QueryRow(query, filePath, digester)
 
-	var d Digest
+	var dg Digest
 	var content, sqlarName, digestError sql.NullString
 
 	err := row.Scan(
-		&d.ID, &d.FilePath, &d.Digester, &d.Status, &content,
-		&sqlarName, &digestError, &d.Attempts, &d.CreatedAt, &d.UpdatedAt,
+		&dg.ID, &dg.FilePath, &dg.Digester, &dg.Status, &content,
+		&sqlarName, &digestError, &dg.Attempts, &dg.CreatedAt, &dg.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -99,24 +100,24 @@ func GetDigestByFileAndDigester(filePath, digester string) (*Digest, error) {
 		return nil, err
 	}
 
-	d.Content = StringPtr(content)
-	d.SqlarName = StringPtr(sqlarName)
-	d.Error = StringPtr(digestError)
+	dg.Content = StringPtr(content)
+	dg.SqlarName = StringPtr(sqlarName)
+	dg.Error = StringPtr(digestError)
 
-	return &d, nil
+	return &dg, nil
 }
 
 // CreateDigest creates a new digest record
-func CreateDigest(d *Digest) error {
-	if d.ID == "" {
-		d.ID = uuid.New().String()
+func (d *DB) CreateDigest(ctx context.Context, dg *Digest) error {
+	if dg.ID == "" {
+		dg.ID = uuid.New().String()
 	}
 	now := NowMs()
-	if d.CreatedAt == 0 {
-		d.CreatedAt = now
+	if dg.CreatedAt == 0 {
+		dg.CreatedAt = now
 	}
-	if d.UpdatedAt == 0 {
-		d.UpdatedAt = now
+	if dg.UpdatedAt == 0 {
+		dg.UpdatedAt = now
 	}
 
 	query := `
@@ -124,16 +125,18 @@ func CreateDigest(d *Digest) error {
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	_, err := GetDB().Exec(query,
-		d.ID, d.FilePath, d.Digester, d.Status, d.Content,
-		d.SqlarName, d.Error, d.Attempts, d.CreatedAt, d.UpdatedAt,
-	)
-	return err
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(query,
+			dg.ID, dg.FilePath, dg.Digester, dg.Status, dg.Content,
+			dg.SqlarName, dg.Error, dg.Attempts, dg.CreatedAt, dg.UpdatedAt,
+		)
+		return err
+	})
 }
 
 // UpdateDigest updates an existing digest
-func UpdateDigest(d *Digest) error {
-	d.UpdatedAt = NowMs()
+func (d *DB) UpdateDigest(ctx context.Context, dg *Digest) error {
+	dg.UpdatedAt = NowMs()
 
 	query := `
 		UPDATE digests
@@ -141,19 +144,21 @@ func UpdateDigest(d *Digest) error {
 		WHERE id = ?
 	`
 
-	_, err := GetDB().Exec(query,
-		d.Status, d.Content, d.SqlarName, d.Error, d.Attempts, d.UpdatedAt, d.ID,
-	)
-	return err
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(query,
+			dg.Status, dg.Content, dg.SqlarName, dg.Error, dg.Attempts, dg.UpdatedAt, dg.ID,
+		)
+		return err
+	})
 }
 
 // UpsertDigest creates or updates a digest
-func UpsertDigest(d *Digest) error {
+func (d *DB) UpsertDigest(ctx context.Context, dg *Digest) error {
 	now := NowMs()
-	if d.ID == "" {
-		d.ID = GeneratePathHash(d.FilePath) + "-" + d.Digester
+	if dg.ID == "" {
+		dg.ID = GeneratePathHash(dg.FilePath) + "-" + dg.Digester
 	}
-	d.UpdatedAt = now
+	dg.UpdatedAt = now
 
 	query := `
 		INSERT INTO digests (id, file_path, digester, status, content, sqlar_name, error, attempts, created_at, updated_at)
@@ -167,44 +172,58 @@ func UpsertDigest(d *Digest) error {
 			updated_at = excluded.updated_at
 	`
 
-	_, err := GetDB().Exec(query,
-		d.ID, d.FilePath, d.Digester, d.Status, d.Content,
-		d.SqlarName, d.Error, d.Attempts, now, d.UpdatedAt,
-	)
-	return err
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(query,
+			dg.ID, dg.FilePath, dg.Digester, dg.Status, dg.Content,
+			dg.SqlarName, dg.Error, dg.Attempts, now, dg.UpdatedAt,
+		)
+		return err
+	})
 }
 
 // DeleteDigest removes a digest
-func DeleteDigest(id string) error {
-	_, err := GetDB().Exec("DELETE FROM digests WHERE id = ?", id)
-	return err
+func (d *DB) DeleteDigest(ctx context.Context, id string) error {
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec("DELETE FROM digests WHERE id = ?", id)
+		return err
+	})
 }
 
 // DeleteDigestsForFile removes all digests for a file
-func DeleteDigestsForFile(filePath string) error {
-	_, err := GetDB().Exec("DELETE FROM digests WHERE file_path = ?", filePath)
-	return err
+func (d *DB) DeleteDigestsForFile(ctx context.Context, filePath string) error {
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec("DELETE FROM digests WHERE file_path = ?", filePath)
+		return err
+	})
 }
 
 // ResetDigesterAll resets all digests of a specific type
-func ResetDigesterAll(digester string) (int64, error) {
-	result, err := GetDB().Exec(`
-		UPDATE digests
-		SET status = 'todo', error = NULL, attempts = 0, updated_at = ?
-		WHERE digester = ?
-	`, NowMs(), digester)
+func (d *DB) ResetDigesterAll(ctx context.Context, digester string) (int64, error) {
+	var affected int64
+	err := d.Write(ctx, func(tx *sql.Tx) error {
+		result, err := tx.Exec(`
+			UPDATE digests
+			SET status = 'todo', error = NULL, attempts = 0, updated_at = ?
+			WHERE digester = ?
+		`, NowMs(), digester)
+		if err != nil {
+			return err
+		}
+		affected, err = result.RowsAffected()
+		return err
+	})
 	if err != nil {
 		return 0, err
 	}
-	return result.RowsAffected()
+	return affected, nil
 }
 
 // GetDigestStats returns statistics about digests
-func GetDigestStats() (map[string]interface{}, error) {
+func (d *DB) GetDigestStats() (map[string]interface{}, error) {
 	stats := make(map[string]interface{})
 
 	// Count by status
-	rows, err := GetDB().Query(`
+	rows, err := d.conn.Query(`
 		SELECT status, COUNT(*) as count
 		FROM digests
 		GROUP BY status
@@ -226,7 +245,7 @@ func GetDigestStats() (map[string]interface{}, error) {
 	stats["byStatus"] = byStatus
 
 	// Count by digester
-	rows, err = GetDB().Query(`
+	rows, err = d.conn.Query(`
 		SELECT digester, status, COUNT(*) as count
 		FROM digests
 		GROUP BY digester, status
@@ -253,7 +272,7 @@ func GetDigestStats() (map[string]interface{}, error) {
 
 	// Total
 	var total int64
-	err = GetDB().QueryRow("SELECT COUNT(*) FROM digests").Scan(&total)
+	err = d.conn.QueryRow("SELECT COUNT(*) FROM digests").Scan(&total)
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +282,7 @@ func GetDigestStats() (map[string]interface{}, error) {
 }
 
 // GetPendingDigests retrieves digests that need processing
-func GetPendingDigests(limit int) ([]Digest, error) {
+func (d *DB) GetPendingDigests(limit int) ([]Digest, error) {
 	query := `
 		SELECT id, file_path, digester, status, content, sqlar_name, error, attempts, created_at, updated_at
 		FROM digests
@@ -273,7 +292,7 @@ func GetPendingDigests(limit int) ([]Digest, error) {
 		LIMIT ?
 	`
 
-	rows, err := GetDB().Query(query, limit)
+	rows, err := d.conn.Query(query, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -281,30 +300,30 @@ func GetPendingDigests(limit int) ([]Digest, error) {
 
 	var digests []Digest
 	for rows.Next() {
-		var d Digest
+		var dg Digest
 		var content, sqlarName, digestError sql.NullString
 
 		err := rows.Scan(
-			&d.ID, &d.FilePath, &d.Digester, &d.Status, &content,
-			&sqlarName, &digestError, &d.Attempts, &d.CreatedAt, &d.UpdatedAt,
+			&dg.ID, &dg.FilePath, &dg.Digester, &dg.Status, &content,
+			&sqlarName, &digestError, &dg.Attempts, &dg.CreatedAt, &dg.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
 		}
 
-		d.Content = StringPtr(content)
-		d.SqlarName = StringPtr(sqlarName)
-		d.Error = StringPtr(digestError)
+		dg.Content = StringPtr(content)
+		dg.SqlarName = StringPtr(sqlarName)
+		dg.Error = StringPtr(digestError)
 
-		digests = append(digests, d)
+		digests = append(digests, dg)
 	}
 
 	return digests, nil
 }
 
 // GetDistinctDigesters returns all unique digester names
-func GetDistinctDigesters() ([]string, error) {
-	rows, err := GetDB().Query("SELECT DISTINCT digester FROM digests ORDER BY digester")
+func (d *DB) GetDistinctDigesters() ([]string, error) {
+	rows, err := d.conn.Query("SELECT DISTINCT digester FROM digests ORDER BY digester")
 	if err != nil {
 		return nil, err
 	}
@@ -323,8 +342,8 @@ func GetDistinctDigesters() ([]string, error) {
 }
 
 // ListDigestsForPath returns all digests for a file path (alias for GetDigestsForFile)
-func ListDigestsForPath(filePath string) []Digest {
-	digests, err := GetDigestsForFile(filePath)
+func (d *DB) ListDigestsForPath(filePath string) []Digest {
+	digests, err := d.GetDigestsForFile(filePath)
 	if err != nil {
 		return nil
 	}
@@ -332,53 +351,53 @@ func ListDigestsForPath(filePath string) []Digest {
 }
 
 // GetDigestByPathAndDigester returns a digest by file path and digester name
-func GetDigestByPathAndDigester(filePath, digester string) *Digest {
-	d, err := GetDigestByFileAndDigester(filePath, digester)
+func (d *DB) GetDigestByPathAndDigester(filePath, digester string) *Digest {
+	dg, err := d.GetDigestByFileAndDigester(filePath, digester)
 	if err != nil {
 		return nil
 	}
-	return d
+	return dg
 }
 
 // UpdateDigestMap updates a digest using a map of fields
-func UpdateDigestMap(id string, fields map[string]interface{}) error {
-	d, err := GetDigestByID(id)
-	if err != nil || d == nil {
+func (d *DB) UpdateDigestMap(ctx context.Context, id string, fields map[string]interface{}) error {
+	dg, err := d.GetDigestByID(id)
+	if err != nil || dg == nil {
 		return err
 	}
 
 	// Apply updates
 	if status, ok := fields["status"].(string); ok {
-		d.Status = status
+		dg.Status = status
 	}
 	if content, ok := fields["content"].(string); ok {
-		d.Content = &content
+		dg.Content = &content
 	}
 	if sqlarName, ok := fields["sqlar_name"].(string); ok {
-		d.SqlarName = &sqlarName
+		dg.SqlarName = &sqlarName
 	}
 	if errorStr, ok := fields["error"]; ok {
 		if errorStr == nil {
-			d.Error = nil
+			dg.Error = nil
 		} else if s, ok := errorStr.(string); ok {
-			d.Error = &s
+			dg.Error = &s
 		} else if sp, ok := errorStr.(*string); ok {
-			d.Error = sp
+			dg.Error = sp
 		}
 	}
 	if attempts, ok := fields["attempts"].(int); ok {
-		d.Attempts = attempts
+		dg.Attempts = attempts
 	}
 	if updatedAt, ok := fields["updated_at"].(int64); ok {
-		d.UpdatedAt = updatedAt
+		dg.UpdatedAt = updatedAt
 	}
 
-	return UpdateDigest(d)
+	return d.UpdateDigest(ctx, dg)
 }
 
 // GetFilesWithPendingDigests returns file paths that have pending or failed digests
 // Only returns inbox files - library files don't get auto-digested
-func GetFilesWithPendingDigests() []string {
+func (d *DB) GetFilesWithPendingDigests() []string {
 	query := `
 		SELECT DISTINCT d.file_path
 		FROM digests d
@@ -390,7 +409,7 @@ func GetFilesWithPendingDigests() []string {
 		LIMIT 100
 	`
 
-	rows, err := GetDB().Query(query)
+	rows, err := d.conn.Query(query)
 	if err != nil {
 		return nil
 	}

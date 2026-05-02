@@ -125,7 +125,7 @@ func (h *Handlers) Search(c *gin.Context) {
 	sources := []string{}
 
 	// Keyword search via FTS5
-	hits, hitsTotal, err := db.SearchFTS(query, db.FTSSearchOptions{
+	hits, hitsTotal, err := h.server.DB().SearchFTS(query, db.FTSSearchOptions{
 		Limit:      limit,
 		Offset:     offset,
 		TypeFilter: typeFilter,

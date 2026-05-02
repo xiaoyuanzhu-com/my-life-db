@@ -39,7 +39,7 @@ func (h *Handlers) GetDigesters(c *gin.Context) {
 
 // GetDigestStats handles GET /api/digest/stats
 func (h *Handlers) GetDigestStats(c *gin.Context) {
-	stats, err := db.GetDigestStats()
+	stats, err := h.server.DB().GetDigestStats()
 	if err != nil {
 		log.Error().Err(err).Msg("failed to get digest stats")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get digest stats"})
@@ -57,7 +57,7 @@ func (h *Handlers) ResetDigester(c *gin.Context) {
 		return
 	}
 
-	affected, err := db.ResetDigesterAll(digester)
+	affected, err := h.server.DB().ResetDigesterAll(c.Request.Context(), digester)
 	if err != nil {
 		log.Error().Err(err).Str("digester", digester).Msg("failed to reset digester")
 		RespondCoded(c, http.StatusInternalServerError, "DIGEST_RESET_FAILED", "Failed to reset digester")
@@ -81,7 +81,7 @@ func (h *Handlers) GetDigest(c *gin.Context) {
 		return
 	}
 
-	digests, err := db.GetDigestsForFile(path)
+	digests, err := h.server.DB().GetDigestsForFile(path)
 	if err != nil {
 		log.Error().Err(err).Str("path", path).Msg("failed to get digests")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get digests"})
@@ -144,7 +144,7 @@ func (h *Handlers) TriggerDigest(c *gin.Context) {
 
 	if digester != "" {
 		// Reset specific digester
-		digest, err := db.GetDigestByFileAndDigester(path, digester)
+		digest, err := h.server.DB().GetDigestByFileAndDigester(path, digester)
 		if err != nil {
 			RespondCoded(c, http.StatusInternalServerError, "DIGEST_TRIGGER_FAILED", "Failed to trigger digest")
 			return
@@ -159,7 +159,7 @@ func (h *Handlers) TriggerDigest(c *gin.Context) {
 				CreatedAt: db.NowMs(),
 				UpdatedAt: db.NowMs(),
 			}
-			if err := db.CreateDigest(digest); err != nil {
+			if err := h.server.DB().CreateDigest(c.Request.Context(), digest); err != nil {
 				RespondCoded(c, http.StatusInternalServerError, "DIGEST_TRIGGER_FAILED", "Failed to trigger digest")
 				return
 			}
@@ -168,14 +168,14 @@ func (h *Handlers) TriggerDigest(c *gin.Context) {
 			digest.Status = db.DigestStatusTodo
 			digest.Error = nil
 			digest.Attempts = 0
-			if err := db.UpdateDigest(digest); err != nil {
+			if err := h.server.DB().UpdateDigest(c.Request.Context(), digest); err != nil {
 				RespondCoded(c, http.StatusInternalServerError, "DIGEST_TRIGGER_FAILED", "Failed to trigger digest")
 				return
 			}
 		}
 	} else {
 		// Reset all digests for this file
-		if err := db.DeleteDigestsForFile(path); err != nil {
+		if err := h.server.DB().DeleteDigestsForFile(c.Request.Context(), path); err != nil {
 			RespondCoded(c, http.StatusInternalServerError, "DIGEST_TRIGGER_FAILED", "Failed to trigger digest")
 			return
 		}

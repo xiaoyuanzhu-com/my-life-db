@@ -1,6 +1,8 @@
 package db
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 )
@@ -33,93 +35,66 @@ type FTSSearchOptions struct {
 // IndexFile upserts a row into files_fts. Use INSERT OR REPLACE on the
 // internal rowid surrogate isn't viable for FTS5 — we DELETE then INSERT
 // to keep semantics simple and the tokenizer state clean.
-func IndexFile(documentID, filePath, content string) error {
-	d := GetDB()
-	if d == nil {
-		return fmt.Errorf("db not initialized")
-	}
-
-	tx, err := d.Begin()
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
+func (d *DB) IndexFile(ctx context.Context, documentID, filePath, content string) error {
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`DELETE FROM files_fts WHERE file_path = ?`, filePath); err != nil {
+			return fmt.Errorf("delete existing fts row: %w", err)
 		}
-	}()
-
-	if _, err = tx.Exec(`DELETE FROM files_fts WHERE file_path = ?`, filePath); err != nil {
-		return fmt.Errorf("delete existing fts row: %w", err)
-	}
-	if _, err = tx.Exec(
-		`INSERT INTO files_fts(document_id, file_path, content) VALUES (?, ?, ?)`,
-		documentID, filePath, content,
-	); err != nil {
-		return fmt.Errorf("insert fts row: %w", err)
-	}
-
-	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("commit: %w", err)
-	}
-	return nil
+		if _, err := tx.Exec(
+			`INSERT INTO files_fts(document_id, file_path, content) VALUES (?, ?, ?)`,
+			documentID, filePath, content,
+		); err != nil {
+			return fmt.Errorf("insert fts row: %w", err)
+		}
+		return nil
+	})
 }
 
 // DeleteFileFromIndex removes a single row by file_path. No-op if missing.
-func DeleteFileFromIndex(filePath string) error {
-	d := GetDB()
-	if d == nil {
-		return nil
-	}
-	_, err := d.Exec(`DELETE FROM files_fts WHERE file_path = ?`, filePath)
-	return err
+func (d *DB) DeleteFileFromIndex(ctx context.Context, filePath string) error {
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(`DELETE FROM files_fts WHERE file_path = ?`, filePath)
+		return err
+	})
 }
 
 // RenameFileInIndex updates file_path on the single row matching oldPath.
 // Used when a file is moved or renamed; preserves the existing tokenized
 // content (no reindex needed).
-func RenameFileInIndex(oldPath, newPath string) error {
-	d := GetDB()
-	if d == nil {
-		return nil
-	}
-	_, err := d.Exec(
-		`UPDATE files_fts SET file_path = ? WHERE file_path = ?`,
-		newPath, oldPath,
-	)
-	return err
+func (d *DB) RenameFileInIndex(ctx context.Context, oldPath, newPath string) error {
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(
+			`UPDATE files_fts SET file_path = ? WHERE file_path = ?`,
+			newPath, oldPath,
+		)
+		return err
+	})
 }
 
 // RenamePrefixInIndex bulk-rewrites file_path for every row whose path
 // begins with oldPrefix. Used when a directory is moved/renamed.
-func RenamePrefixInIndex(oldPrefix, newPrefix string) error {
-	d := GetDB()
-	if d == nil {
-		return nil
-	}
+func (d *DB) RenamePrefixInIndex(ctx context.Context, oldPrefix, newPrefix string) error {
 	// SQLite doesn't have STARTS WITH; we use file_path LIKE 'old%' with
 	// ESCAPE for safety, but since file paths in this app shouldn't contain
 	// SQL wildcards in practice, we do a simple LIKE prefix match.
 	pattern := escapeLikePrefix(oldPrefix) + "%"
-	_, err := d.Exec(
-		`UPDATE files_fts
-		 SET file_path = ? || substr(file_path, ?)
-		 WHERE file_path LIKE ? ESCAPE '\'`,
-		newPrefix, len(oldPrefix)+1, pattern,
-	)
-	return err
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(
+			`UPDATE files_fts
+			 SET file_path = ? || substr(file_path, ?)
+			 WHERE file_path LIKE ? ESCAPE '\'`,
+			newPrefix, len(oldPrefix)+1, pattern,
+		)
+		return err
+	})
 }
 
 // IsFileIndexed reports whether files_fts has a row for the given path.
 // Used by the indexer's backfill loop to skip files that are already up
 // to date.
-func IsFileIndexed(filePath string) (bool, error) {
-	d := GetDB()
-	if d == nil {
-		return false, fmt.Errorf("db not initialized")
-	}
+func (d *DB) IsFileIndexed(filePath string) (bool, error) {
 	var n int
-	err := d.QueryRow(`SELECT COUNT(*) FROM files_fts WHERE file_path = ?`, filePath).Scan(&n)
+	err := d.conn.QueryRow(`SELECT COUNT(*) FROM files_fts WHERE file_path = ?`, filePath).Scan(&n)
 	if err != nil {
 		return false, err
 	}
@@ -134,12 +109,7 @@ func IsFileIndexed(filePath string) (bool, error) {
 //
 // snippet length is fixed at 64 tokens with <em>...</em> markup matching
 // what the frontend already parses for Meilisearch results.
-func SearchFTS(query string, opts FTSSearchOptions) ([]FTSHit, int, error) {
-	d := GetDB()
-	if d == nil {
-		return nil, 0, fmt.Errorf("db not initialized")
-	}
-
+func (d *DB) SearchFTS(query string, opts FTSSearchOptions) ([]FTSHit, int, error) {
 	limit := opts.Limit
 	if limit <= 0 {
 		limit = 20
@@ -178,7 +148,7 @@ func SearchFTS(query string, opts FTSSearchOptions) ([]FTSHit, int, error) {
 		WHERE ` + whereSQL
 
 	var total int
-	if err := d.QueryRow(countSQL, args...).Scan(&total); err != nil {
+	if err := d.conn.QueryRow(countSQL, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count fts hits: %w", err)
 	}
 
@@ -199,7 +169,7 @@ func SearchFTS(query string, opts FTSSearchOptions) ([]FTSHit, int, error) {
 		LIMIT ? OFFSET ?`
 	pageArgs := append(append([]any{}, args...), limit, offset)
 
-	rows, err := d.Query(pageSQL, pageArgs...)
+	rows, err := d.conn.Query(pageSQL, pageArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query fts: %w", err)
 	}
