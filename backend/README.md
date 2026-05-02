@@ -36,7 +36,6 @@ backend/
 │   ├── fs/               # File system watcher
 │   └── digest/           # Digest processor
 ├── vendors/              # External service clients
-│   ├── meilisearch.go
 │   ├── qdrant.go
 │   ├── openai.go
 │   └── haid.go
@@ -105,9 +104,6 @@ Environment variables:
 | HOST | 0.0.0.0 | Server host |
 | NODE_ENV | development | Environment (production/development) |
 | MY_DATA_DIR | ./data | Data directory |
-| MEILI_HOST | | Meilisearch host URL |
-| MEILI_API_KEY | | Meilisearch API key |
-| MEILI_INDEX | files | Meilisearch index name |
 | QDRANT_HOST | | Qdrant host URL |
 | QDRANT_COLLECTION | files | Qdrant collection name |
 | OPENAI_API_KEY | | OpenAI API key |

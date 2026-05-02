@@ -45,7 +45,6 @@ go vet ./...      # Run Go linter
 ./run.js frontend --watch   # Start + auto-restart on git changes
 ./run.js backend            # Build and start backend (loads .env automatically)
 ./run.js backend --watch    # Start + auto-restart on git changes
-./run.js meili              # Start Meilisearch via Docker
 ./run.js github             # Start GitHub webhook listener (for staging)
 ```
 
@@ -92,7 +91,7 @@ my-life-db/
 │   │   ├── server.go   # Server lifecycle & component management
 │   │   └── config.go   # Server configuration
 │   ├── utils/          # Shared utilities
-│   ├── vendors/        # External clients (Meilisearch, OpenAI, HAID, Aliyun)
+│   ├── vendors/        # External clients (OpenAI, HAID, Aliyun)
 │   ├── workers/
 │   │   └── digest/     # Digest processor worker + digester registry
 │   ├── go.mod
@@ -292,9 +291,6 @@ Never create shadcn components manually.
 | ENV | development | Environment (development/production) |
 | USER_DATA_DIR | ./data | User data directory (inbox, notes, etc.) |
 | APP_DATA_DIR | ./.my-life-db | App data directory (database, cache) |
-| MEILI_HOST | | Meilisearch URL (optional) |
-| MEILI_API_KEY | | Meilisearch API key (optional) |
-| MEILI_INDEX | mylifedb_files | Meilisearch index name (optional) |
 | OPENAI_API_KEY | | OpenAI API key (optional) |
 | OPENAI_BASE_URL | https://api.openai.com/v1 | OpenAI base URL (optional) |
 | OPENAI_MODEL | gpt-4o-mini | OpenAI model name (optional) |

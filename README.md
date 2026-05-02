@@ -10,7 +10,7 @@
 
 - **Backend**: Go 1.25 + Gin + SQLite
 - **Frontend**: React Router 7 (SPA) + React 19 + TypeScript + Tailwind CSS 4 + Vite
-- **Search**: Meilisearch (full-text)
+- **Search**: SQLite FTS5 (full-text, with `wangfenjin/simple` tokenizer for CJK + English + pinyin)
 - **AI**: OpenAI (summarization, tagging), HAID (OCR, ASR, crawling), Aliyun (real-time ASR)
 - **Real-time**: SSE notifications + WebSocket (Claude Code, ASR)
 
