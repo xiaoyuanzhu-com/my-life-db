@@ -120,6 +120,17 @@ function isAgentToolCall(toolName: string, args: Record<string, unknown>): boole
 export function AcpToolRenderer(props: ToolCallMessagePartProps) {
   const { subagentChildrenMap } = useAgentContext()
 
+  // [DEBUG-SUB] log every AcpToolRenderer invocation. Remove after investigation.
+  console.log("[DEBUG-SUB] AcpToolRenderer", {
+    toolCallId: props.toolCallId,
+    toolName: props.toolName,
+    isAgent: isAgentToolCall(props.toolName, (props.args ?? {}) as Record<string, unknown>),
+    inferredKind: inferToolKind(props.toolName, (props.args ?? {}) as Record<string, unknown>),
+    args: props.args,
+    hasResult: props.result !== undefined,
+    statusType: props.status?.type,
+  })
+
   // Check if this is an Agent tool call — render as SubagentSession immediately,
   // even before child messages arrive, so the appearance is consistent from the start.
   if (isAgentToolCall(props.toolName, (props.args ?? {}) as Record<string, unknown>)) {

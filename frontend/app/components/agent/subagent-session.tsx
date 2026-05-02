@@ -100,6 +100,28 @@ const SubagentMessage = memo(function SubagentMessage({
   message: ThreadMessageLike
   childrenMap: Map<string, ThreadMessageLike[]>
 }) {
+  // [DEBUG-SUB] log every render of a subagent message
+  // Remove after investigation
+  console.log("[DEBUG-SUB] SubagentMessage render", {
+    id: message.id,
+    role: message.role,
+    contentType: typeof message.content,
+    contentLen: typeof message.content === "string" ? -1 : message.content.length,
+    parts: typeof message.content === "string"
+      ? null
+      : message.content.map((p) => ({
+          type: p.type,
+          ...(p.type === "tool-call" && {
+            toolCallId: (p as { toolCallId?: string }).toolCallId,
+            toolName: (p as { toolName?: string }).toolName,
+            hasResult: (p as { result?: unknown }).result !== undefined,
+            args: (p as { args?: Record<string, unknown> }).args,
+          }),
+          ...(p.type === "text" && {
+            textLen: (p as { text: string }).text?.length ?? 0,
+          }),
+        })),
+  })
   // String content (simple text message)
   if (typeof message.content === "string") {
     if (message.role === "user") {
@@ -233,6 +255,19 @@ export function SubagentSession({
   if (expanded) hasBeenExpandedRef.current = true
   const toolCount = useMemo(() => countToolCalls(childMessages), [childMessages])
   const dotType = toolStatusToDotType(effectiveStatus)
+
+  // [DEBUG-SUB] log SubagentSession state on each render. Remove after investigation.
+  console.log("[DEBUG-SUB] SubagentSession render", {
+    toolCallId,
+    toolName,
+    expanded,
+    hasBeenExpanded: hasBeenExpandedRef.current,
+    childMessagesLen: childMessages.length,
+    toolCount,
+    childMessageIds: childMessages.map((m) => m.id),
+    childrenMapKeys: Array.from(childrenMap.keys()),
+    childrenMapHasOurId: childrenMap.has(toolCallId),
+  })
 
   // Extract description from toolName (e.g., "Task task-id: description")
   const description = toolName !== "Agent" ? toolName : ""
