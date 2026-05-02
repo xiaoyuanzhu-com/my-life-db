@@ -18,7 +18,7 @@ import (
 func (h *Handlers) GetSharedSession(c *gin.Context) {
 	token := c.Param("token")
 
-	sessionID, err := h.server.DB().GetSessionIDByShareToken(token)
+	sessionID, err := h.server.AppDB().GetSessionIDByShareToken(token)
 	if err != nil {
 		log.Error().Err(err).Str("token", token).Msg("failed to resolve share token")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to resolve share token"})
@@ -29,7 +29,7 @@ func (h *Handlers) GetSharedSession(c *gin.Context) {
 		return
 	}
 
-	session, err := h.server.DB().GetAgentSession(sessionID)
+	session, err := h.server.AppDB().GetAgentSession(sessionID)
 	if err != nil || session == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
 		return
@@ -56,7 +56,7 @@ func (h *Handlers) GetSharedSession(c *gin.Context) {
 func (h *Handlers) GetSharedSessionMessages(c *gin.Context) {
 	token := c.Param("token")
 
-	sessionID, err := h.server.DB().GetSessionIDByShareToken(token)
+	sessionID, err := h.server.AppDB().GetSessionIDByShareToken(token)
 	if err != nil {
 		log.Error().Err(err).Str("token", token).Msg("failed to resolve share token")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to resolve share token"})
@@ -78,7 +78,7 @@ func (h *Handlers) GetSharedSessionMessages(c *gin.Context) {
 func (h *Handlers) SharedSessionSubscribeWebSocket(c *gin.Context) {
 	token := c.Param("token")
 
-	sessionID, err := h.server.DB().GetSessionIDByShareToken(token)
+	sessionID, err := h.server.AppDB().GetSessionIDByShareToken(token)
 	if err != nil || sessionID == "" {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Shared session not found"})
 		return

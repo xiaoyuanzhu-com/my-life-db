@@ -12,7 +12,7 @@ import (
 // ListAgentSessionGroups returns all groups in sort order.
 // GET /api/agent/groups
 func (h *Handlers) ListAgentSessionGroups(c *gin.Context) {
-	groups, err := h.server.DB().ListAgentSessionGroups()
+	groups, err := h.server.AppDB().ListAgentSessionGroups()
 	if err != nil {
 		log.Error().Err(err).Msg("failed to list agent session groups")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list groups"})
@@ -39,7 +39,7 @@ func (h *Handlers) CreateAgentSessionGroup(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "name is required"})
 		return
 	}
-	g, err := h.server.DB().CreateAgentSessionGroup(c.Request.Context(), name)
+	g, err := h.server.AppDB().CreateAgentSessionGroup(c.Request.Context(), name)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to create agent session group")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create group"})
@@ -64,7 +64,7 @@ func (h *Handlers) UpdateAgentSessionGroup(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "name is required"})
 		return
 	}
-	if err := h.server.DB().RenameAgentSessionGroup(c.Request.Context(), id, name); err != nil {
+	if err := h.server.AppDB().RenameAgentSessionGroup(c.Request.Context(), id, name); err != nil {
 		log.Error().Err(err).Str("id", id).Msg("failed to rename group")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to rename group"})
 		return
@@ -76,7 +76,7 @@ func (h *Handlers) UpdateAgentSessionGroup(c *gin.Context) {
 // DELETE /api/agent/groups/:id
 func (h *Handlers) DeleteAgentSessionGroup(c *gin.Context) {
 	id := c.Param("id")
-	if err := h.server.DB().DeleteAgentSessionGroup(c.Request.Context(), id); err != nil {
+	if err := h.server.AppDB().DeleteAgentSessionGroup(c.Request.Context(), id); err != nil {
 		log.Error().Err(err).Str("id", id).Msg("failed to delete group")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete group"})
 		return
@@ -94,7 +94,7 @@ func (h *Handlers) ReorderAgentSessionGroups(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := h.server.DB().ReorderAgentSessionGroups(c.Request.Context(), req.IDs); err != nil {
+	if err := h.server.AppDB().ReorderAgentSessionGroups(c.Request.Context(), req.IDs); err != nil {
 		log.Error().Err(err).Msg("failed to reorder groups")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to reorder groups"})
 		return

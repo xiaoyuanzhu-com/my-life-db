@@ -31,7 +31,7 @@ type ChangedFilesResponse struct {
 func (h *Handlers) GetAgentChangedFiles(c *gin.Context) {
 	sessionID := c.Param("id")
 
-	session, err := h.server.DB().GetAgentSession(sessionID)
+	session, err := h.server.AppDB().GetAgentSession(sessionID)
 	if err != nil {
 		log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to get agent session")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get session"})

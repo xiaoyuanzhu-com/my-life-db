@@ -35,7 +35,8 @@ type Server struct {
 	cfg *Config
 
 	// Components (owned by server)
-	database        *db.DB
+	indexDB         *db.DB // file index, rebuildable: files, files_fts, sqlar, digests
+	appDB           *db.DB // persistent user data: pins, settings, sessions, agent_*, explore_*
 	fsService       *fs.Service
 	digestWorker    *digest.Worker
 	textIndexer *textindex.Indexer
@@ -84,14 +85,69 @@ func New(cfg *Config) (*Server, error) {
 		shutdownCancel: cancel,
 	}
 
-	// 1. Open database
-	log.Info().Msg("initializing database")
-	dbCfg := cfg.ToDBConfig()
-	database, err := db.Open(dbCfg)
+	// 1. Open both databases. Index DB holds the rebuildable file/search
+	// index (files, files_fts, sqlar, digests); app DB holds persistent user
+	// data (pins, settings, sessions, agent_*, explore_*).
+	//
+	// Bootstrap order is sensitive because of cross-DB ATTACHes:
+	//   1. Index DB read pool (no writer yet — app DB doesn't exist on disk).
+	//   2. App DB (its ConnectHook ATTACHes idx read-only — index file exists).
+	//   3. App DB writer (no special ATTACH; reuses its read pool).
+	//   4. Index DB writer (ATTACHes app DB read-write so file-mutation
+	//      transactions can atomically update app.pins). Goes LAST because
+	//      its ATTACH needs app.sqlite to exist on disk.
+	cfg.PopulateDatabasePaths()
+
+	log.Info().Str("path", cfg.IndexDatabasePath).Msg("initializing index database")
+	indexDB, err := db.Open(db.Config{
+		Path:             cfg.IndexDatabasePath,
+		Role:             db.DBRoleIndex,
+		MaxOpenConns:     25,
+		MaxIdleConns:     10,
+		ConnMaxLifetime:  0,
+		LogQueries:       cfg.DBLogQueries,
+		ExtensionPath:    cfg.SimpleExtensionPath,
+		ExtensionDictDir: cfg.SimpleDictDir,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to open database: %w", err)
+		return nil, fmt.Errorf("open index db: %w", err)
 	}
-	s.database = database
+	s.indexDB = indexDB
+
+	log.Info().Str("path", cfg.AppDatabasePath).Msg("initializing app database")
+	appDB, err := db.Open(db.Config{
+		Path:             cfg.AppDatabasePath,
+		Role:             db.DBRoleApp,
+		AttachIndexPath:  cfg.IndexDatabasePath,
+		MaxOpenConns:     25,
+		MaxIdleConns:     10,
+		ConnMaxLifetime:  0,
+		LogQueries:       cfg.DBLogQueries,
+		ExtensionPath:    cfg.SimpleExtensionPath,
+		ExtensionDictDir: cfg.SimpleDictDir,
+	})
+	if err != nil {
+		indexDB.Close()
+		return nil, fmt.Errorf("open app db: %w", err)
+	}
+	s.appDB = appDB
+
+	// Start the app DB writer first (no cross-DB ATTACH; reuses its read pool).
+	if err := s.appDB.StartWriter(db.WriterConfig{}); err != nil {
+		appDB.Close()
+		indexDB.Close()
+		return nil, fmt.Errorf("start app writer: %w", err)
+	}
+
+	// Then start the index DB writer with ATTACH app rw so file mutations can
+	// atomically update app.pins inside the same transaction.
+	if err := s.indexDB.StartWriter(db.WriterConfig{
+		AttachOtherPath: cfg.AppDatabasePath,
+	}); err != nil {
+		appDB.Close()
+		indexDB.Close()
+		return nil, fmt.Errorf("start index writer: %w", err)
+	}
 
 	// Install bundled skills for agent discovery
 	skills.Install(cfg.UserDataDir)
@@ -99,8 +155,8 @@ func New(cfg *Config) (*Server, error) {
 	// Note: skills.InstallClientConfig (writes .mcp.json) runs after the MCP
 	// registry is populated below.
 
-	// 1.5. Initialize explore service
-	s.explore = explore.NewService(cfg.UserDataDir, s.database)
+	// 1.5. Initialize explore service (uses app DB — explore_posts/comments)
+	s.explore = explore.NewService(cfg.UserDataDir, s.appDB)
 
 	// 1.6. Initialize Agent Client (ACP-based)
 	{
@@ -405,8 +461,8 @@ http_headers = { "x-litellm-customer-id" = %q }
 		return nil
 	})
 
-	// 2. Load user settings from database and apply log level
-	settings, err := s.database.LoadUserSettings()
+	// 2. Load user settings from app DB and apply log level
+	settings, err := s.appDB.LoadUserSettings()
 	if err == nil && settings.Preferences.LogLevel != "" {
 		log.SetLevel(settings.Preferences.LogLevel)
 		log.Info().Str("level", settings.Preferences.LogLevel).Msg("log level set from settings")
@@ -416,28 +472,28 @@ http_headers = { "x-litellm-customer-id" = %q }
 	log.Info().Msg("initializing notifications service")
 	s.notifService = notifications.NewService()
 
-	// 4. Create FS service
+	// 4. Create FS service (uses index DB — files/digests/sqlar)
 	log.Info().Msg("initializing filesystem service")
 	fsCfg := cfg.ToFSConfig()
-	fsCfg.DB = fs.NewDBAdapter(s.database) // Inject database adapter
+	fsCfg.DB = fs.NewDBAdapter(s.indexDB)
 	fsCfg.PreviewNotifier = func(filePath, previewType string) {
 		s.notifService.NotifyPreviewUpdated(filePath, previewType)
 	}
 	s.fsService = fs.NewService(fsCfg)
 
-	// 5. Create digest worker
+	// 5. Create digest worker (uses index DB — digests/files/sqlar)
 	log.Info().Msg("initializing digest worker")
 	digestCfg := cfg.ToDigestConfig()
-	s.digestWorker = digest.NewWorker(digestCfg, s.database)
+	s.digestWorker = digest.NewWorker(digestCfg, s.indexDB)
 
-	// 5.5. Create text indexer (writes synchronously to SQLite FTS5 files_fts)
+	// 5.5. Create text indexer (writes synchronously to SQLite FTS5 files_fts
+	// in the index DB)
 	log.Info().Msg("initializing text indexer")
-	s.textIndexer = textindex.NewIndexer(s.fsService.DataRoot(), s.database)
+	s.textIndexer = textindex.NewIndexer(s.fsService.DataRoot(), s.indexDB)
 
 	// 7.5. MyLifeDB Connect store — third-party app authorization (OAuth 2.1
-	// + PKCE). Schema is owned by db/migration_026_connect.go; this just
-	// hands the connect package a *sql.DB handle.
-	s.connectStore = connect.NewStore(s.database.Conn())
+	// + PKCE). Schema is owned by db/migration_026_connect.go (app DB).
+	s.connectStore = connect.NewStore(s.appDB.Conn())
 
 	// 8. Wire service connections
 	s.connectServices()
@@ -676,12 +732,28 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	s.digestWorker.Stop()
 	s.fsService.Stop()
 
-	// 7. Close database last
-	if s.database != nil {
-		if err := s.database.Close(); err != nil {
-			log.Error().Err(err).Msg("database close error")
-			return err
+	// 7. Close databases last. Close app DB before index DB so any in-flight
+	// app connections release their ATTACH handles before the underlying
+	// index file goes away.
+	var firstErr error
+	if s.appDB != nil {
+		if err := s.appDB.Close(); err != nil {
+			log.Error().Err(err).Msg("app database close error")
+			if firstErr == nil {
+				firstErr = err
+			}
 		}
+	}
+	if s.indexDB != nil {
+		if err := s.indexDB.Close(); err != nil {
+			log.Error().Err(err).Msg("index database close error")
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	if firstErr != nil {
+		return firstErr
 	}
 
 	log.Info().Msg("server shutdown complete")
@@ -716,7 +788,8 @@ func (s *Server) runAttachmentsJanitor() {
 }
 
 // Component accessors for API handlers
-func (s *Server) DB() *db.DB                                  { return s.database }
+func (s *Server) IndexDB() *db.DB                             { return s.indexDB }
+func (s *Server) AppDB() *db.DB                               { return s.appDB }
 func (s *Server) FS() *fs.Service                             { return s.fsService }
 func (s *Server) Digest() *digest.Worker                      { return s.digestWorker }
 func (s *Server) TextIndexer() *textindex.Indexer            { return s.textIndexer }

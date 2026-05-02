@@ -21,7 +21,7 @@ type PersonResponse struct {
 
 // GetPeople handles GET /api/people
 func (h *Handlers) GetPeople(c *gin.Context) {
-	rows, err := h.server.DB().Read().Query(`
+	rows, err := h.server.AppDB().Read().Query(`
 		SELECT id, display_name, created_at, updated_at
 		FROM people
 		ORDER BY display_name
@@ -72,7 +72,7 @@ func (h *Handlers) CreatePerson(c *gin.Context) {
 		UpdatedAt:   now,
 	}
 
-	err := h.server.DB().Write(c.Request.Context(), func(tx *sql.Tx) error {
+	err := h.server.AppDB().Write(c.Request.Context(), func(tx *sql.Tx) error {
 		_, err := tx.Exec(`
 			INSERT INTO people (id, display_name, created_at, updated_at)
 			VALUES (?, ?, ?, ?)
@@ -93,7 +93,7 @@ func (h *Handlers) GetPerson(c *gin.Context) {
 	id := c.Param("id")
 
 	var p PersonResponse
-	err := h.server.DB().Read().QueryRow(`
+	err := h.server.AppDB().Read().QueryRow(`
 		SELECT id, display_name, created_at, updated_at
 		FROM people
 		WHERE id = ?
@@ -109,7 +109,7 @@ func (h *Handlers) GetPerson(c *gin.Context) {
 	}
 
 	// Get clusters for this person
-	rows, err := h.server.DB().Read().Query(`
+	rows, err := h.server.AppDB().Read().Query(`
 		SELECT id, people_id, cluster_type, sample_count, created_at, updated_at
 		FROM people_clusters
 		WHERE people_id = ?
@@ -150,7 +150,7 @@ func (h *Handlers) UpdatePerson(c *gin.Context) {
 	}
 
 	var affected int64
-	err := h.server.DB().Write(c.Request.Context(), func(tx *sql.Tx) error {
+	err := h.server.AppDB().Write(c.Request.Context(), func(tx *sql.Tx) error {
 		result, err := tx.Exec(`
 			UPDATE people SET display_name = ?, updated_at = ? WHERE id = ?
 		`, body.DisplayName, db.NowMs(), id)
@@ -178,7 +178,7 @@ func (h *Handlers) DeletePerson(c *gin.Context) {
 	id := c.Param("id")
 
 	var affected int64
-	err := h.server.DB().Write(c.Request.Context(), func(tx *sql.Tx) error {
+	err := h.server.AppDB().Write(c.Request.Context(), func(tx *sql.Tx) error {
 		// First unassign all clusters
 		if _, err := tx.Exec(`
 			UPDATE people_clusters SET people_id = NULL WHERE people_id = ?
@@ -225,7 +225,7 @@ func (h *Handlers) MergePeople(c *gin.Context) {
 	}
 
 	// Move all clusters from source to target, then delete source person
-	err := h.server.DB().Write(c.Request.Context(), func(tx *sql.Tx) error {
+	err := h.server.AppDB().Write(c.Request.Context(), func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`
 			UPDATE people_clusters SET people_id = ? WHERE people_id = ?
 		`, targetID, body.SourceID); err != nil {
@@ -256,7 +256,7 @@ func (h *Handlers) AssignEmbedding(c *gin.Context) {
 
 	// This would typically involve cluster management
 	// For now, just update the cluster's person_id
-	err := h.server.DB().Write(c.Request.Context(), func(tx *sql.Tx) error {
+	err := h.server.AppDB().Write(c.Request.Context(), func(tx *sql.Tx) error {
 		_, err := tx.Exec(`
 			UPDATE people_clusters SET people_id = ?, updated_at = ?
 			WHERE id = (SELECT cluster_id FROM people_embeddings WHERE id = ?)
@@ -275,7 +275,7 @@ func (h *Handlers) AssignEmbedding(c *gin.Context) {
 func (h *Handlers) UnassignEmbedding(c *gin.Context) {
 	embeddingID := c.Param("id")
 
-	err := h.server.DB().Write(c.Request.Context(), func(tx *sql.Tx) error {
+	err := h.server.AppDB().Write(c.Request.Context(), func(tx *sql.Tx) error {
 		_, err := tx.Exec(`
 			UPDATE people_clusters SET people_id = NULL, updated_at = ?
 			WHERE id = (SELECT cluster_id FROM people_embeddings WHERE id = ?)

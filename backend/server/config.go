@@ -1,6 +1,7 @@
 package server
 
 import (
+	"path/filepath"
 	"time"
 
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
@@ -19,6 +20,17 @@ type Config struct {
 	UserDataDir  string // User files (inbox, notes, etc.) - source of truth
 	AppDataDir   string // App data (database, cache) - rebuildable
 	DatabasePath string
+
+	// IndexDatabasePath is APP_DATA_DIR/index.sqlite — file index, rebuildable.
+	IndexDatabasePath string
+
+	// AppDatabasePath is APP_DATA_DIR/app.sqlite — persistent user data.
+	AppDatabasePath string
+
+	// LegacyDatabasePath is APP_DATA_DIR/database.sqlite — only present for
+	// existing installs prior to the split. Used by the one-shot migration
+	// in Task 10.
+	LegacyDatabasePath string
 
 	// SQLite simple FTS5 extension (wangfenjin/simple)
 	SimpleExtensionPath string
@@ -58,7 +70,30 @@ func (c *Config) IsDevelopment() bool {
 	return c.Env != "production"
 }
 
-// ToDBConfig converts server config to database config
+// PopulateDatabasePaths fills IndexDatabasePath, AppDatabasePath, and
+// LegacyDatabasePath from DatabasePath when they are not explicitly set.
+// Both index.sqlite and app.sqlite live alongside the original database.sqlite
+// in APP_DATA_DIR.
+func (c *Config) PopulateDatabasePaths() {
+	if c.DatabasePath == "" {
+		return
+	}
+	appDataDir := filepath.Dir(c.DatabasePath)
+	if c.IndexDatabasePath == "" {
+		c.IndexDatabasePath = filepath.Join(appDataDir, "index.sqlite")
+	}
+	if c.AppDatabasePath == "" {
+		c.AppDatabasePath = filepath.Join(appDataDir, "app.sqlite")
+	}
+	if c.LegacyDatabasePath == "" {
+		c.LegacyDatabasePath = c.DatabasePath
+	}
+}
+
+// ToDBConfig converts server config to database config (legacy single-DB path).
+// Kept for compatibility with code paths that still reference the legacy
+// database. Most code should call db.Open directly with role-specific
+// configuration; see server.New.
 func (c *Config) ToDBConfig() db.Config {
 	return db.Config{
 		Path:             c.DatabasePath,

@@ -9,7 +9,7 @@ import (
 )
 
 func (h *Handlers) GetCollectors(c *gin.Context) {
-	collectors, err := h.server.DB().GetCollectors()
+	collectors, err := h.server.AppDB().GetCollectors()
 	if err != nil {
 		log.Error().Err(err).Msg("failed to load collectors")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load collectors"})
@@ -39,7 +39,7 @@ func (h *Handlers) UpsertCollector(c *gin.Context) {
 		return
 	}
 
-	result, err := h.server.DB().UpsertCollector(c.Request.Context(), id, &req)
+	result, err := h.server.AppDB().UpsertCollector(c.Request.Context(), id, &req)
 	if err != nil {
 		log.Error().Err(err).Str("id", id).Msg("failed to upsert collector")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update collector"})

@@ -23,4 +23,9 @@ type Config struct {
 	// after loading the simple extension. Required for Chinese word segmentation.
 	// When empty, jieba_dict is not called (English-only tokenization still works).
 	ExtensionDictDir string
+
+	// AttachIndexPath, when set on a Config with Role=DBRoleApp, causes every
+	// connection to ATTACH the index DB read-only as 'idx'. Cross-DB queries
+	// like `JOIN idx.files` then work transparently.
+	AttachIndexPath string
 }

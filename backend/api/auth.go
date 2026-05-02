@@ -30,7 +30,7 @@ func (h *Handlers) Login(c *gin.Context) {
 	}
 
 	// Get stored password hash
-	storedHash, err := h.server.DB().GetSetting("auth_password_hash")
+	storedHash, err := h.server.AppDB().GetSetting("auth_password_hash")
 	if err != nil {
 		log.Error().Err(err).Msg("failed to get password hash")
 		RespondCoded(c, http.StatusInternalServerError, "AUTH_SESSION_FAILED", "Authentication error")
@@ -40,7 +40,7 @@ func (h *Handlers) Login(c *gin.Context) {
 	// If no password is set, create one (first login sets the password)
 	if storedHash == "" {
 		hash := hashPassword(body.Password)
-		if err := h.server.DB().SetSetting(c.Request.Context(), "auth_password_hash", hash); err != nil {
+		if err := h.server.AppDB().SetSetting(c.Request.Context(), "auth_password_hash", hash); err != nil {
 			log.Error().Err(err).Msg("failed to save password hash")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set password"})
 			return
@@ -58,7 +58,7 @@ func (h *Handlers) Login(c *gin.Context) {
 
 	// Generate and persist session
 	sessionToken := generateSessionToken()
-	session, err := h.server.DB().CreateSession(c.Request.Context(), sessionToken)
+	session, err := h.server.AppDB().CreateSession(c.Request.Context(), sessionToken)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to create session")
 		RespondCoded(c, http.StatusInternalServerError, "AUTH_SESSION_FAILED", "Failed to create session")
@@ -84,7 +84,7 @@ func (h *Handlers) Logout(c *gin.Context) {
 	sessionToken, err := c.Cookie(sessionCookieName)
 	if err == nil && sessionToken != "" {
 		// Delete session from database
-		if err := h.server.DB().DeleteSession(c.Request.Context(), sessionToken); err != nil {
+		if err := h.server.AppDB().DeleteSession(c.Request.Context(), sessionToken); err != nil {
 			log.Error().Err(err).Msg("failed to delete session")
 		}
 	}
@@ -105,7 +105,7 @@ func (h *Handlers) ValidatePasswordSession(c *gin.Context) *db.Session {
 		return nil
 	}
 
-	session, err := h.server.DB().GetSession(sessionToken)
+	session, err := h.server.AppDB().GetSession(sessionToken)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to get session")
 		return nil
@@ -117,7 +117,7 @@ func (h *Handlers) ValidatePasswordSession(c *gin.Context) *db.Session {
 	}
 
 	// Touch session to update last_used_at
-	if err := h.server.DB().TouchSession(c.Request.Context(), sessionToken); err != nil {
+	if err := h.server.AppDB().TouchSession(c.Request.Context(), sessionToken); err != nil {
 		log.Error().Err(err).Msg("failed to touch session")
 	}
 

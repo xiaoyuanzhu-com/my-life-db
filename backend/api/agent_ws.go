@@ -77,7 +77,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			Int("turnCompletesDelivered", delivered).
 			Msg("[diag] WS disconnect: persisting read state")
 		if n > 0 {
-			if err := h.server.DB().MarkAgentSessionRead(context.Background(), sessionID, n); err != nil {
+			if err := h.server.AppDB().MarkAgentSessionRead(context.Background(), sessionID, n); err != nil {
 				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist read state")
 			} else {
 				h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "read")
@@ -99,7 +99,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 	sessionState.Mu.RUnlock()
 	log.Info().Str("sessionId", sessionID).Int("resultCount", rc).Msg("WS connect: marking session read")
 	if rc > 0 {
-		if err := h.server.DB().MarkAgentSessionRead(ctx, sessionID, rc); err != nil {
+		if err := h.server.AppDB().MarkAgentSessionRead(ctx, sessionID, rc); err != nil {
 			log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to mark session read on connect")
 		} else {
 			h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "read")
@@ -122,7 +122,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 		"isActive":     isActive,
 		"isProcessing": isProcessing,
 	}
-	if rec, err := h.server.DB().GetAgentSession(sessionID); err == nil && rec != nil {
+	if rec, err := h.server.AppDB().GetAgentSession(sessionID); err == nil && rec != nil {
 		infoFields["agentType"] = rec.AgentType
 		if opts := buildAgentConfigOptions(rec.AgentType, h.server.Cfg().AgentLLM.Models); len(opts) > 0 {
 			infoFields["defaultConfigOptions"] = opts
@@ -192,7 +192,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 	if sessionState.MessageCount() == 0 {
 		sessionState.HistoryOnce.Do(func() {
 			log.Info().Str("sessionId", sessionID).Msg("no in-memory messages, attempting history load via ACP session/load")
-			sessionRecord, _ := h.server.DB().GetAgentSession(sessionID)
+			sessionRecord, _ := h.server.AppDB().GetAgentSession(sessionID)
 			if sessionRecord == nil || sessionRecord.WorkingDir == "" {
 				log.Info().Str("sessionId", sessionID).Msg("session not found in DB or no working dir — skipping history load")
 				sessionState.Mu.Lock()
@@ -203,7 +203,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 
 			log.Info().Str("sessionId", sessionID).Str("workingDir", sessionRecord.WorkingDir).Msg("found session in DB, spawning ACP process for session/load")
 			agentType := parseAgentType(sessionRecord.AgentType)
-			mode, _ := h.server.DB().GetAgentSessionPermissionMode(sessionID)
+			mode, _ := h.server.AppDB().GetAgentSessionPermissionMode(sessionID)
 
 			sess, err := h.server.AgentClient().CreateSession(h.server.ShutdownContext(), agentsdk.SessionConfig{
 				Agent:        agentType,
@@ -382,14 +382,14 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				agentType := agentsdk.AgentClaudeCode
 				workDir := ""
 				lazyStorageID := ""
-				if sessionRecord, _ := h.server.DB().GetAgentSession(sessionID); sessionRecord != nil {
+				if sessionRecord, _ := h.server.AppDB().GetAgentSession(sessionID); sessionRecord != nil {
 					if sessionRecord.AgentType == "codex" {
 						agentType = agentsdk.AgentCodex
 					}
 					workDir = sessionRecord.WorkingDir
 					lazyStorageID = sessionRecord.StorageID
 				}
-				mode, _ := h.server.DB().GetAgentSessionPermissionMode(sessionID)
+				mode, _ := h.server.AppDB().GetAgentSessionPermissionMode(sessionID)
 
 				// Create a new ACP session
 				sess, err := h.server.AgentClient().CreateSession(h.server.ShutdownContext(), agentsdk.SessionConfig{
@@ -423,7 +423,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 
 			// Update the session's updated_at so the session list re-sorts
 			// by last user activity (agent responses don't touch this).
-			if err := h.server.DB().TouchAgentSession(ctx, sessionID); err != nil {
+			if err := h.server.AppDB().TouchAgentSession(ctx, sessionID); err != nil {
 				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to touch agent session")
 			}
 
@@ -545,8 +545,8 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			}(acpSession, promptText, promptCtx, pCancel)
 
 			// Auto-unarchive
-			if archived, err := h.server.DB().IsAgentSessionArchived(sessionID); err == nil && archived {
-				if err := h.server.DB().UnarchiveAgentSession(ctx, sessionID); err != nil {
+			if archived, err := h.server.AppDB().IsAgentSessionArchived(sessionID); err == nil && archived {
+				if err := h.server.AppDB().UnarchiveAgentSession(ctx, sessionID); err != nil {
 					log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to auto-unarchive session")
 				} else {
 					log.Info().Str("sessionId", sessionID).Msg("auto-unarchived session on new message")

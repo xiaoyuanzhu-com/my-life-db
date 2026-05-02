@@ -125,7 +125,7 @@ func (h *Handlers) Search(c *gin.Context) {
 	sources := []string{}
 
 	// Keyword search via FTS5
-	hits, hitsTotal, err := h.server.DB().SearchFTS(query, db.FTSSearchOptions{
+	hits, hitsTotal, err := h.server.IndexDB().SearchFTS(query, db.FTSSearchOptions{
 		Limit:      limit,
 		Offset:     offset,
 		TypeFilter: typeFilter,
@@ -139,9 +139,13 @@ func (h *Handlers) Search(c *gin.Context) {
 
 		terms := extractSearchTerms(query)
 		for _, hit := range hits {
-			file, err := h.server.DB().GetFileWithDigests(hit.FilePath)
+			file, err := h.server.IndexDB().GetFileWithDigests(hit.FilePath)
 			if err != nil || file == nil {
 				continue
+			}
+			// Pins live in the app DB; populate IsPinned from there.
+			if pinned, perr := h.server.AppDB().IsPinned(hit.FilePath); perr == nil {
+				file.IsPinned = pinned
 			}
 
 			// Highlights map mirrors the old meili shape so the frontend

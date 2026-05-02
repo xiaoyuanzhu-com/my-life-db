@@ -12,7 +12,7 @@ import (
 func (h *Handlers) GetStats(c *gin.Context) {
 	// Query library files (excluding app/ and inbox/)
 	var libraryCount, librarySize int64
-	err := h.server.DB().Read().QueryRow(`
+	err := h.server.IndexDB().Read().QueryRow(`
 		SELECT COUNT(*), COALESCE(SUM(size), 0)
 		FROM files
 		WHERE is_folder = 0
@@ -26,7 +26,7 @@ func (h *Handlers) GetStats(c *gin.Context) {
 
 	// Query total files for digests
 	var totalFiles int64
-	err = h.server.DB().Read().QueryRow(`
+	err = h.server.IndexDB().Read().QueryRow(`
 		SELECT COUNT(*)
 		FROM files
 		WHERE is_folder = 0
@@ -39,7 +39,7 @@ func (h *Handlers) GetStats(c *gin.Context) {
 
 	// Query digested files (completed status)
 	var digestedFiles int64
-	err = h.server.DB().Read().QueryRow(`
+	err = h.server.IndexDB().Read().QueryRow(`
 		SELECT COUNT(DISTINCT file_path)
 		FROM digests
 		WHERE status = 'completed'
@@ -52,7 +52,7 @@ func (h *Handlers) GetStats(c *gin.Context) {
 
 	// Query pending digests
 	var pendingDigests int64
-	err = h.server.DB().Read().QueryRow(`
+	err = h.server.IndexDB().Read().QueryRow(`
 		SELECT COUNT(*)
 		FROM digests
 		WHERE status IN ('todo', 'in-progress')

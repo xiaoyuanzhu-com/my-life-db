@@ -137,7 +137,7 @@ func (h *Handlers) GetAgentSessions(c *gin.Context) {
 	}
 
 	// Fetch limit+1 to determine if there are more results
-	sessions, err := h.server.DB().ListAgentSessions(includeArchived, cursor, limit+1)
+	sessions, err := h.server.AppDB().ListAgentSessions(includeArchived, cursor, limit+1)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to list agent sessions")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list sessions"})
@@ -161,7 +161,7 @@ func (h *Handlers) GetAgentSessions(c *gin.Context) {
 	}
 
 	// Load read states and runtime states for sessionState computation
-	readStates, _ := h.server.DB().GetAllSessionReadStates()
+	readStates, _ := h.server.AppDB().GetAllSessionReadStates()
 	runtimeStates := h.agentMgr.AllRuntimeStates()
 
 	// Convert to response format matching what the frontend expects
@@ -224,7 +224,7 @@ func (h *Handlers) GetAgentSessions(c *gin.Context) {
 func (h *Handlers) GetAgentSession(c *gin.Context) {
 	sessionID := c.Param("id")
 
-	session, err := h.server.DB().GetAgentSession(sessionID)
+	session, err := h.server.AppDB().GetAgentSession(sessionID)
 	if err != nil {
 		log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to get agent session")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get session"})
@@ -236,7 +236,7 @@ func (h *Handlers) GetAgentSession(c *gin.Context) {
 	}
 
 	// Compute state using same logic as list endpoint
-	readStates, _ := h.server.DB().GetAllSessionReadStates()
+	readStates, _ := h.server.AppDB().GetAllSessionReadStates()
 	runtimeStates := h.agentMgr.AllRuntimeStates()
 	state := computeSessionState(session.SessionID, session.ArchivedAt != nil, readStates, runtimeStates)
 
@@ -305,7 +305,7 @@ func (h *Handlers) UpdateAgentSession(c *gin.Context) {
 	_ = json.Unmarshal(rawBody, &keys)
 
 	if req.Title != nil && *req.Title != "" {
-		if err := h.server.DB().UpdateAgentSessionTitle(c.Request.Context(), sessionID, *req.Title); err != nil {
+		if err := h.server.AppDB().UpdateAgentSessionTitle(c.Request.Context(), sessionID, *req.Title); err != nil {
 			log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to update session title")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update session"})
 			return
@@ -319,7 +319,7 @@ func (h *Handlers) UpdateAgentSession(c *gin.Context) {
 		}
 		if groupID != "" {
 			// Validate that the target group exists, otherwise the update is silently a no-op.
-			g, err := h.server.DB().GetAgentSessionGroup(groupID)
+			g, err := h.server.AppDB().GetAgentSessionGroup(groupID)
 			if err != nil {
 				log.Error().Err(err).Str("groupId", groupID).Msg("failed to look up group")
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update session"})
@@ -330,7 +330,7 @@ func (h *Handlers) UpdateAgentSession(c *gin.Context) {
 				return
 			}
 		}
-		if err := h.server.DB().SetAgentSessionGroup(c.Request.Context(), sessionID, groupID); err != nil {
+		if err := h.server.AppDB().SetAgentSessionGroup(c.Request.Context(), sessionID, groupID); err != nil {
 			log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to set session group")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update session"})
 			return
@@ -338,7 +338,7 @@ func (h *Handlers) UpdateAgentSession(c *gin.Context) {
 	}
 
 	if req.Pinned != nil {
-		if err := h.server.DB().SetAgentSessionPinned(c.Request.Context(), sessionID, *req.Pinned); err != nil {
+		if err := h.server.AppDB().SetAgentSessionPinned(c.Request.Context(), sessionID, *req.Pinned); err != nil {
 			log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to set session pinned")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update session"})
 			return
@@ -353,7 +353,7 @@ func (h *Handlers) UpdateAgentSession(c *gin.Context) {
 // POST /api/agent/sessions/:id/archive
 func (h *Handlers) ArchiveAgentSession(c *gin.Context) {
 	sessionID := c.Param("id")
-	if err := h.server.DB().ArchiveAgentSession(c.Request.Context(), sessionID); err != nil {
+	if err := h.server.AppDB().ArchiveAgentSession(c.Request.Context(), sessionID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to archive session"})
 		return
 	}
@@ -364,7 +364,7 @@ func (h *Handlers) ArchiveAgentSession(c *gin.Context) {
 // POST /api/agent/sessions/:id/unarchive
 func (h *Handlers) UnarchiveAgentSession(c *gin.Context) {
 	sessionID := c.Param("id")
-	if err := h.server.DB().UnarchiveAgentSession(c.Request.Context(), sessionID); err != nil {
+	if err := h.server.AppDB().UnarchiveAgentSession(c.Request.Context(), sessionID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to unarchive session"})
 		return
 	}
@@ -376,7 +376,7 @@ func (h *Handlers) UnarchiveAgentSession(c *gin.Context) {
 func (h *Handlers) ShareAgentSession(c *gin.Context) {
 	sessionID := c.Param("id")
 	shareToken := uuid.New().String()
-	if err := h.server.DB().ShareAgentSession(c.Request.Context(), sessionID, shareToken); err != nil {
+	if err := h.server.AppDB().ShareAgentSession(c.Request.Context(), sessionID, shareToken); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to share session"})
 		return
 	}
@@ -390,7 +390,7 @@ func (h *Handlers) ShareAgentSession(c *gin.Context) {
 // DELETE /api/agent/sessions/:id/share
 func (h *Handlers) UnshareAgentSession(c *gin.Context) {
 	sessionID := c.Param("id")
-	if err := h.server.DB().UnshareAgentSession(c.Request.Context(), sessionID); err != nil {
+	if err := h.server.AppDB().UnshareAgentSession(c.Request.Context(), sessionID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to unshare session"})
 		return
 	}

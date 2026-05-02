@@ -44,16 +44,16 @@ func (h *Handlers) GetExplorePosts(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid before cursor format"})
 			return
 		}
-		result, err = h.server.DB().ListExplorePostsBefore(before, limit)
+		result, err = h.server.AppDB().ListExplorePostsBefore(before, limit)
 	} else if after != "" {
 		_, _, parseErr := db.ParseExploreCursor(after)
 		if parseErr != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid after cursor format"})
 			return
 		}
-		result, err = h.server.DB().ListExplorePostsAfter(after, limit)
+		result, err = h.server.AppDB().ListExplorePostsAfter(after, limit)
 	} else {
-		result, err = h.server.DB().ListExplorePostsNewest(limit)
+		result, err = h.server.AppDB().ListExplorePostsNewest(limit)
 	}
 
 	if err != nil {
@@ -87,7 +87,7 @@ func (h *Handlers) GetExplorePosts(c *gin.Context) {
 func (h *Handlers) GetExplorePost(c *gin.Context) {
 	id := c.Param("id")
 
-	post, err := h.server.DB().GetExplorePost(id)
+	post, err := h.server.AppDB().GetExplorePost(id)
 	if err != nil {
 		log.Error().Err(err).Str("id", id).Msg("get explore post failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get explore post"})
@@ -105,7 +105,7 @@ func (h *Handlers) GetExplorePost(c *gin.Context) {
 func (h *Handlers) GetExploreComments(c *gin.Context) {
 	postID := c.Param("id")
 
-	comments, err := h.server.DB().ListExploreComments(postID)
+	comments, err := h.server.AppDB().ListExploreComments(postID)
 	if err != nil {
 		log.Error().Err(err).Str("postId", postID).Msg("list explore comments failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list comments"})

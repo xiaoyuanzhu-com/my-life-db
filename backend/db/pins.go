@@ -62,14 +62,17 @@ func (d *DB) GetAllPins() ([]Pin, error) {
 	return pins, nil
 }
 
-// GetPinnedFiles retrieves all pinned files with their file records
+// GetPinnedFiles retrieves all pinned files with their file records.
+// Pins live in the app DB; files live in the index DB ATTACHed read-only as
+// 'idx' on every app-DB connection (see registerAppDriver). The JOIN below
+// requires that ATTACH to be present.
 func (d *DB) GetPinnedFiles() ([]FileWithDigests, error) {
 	query := `
 		SELECT f.path, f.name, f.is_folder, f.size, f.mime_type, f.hash,
 			   f.modified_at, f.created_at, f.last_scanned_at, f.text_preview, f.preview_sqlar, f.preview_status,
 			   p.pinned_at as pin_created_at
 		FROM pins p
-		JOIN files f ON f.path = p.file_path
+		JOIN idx.files f ON f.path = p.file_path
 		ORDER BY p.pinned_at DESC
 	`
 

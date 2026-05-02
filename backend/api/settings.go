@@ -11,7 +11,7 @@ import (
 
 // GetSettings handles GET /api/settings
 func (h *Handlers) GetSettings(c *gin.Context) {
-	settings, err := h.server.DB().LoadUserSettings()
+	settings, err := h.server.AppDB().LoadUserSettings()
 	if err != nil {
 		log.Error().Err(err).Msg("failed to load settings")
 		RespondCoded(c, http.StatusInternalServerError, "SETTINGS_LOAD_FAILED", "Failed to load settings")
@@ -33,7 +33,7 @@ func (h *Handlers) UpdateSettings(c *gin.Context) {
 	}
 
 	// Load current settings
-	current, err := h.server.DB().LoadUserSettings()
+	current, err := h.server.AppDB().LoadUserSettings()
 	if err != nil {
 		log.Error().Err(err).Msg("failed to load current settings")
 		RespondCoded(c, http.StatusInternalServerError, "SETTINGS_LOAD_FAILED", "Failed to load current settings")
@@ -44,7 +44,7 @@ func (h *Handlers) UpdateSettings(c *gin.Context) {
 	merged := mergeSettings(current, &updates)
 
 	// Save merged settings
-	if err := h.server.DB().SaveUserSettings(c.Request.Context(), merged); err != nil {
+	if err := h.server.AppDB().SaveUserSettings(c.Request.Context(), merged); err != nil {
 		log.Error().Err(err).Msg("failed to save settings")
 		RespondCoded(c, http.StatusInternalServerError, "SETTINGS_SAVE_FAILED", "Failed to save settings")
 		return
@@ -201,14 +201,14 @@ func (h *Handlers) ResetSettings(c *gin.Context) {
 		return
 	}
 
-	if err := h.server.DB().ResetSettings(c.Request.Context()); err != nil {
+	if err := h.server.AppDB().ResetSettings(c.Request.Context()); err != nil {
 		log.Error().Err(err).Msg("failed to reset settings")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reset settings"})
 		return
 	}
 
 	// Return default settings
-	settings, err := h.server.DB().LoadUserSettings()
+	settings, err := h.server.AppDB().LoadUserSettings()
 	if err != nil {
 		log.Error().Err(err).Msg("failed to load settings after reset")
 		c.JSON(http.StatusOK, gin.H{"success": true})

@@ -26,8 +26,11 @@ func RegisterMigration(m Migration) {
 	migrations = append(migrations, m)
 }
 
-// runMigrations executes all pending migrations
-func runMigrations(db *sql.DB) error {
+// runMigrations executes pending migrations whose Target matches role.
+// Each physical SQLite file (index.sqlite, app.sqlite) maintains its own
+// schema_version table, so migrations targeted at the other role are skipped
+// completely — they never get an entry in this DB's schema_version.
+func runMigrations(db *sql.DB, role DBRole) error {
 	// Ensure schema_version table exists
 	_, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS schema_version (
@@ -52,31 +55,47 @@ func runMigrations(db *sql.DB) error {
 		return fmt.Errorf("failed to get current version: %w", err)
 	}
 
-	// Refuse to run if the DB has a higher version than any registered migration.
-	// This usually means the binary is older than the database (downgrade) or a
-	// migration file was removed. Silently resetting the version table would
-	// re-run migrations against an already-migrated schema and cause subtle
-	// runtime failures, so fail loudly instead.
-	if len(migrations) > 0 {
-		maxRegistered := migrations[len(migrations)-1].Version
-		if currentVersion > maxRegistered {
-			return fmt.Errorf(
-				"schema version conflict: database is at version %d but the highest registered migration is %d; "+
-					"this binary is likely older than the database, or a migration was removed. "+
-					"Refusing to start to avoid corrupting migration history",
-				currentVersion, maxRegistered,
-			)
+	// Compute the highest version registered for this role. We use this for
+	// the downgrade check — having a newer version of an OTHER role's
+	// migration in this DB's schema_version is harmless (e.g., legacy
+	// installs migrating from the single-DB layout), so only compare against
+	// migrations that actually run on this DB.
+	var maxRegistered int
+	for _, m := range migrations {
+		if m.Target == role && m.Version > maxRegistered {
+			maxRegistered = m.Version
 		}
 	}
 
-	// Apply pending migrations
+	// Refuse to run if the DB has a higher version than any registered migration
+	// for this role. This usually means the binary is older than the database
+	// (downgrade) or a role-matching migration file was removed. Silently
+	// resetting the version table would re-run migrations against an
+	// already-migrated schema and cause subtle runtime failures, so fail
+	// loudly instead. Skip the check entirely when this role has no
+	// registered migrations at all (maxRegistered == 0) — that would
+	// otherwise reject any non-empty schema_version.
+	if maxRegistered > 0 && currentVersion > maxRegistered {
+		return fmt.Errorf(
+			"schema version conflict: %s db is at version %d but the highest registered migration for this role is %d; "+
+				"this binary is likely older than the database, or a migration was removed. "+
+				"Refusing to start to avoid corrupting migration history",
+			role.String(), currentVersion, maxRegistered,
+		)
+	}
+
+	// Apply pending migrations whose Target matches this DB's role.
 	for _, m := range migrations {
+		if m.Target != role {
+			continue
+		}
 		if m.Version <= currentVersion {
 			continue
 		}
 
 		log.Info().
 			Int("version", m.Version).
+			Str("role", role.String()).
 			Str("description", m.Description).
 			Msg("applying migration")
 
@@ -98,6 +117,7 @@ func runMigrations(db *sql.DB) error {
 
 		log.Info().
 			Int("version", m.Version).
+			Str("role", role.String()).
 			Msg("migration applied successfully")
 	}
 

@@ -6,82 +6,95 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 )
 
-// dbAdapter implements the fs.Database interface by delegating to a *db.DB.
+// dbAdapter implements the fs.Database interface by delegating to the index
+// DB. File-mutation methods (DeleteFileWithCascade, RenameFilePath, ...) are
+// fully atomic across the index DB and the app DB: the index DB's writer
+// connection ATTACHes app.sqlite read-write as 'app', so a single SQL
+// transaction can DELETE/UPDATE files, digests, files_fts AND app.pins. No
+// orphan pins on crash, no second-transaction follow-up.
 type dbAdapter struct {
-	db *db.DB
+	indexDB *db.DB // files, digests, sqlar, files_fts; cross-DB writes also touch app.pins via ATTACH rw
 }
 
-// NewDBAdapter creates a new database adapter backed by the given *db.DB.
-func NewDBAdapter(d *db.DB) Database {
-	return &dbAdapter{db: d}
+// NewDBAdapter creates a new database adapter. indexDB hosts the file index
+// tables and is the only DB the adapter needs — pin operations happen inside
+// the index writer's transactions automatically via app.pins.
+func NewDBAdapter(indexDB *db.DB) Database {
+	return &dbAdapter{indexDB: indexDB}
 }
 
 // GetFileByPath retrieves a file record by path
 func (a *dbAdapter) GetFileByPath(path string) (*db.FileRecord, error) {
-	return a.db.GetFileByPath(path)
+	return a.indexDB.GetFileByPath(path)
 }
 
 // UpsertFile inserts or updates a file record
 func (a *dbAdapter) UpsertFile(record *db.FileRecord) (bool, error) {
-	return a.db.UpsertFile(context.Background(), record)
+	return a.indexDB.UpsertFile(context.Background(), record)
 }
 
 // DeleteFile removes a file record
 func (a *dbAdapter) DeleteFile(path string) error {
-	return a.db.DeleteFile(context.Background(), path)
+	return a.indexDB.DeleteFile(context.Background(), path)
 }
 
 // UpdateFileField updates a single field on a file record
 func (a *dbAdapter) UpdateFileField(path string, field string, value interface{}) error {
-	return a.db.UpdateFileField(context.Background(), path, field, value)
+	return a.indexDB.UpdateFileField(context.Background(), path, field, value)
 }
 
-// MoveFileAtomic atomically moves a file record from oldPath to newPath
+// MoveFileAtomic atomically moves a file record from oldPath to newPath,
+// including any matching pin. Cross-DB atomic via the index writer's ATTACH.
 func (a *dbAdapter) MoveFileAtomic(oldPath, newPath string, record *db.FileRecord) error {
-	return a.db.MoveFileAtomic(context.Background(), oldPath, newPath, record)
+	return a.indexDB.MoveFileAtomic(context.Background(), oldPath, newPath, record)
 }
 
 // ListAllFilePaths returns all file paths in the database (for reconciliation)
 func (a *dbAdapter) ListAllFilePaths() ([]string, error) {
-	return a.db.ListAllFilePaths()
+	return a.indexDB.ListAllFilePaths()
 }
 
-// RenameFilePath updates a single file's path and name, including all related tables
+// RenameFilePath updates a single file's path/name and rewrites any matching
+// pin in the same atomic transaction.
 func (a *dbAdapter) RenameFilePath(oldPath, newPath, newName string) error {
-	return a.db.RenameFilePath(context.Background(), oldPath, newPath, newName)
+	return a.indexDB.RenameFilePath(context.Background(), oldPath, newPath, newName)
 }
 
-// RenameFilePaths updates all paths that start with oldPath prefix (for folder renames)
+// RenameFilePaths updates all paths under oldPath (folder rename) and rewrites
+// matching pins in the same atomic transaction.
 func (a *dbAdapter) RenameFilePaths(oldPath, newPath string) error {
-	return a.db.RenameFilePaths(context.Background(), oldPath, newPath)
+	return a.indexDB.RenameFilePaths(context.Background(), oldPath, newPath)
 }
 
-// DeleteFileWithCascade removes a file and all related records (digests, pins)
+// DeleteFileWithCascade removes a file (and all related rows including any
+// matching pin) in one atomic cross-DB transaction.
 func (a *dbAdapter) DeleteFileWithCascade(path string) error {
-	return a.db.DeleteFileWithCascade(context.Background(), path)
+	return a.indexDB.DeleteFileWithCascade(context.Background(), path)
 }
 
-// BatchDeleteFilesWithCascade removes multiple files and related records in one transaction
+// BatchDeleteFilesWithCascade removes multiple files and all related rows
+// (including matching pins) in one atomic cross-DB transaction.
 func (a *dbAdapter) BatchDeleteFilesWithCascade(paths []string) error {
-	return a.db.BatchDeleteFilesWithCascade(context.Background(), paths)
+	return a.indexDB.BatchDeleteFilesWithCascade(context.Background(), paths)
 }
 
-// DeleteFilesWithCascadePrefix removes a folder and all files/records under it
+// DeleteFilesWithCascadePrefix removes a folder and all rows under it
+// (including matching pins) in one atomic cross-DB transaction.
 func (a *dbAdapter) DeleteFilesWithCascadePrefix(pathPrefix string) error {
-	return a.db.DeleteFilesWithCascadePrefix(context.Background(), pathPrefix)
+	return a.indexDB.DeleteFilesWithCascadePrefix(context.Background(), pathPrefix)
 }
 
 // GetFilesMissingPreviews returns files that need preview generation
 func (a *dbAdapter) GetFilesMissingPreviews(limit int) ([]db.FileWithMime, error) {
-	return a.db.GetFilesMissingPreviews(limit)
+	return a.indexDB.GetFilesMissingPreviews(limit)
 }
 
 // SqlarStore stores data in the SQLAR table
 func (a *dbAdapter) SqlarStore(name string, data []byte, mode int) bool {
-	return a.db.SqlarStore(context.Background(), name, data, mode)
+	return a.indexDB.SqlarStore(context.Background(), name, data, mode)
 }
 
 // SqlarExists checks if a name exists in the SQLAR table
 func (a *dbAdapter) SqlarExists(name string) bool {
-	return a.db.SqlarExists(name)
+	return a.indexDB.SqlarExists(name)
 }

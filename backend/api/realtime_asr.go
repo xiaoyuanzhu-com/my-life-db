@@ -62,7 +62,7 @@ func (h *Handlers) RealtimeASR(c *gin.Context) {
 	defer clientConn.Close()
 
 	// Load settings for Aliyun credentials
-	settings, err := h.server.DB().LoadUserSettings()
+	settings, err := h.server.AppDB().LoadUserSettings()
 	if err != nil {
 		sendError(clientConn, "failed to load settings: "+err.Error())
 		return

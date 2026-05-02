@@ -722,6 +722,10 @@ type FileWithDigests struct {
 }
 
 // GetFileWithDigests retrieves a file with all its digests
+// GetFileWithDigests returns the file record + its digests from the index DB.
+// IsPinned is left unset; callers that need it must populate it from the app
+// DB (e.g., via AppDB().IsPinned). pins lives in the app DB now and the index
+// DB has no read access in the other direction.
 func (d *DB) GetFileWithDigests(path string) (*FileWithDigests, error) {
 	file, err := d.GetFileByPath(path)
 	if err != nil || file == nil {
@@ -733,20 +737,16 @@ func (d *DB) GetFileWithDigests(path string) (*FileWithDigests, error) {
 		return nil, err
 	}
 
-	isPinned, err := d.IsPinned(path)
-	if err != nil {
-		return nil, err
-	}
-
 	return &FileWithDigests{
 		FileRecord: *file,
 		Digests:    digests,
-		IsPinned:   isPinned,
 	}, nil
 }
 
-// RenameFilePath updates a single file's path and name, including all related tables.
-// Updates: files, digests, pins, files_fts.
+// RenameFilePath updates a single file's path and name, including all related
+// tables. Updates: files, digests, files_fts (index DB) plus app.pins (app DB,
+// ATTACHed read-write on the writer connection). All happen in one atomic
+// transaction so a crash mid-rename can never leave an orphan pin.
 func (d *DB) RenameFilePath(ctx context.Context, oldPath, newPath, newName string) error {
 	return d.Write(ctx, func(tx *sql.Tx) error {
 		// Update files
@@ -759,22 +759,24 @@ func (d *DB) RenameFilePath(ctx context.Context, oldPath, newPath, newName strin
 			return fmt.Errorf("failed to update digests: %w", err)
 		}
 
-		// Update pins
-		if _, err := tx.Exec(`UPDATE pins SET file_path = ? WHERE file_path = ?`, newPath, oldPath); err != nil {
-			return fmt.Errorf("failed to update pins: %w", err)
-		}
-
 		// Update FTS5 search index
 		if _, err := tx.Exec(`UPDATE files_fts SET file_path = ? WHERE file_path = ?`, newPath, oldPath); err != nil {
 			return fmt.Errorf("failed to update files_fts: %w", err)
+		}
+
+		// Update pins in the app DB (ATTACHed rw as 'app' on the index writer
+		// connection). Same transaction → fully atomic with the index changes.
+		if _, err := tx.Exec(`UPDATE app.pins SET file_path = ? WHERE file_path = ?`, newPath, oldPath); err != nil {
+			return fmt.Errorf("failed to update app.pins: %w", err)
 		}
 
 		return nil
 	})
 }
 
-// RenameFilePaths updates all paths that start with oldPath prefix (for folder renames).
-// Updates all related tables: files, digests, pins, files_fts.
+// RenameFilePaths updates all paths that start with oldPath prefix (for folder
+// renames). Updates: files, digests, files_fts (index DB) plus app.pins (app
+// DB, ATTACHed rw on the writer connection). All in one atomic transaction.
 func (d *DB) RenameFilePaths(ctx context.Context, oldPath, newPath string) error {
 	return d.Write(ctx, func(tx *sql.Tx) error {
 		// Update files table - all files and subfolders
@@ -799,15 +801,6 @@ func (d *DB) RenameFilePaths(ctx context.Context, oldPath, newPath string) error
 			return fmt.Errorf("failed to update digests: %w", err)
 		}
 
-		// Update pins
-		if _, err := tx.Exec(`
-			UPDATE pins
-			SET file_path = ? || substr(file_path, ?)
-			WHERE file_path = ? OR file_path LIKE ? || '/%'
-		`, newPath, len(oldPath)+1, oldPath, oldPath); err != nil {
-			return fmt.Errorf("failed to update pins: %w", err)
-		}
-
 		// Update FTS5 search index
 		if _, err := tx.Exec(`
 			UPDATE files_fts
@@ -815,6 +808,16 @@ func (d *DB) RenameFilePaths(ctx context.Context, oldPath, newPath string) error
 			WHERE file_path = ? OR file_path LIKE ? || '/%'
 		`, newPath, len(oldPath)+1, oldPath, oldPath); err != nil {
 			return fmt.Errorf("failed to update files_fts: %w", err)
+		}
+
+		// Update pins in the app DB. Same prefix-rewrite as the other tables
+		// so pins under a renamed folder follow it.
+		if _, err := tx.Exec(`
+			UPDATE app.pins
+			SET file_path = ? || substr(file_path, ?)
+			WHERE file_path = ? OR file_path LIKE ? || '/%'
+		`, newPath, len(oldPath)+1, oldPath, oldPath); err != nil {
+			return fmt.Errorf("failed to update app.pins: %w", err)
 		}
 
 		return nil
@@ -847,7 +850,7 @@ func (d *DB) UpdateFileField(ctx context.Context, path string, field string, val
 // MoveFileAtomic atomically moves a file record from oldPath to newPath.
 // This is used when detecting external file moves via fsnotify.
 // It updates the file record and ALL related tables in a single transaction:
-// files, digests, pins, files_fts.
+// files, digests, files_fts (index DB) plus app.pins (app DB, ATTACHed rw).
 func (d *DB) MoveFileAtomic(ctx context.Context, oldPath, newPath string, newRecord *FileRecord) error {
 	return d.Write(ctx, func(tx *sql.Tx) error {
 		// 1. Insert/update new path with smart COALESCE handling
@@ -882,19 +885,20 @@ func (d *DB) MoveFileAtomic(ctx context.Context, oldPath, newPath string, newRec
 			}
 		}
 
-		// 3. Update related tables: digests
+		// 3. Update related index-DB tables: digests
 		if _, err := tx.Exec(`UPDATE digests SET file_path = ? WHERE file_path = ?`, newPath, oldPath); err != nil {
 			return fmt.Errorf("failed to update digests: %w", err)
 		}
 
-		// 4. Update related tables: pins
-		if _, err := tx.Exec(`UPDATE pins SET file_path = ? WHERE file_path = ?`, newPath, oldPath); err != nil {
-			return fmt.Errorf("failed to update pins: %w", err)
-		}
-
-		// 5. Update related tables: files_fts
+		// 4. Update related index-DB tables: files_fts
 		if _, err := tx.Exec(`UPDATE files_fts SET file_path = ? WHERE file_path = ?`, newPath, oldPath); err != nil {
 			return fmt.Errorf("failed to update files_fts: %w", err)
+		}
+
+		// 5. Update pins in the app DB (ATTACHed rw as 'app' on the writer
+		// connection). Atomic with the index changes above.
+		if _, err := tx.Exec(`UPDATE app.pins SET file_path = ? WHERE file_path = ?`, newPath, oldPath); err != nil {
+			return fmt.Errorf("failed to update app.pins: %w", err)
 		}
 
 		return nil
@@ -953,9 +957,14 @@ func (d *DB) ListAllFilePaths() ([]string, error) {
 	return paths, rows.Err()
 }
 
-// DeleteFileWithCascade removes a file record and all related records in a single transaction.
-// This includes: digests, pins, files_fts.
-// Used during reconciliation and file deletion to clean up all related data.
+// DeleteFileWithCascade removes a file record and all related records in a
+// single atomic transaction. Cleans up: files, digests, files_fts (index DB)
+// plus app.pins (app DB, ATTACHed rw on the writer connection).
+//
+// Used during reconciliation (orphan cleanup when a file disappears from disk)
+// and explicit file deletion. Must be atomic — a crash between the index
+// delete and the pin delete would leave an orphan pin pointing at a vanished
+// file.
 func (d *DB) DeleteFileWithCascade(ctx context.Context, path string) error {
 	return d.Write(ctx, func(tx *sql.Tx) error {
 		// Delete search index documents first
@@ -968,23 +977,25 @@ func (d *DB) DeleteFileWithCascade(ctx context.Context, path string) error {
 			return fmt.Errorf("failed to delete digests: %w", err)
 		}
 
-		// Delete pins
-		if _, err := tx.Exec("DELETE FROM pins WHERE file_path = ?", path); err != nil {
-			return fmt.Errorf("failed to delete pins: %w", err)
-		}
-
 		// Delete file record
 		if _, err := tx.Exec("DELETE FROM files WHERE path = ?", path); err != nil {
 			return fmt.Errorf("failed to delete file: %w", err)
+		}
+
+		// Delete pin in app DB. Atomic with the index deletes above.
+		if _, err := tx.Exec("DELETE FROM app.pins WHERE file_path = ?", path); err != nil {
+			return fmt.Errorf("failed to delete app.pins: %w", err)
 		}
 
 		return nil
 	})
 }
 
-// BatchDeleteFilesWithCascade removes multiple file records and all related rows
-// (files_fts, digests, pins) in a single transaction. Used by reconciliation to
-// avoid one-transaction-per-orphan when there are thousands of records to remove.
+// BatchDeleteFilesWithCascade removes multiple file records and all related
+// rows (files_fts, digests in the index DB; pins in the app DB) in one atomic
+// transaction. Used by reconciliation to avoid one-transaction-per-orphan
+// when there are thousands of records to remove.
+//
 // Caller is responsible for chunking to stay under SQLite's parameter limit
 // (SQLITE_MAX_VARIABLE_NUMBER, typically 999 on older builds, 32766 on newer).
 func (d *DB) BatchDeleteFilesWithCascade(ctx context.Context, paths []string) error {
@@ -1006,19 +1017,20 @@ func (d *DB) BatchDeleteFilesWithCascade(ctx context.Context, paths []string) er
 		if _, err := tx.Exec("DELETE FROM digests WHERE file_path IN ("+placeholders+")", args...); err != nil {
 			return fmt.Errorf("failed to delete digests: %w", err)
 		}
-		if _, err := tx.Exec("DELETE FROM pins WHERE file_path IN ("+placeholders+")", args...); err != nil {
-			return fmt.Errorf("failed to delete pins: %w", err)
-		}
 		if _, err := tx.Exec("DELETE FROM files WHERE path IN ("+placeholders+")", args...); err != nil {
 			return fmt.Errorf("failed to delete files: %w", err)
+		}
+		// Atomic pin cleanup in the app DB (ATTACHed rw on the writer conn).
+		if _, err := tx.Exec("DELETE FROM app.pins WHERE file_path IN ("+placeholders+")", args...); err != nil {
+			return fmt.Errorf("failed to delete app.pins: %w", err)
 		}
 		return nil
 	})
 }
 
-// DeleteFilesWithCascadePrefix removes a folder and all files/records under it in a single transaction.
-// Cleans up: files, digests, pins, files_fts.
-// Used for recursive folder deletion.
+// DeleteFilesWithCascadePrefix removes a folder and all records under it in
+// a single atomic transaction. Cleans up: files, digests, files_fts (index
+// DB) plus app.pins (app DB, ATTACHed rw on the writer connection).
 func (d *DB) DeleteFilesWithCascadePrefix(ctx context.Context, pathPrefix string) error {
 	return d.Write(ctx, func(tx *sql.Tx) error {
 		// Delete search index documents
@@ -1031,14 +1043,14 @@ func (d *DB) DeleteFilesWithCascadePrefix(ctx context.Context, pathPrefix string
 			return fmt.Errorf("failed to delete digests: %w", err)
 		}
 
-		// Delete pins
-		if _, err := tx.Exec("DELETE FROM pins WHERE file_path = ? OR file_path LIKE ? || '/%'", pathPrefix, pathPrefix); err != nil {
-			return fmt.Errorf("failed to delete pins: %w", err)
-		}
-
 		// Delete file records
 		if _, err := tx.Exec("DELETE FROM files WHERE path = ? OR path LIKE ? || '/%'", pathPrefix, pathPrefix); err != nil {
 			return fmt.Errorf("failed to delete files: %w", err)
+		}
+
+		// Atomic pin cleanup in the app DB.
+		if _, err := tx.Exec("DELETE FROM app.pins WHERE file_path = ? OR file_path LIKE ? || '/%'", pathPrefix, pathPrefix); err != nil {
+			return fmt.Errorf("failed to delete app.pins: %w", err)
 		}
 
 		return nil

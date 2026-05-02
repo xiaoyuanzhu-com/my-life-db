@@ -132,9 +132,9 @@ func (h *Handlers) ServeSqlarFile(c *gin.Context) {
 		return
 	}
 
-	// Query sqlar table
+	// Query sqlar table (lives in the index DB)
 	var sqlarFile db.SqlarFile
-	err := h.server.DB().Read().QueryRow(`
+	err := h.server.IndexDB().Read().QueryRow(`
 		SELECT name, mode, mtime, sz, data FROM sqlar WHERE name = ?
 	`, name).Scan(&sqlarFile.Name, &sqlarFile.Mode, &sqlarFile.Mtime, &sqlarFile.Size, &sqlarFile.Data)
 
@@ -336,7 +336,7 @@ func (h *Handlers) GetLibraryFileInfo(c *gin.Context) {
 		return
 	}
 
-	file, err := h.server.DB().GetFileWithDigests(path)
+	file, err := h.server.IndexDB().GetFileWithDigests(path)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to get file info")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get file info"})
@@ -346,6 +346,11 @@ func (h *Handlers) GetLibraryFileInfo(c *gin.Context) {
 	if file == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
 		return
+	}
+
+	// Pins live in the app DB; populate IsPinned from there.
+	if pinned, perr := h.server.AppDB().IsPinned(path); perr == nil {
+		file.IsPinned = pinned
 	}
 
 	c.JSON(http.StatusOK, file)
@@ -367,8 +372,8 @@ func (h *Handlers) PinFile(c *gin.Context) {
 		return
 	}
 
-	// Check current pin state
-	isPinned, err := h.server.DB().IsPinned(body.Path)
+	// Check current pin state (pins live in the app DB)
+	isPinned, err := h.server.AppDB().IsPinned(body.Path)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to check pin state")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check pin state"})
@@ -377,14 +382,14 @@ func (h *Handlers) PinFile(c *gin.Context) {
 
 	// Toggle pin state
 	if isPinned {
-		if err := h.server.DB().RemovePin(c.Request.Context(), body.Path); err != nil {
+		if err := h.server.AppDB().RemovePin(c.Request.Context(), body.Path); err != nil {
 			log.Error().Err(err).Msg("failed to unpin file")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to unpin file"})
 			return
 		}
 		isPinned = false
 	} else {
-		if err := h.server.DB().AddPin(c.Request.Context(), body.Path); err != nil {
+		if err := h.server.AppDB().AddPin(c.Request.Context(), body.Path); err != nil {
 			log.Error().Err(err).Msg("failed to pin file")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to pin file"})
 			return
@@ -409,7 +414,7 @@ func (h *Handlers) UnpinFile(c *gin.Context) {
 		return
 	}
 
-	if err := h.server.DB().RemovePin(c.Request.Context(), path); err != nil {
+	if err := h.server.AppDB().RemovePin(c.Request.Context(), path); err != nil {
 		log.Error().Err(err).Msg("failed to unpin file")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to unpin file"})
 		return
@@ -640,7 +645,7 @@ func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, curr
 	// Batch-load preview info if requested
 	var previewMap map[string]string
 	if fields["previewSqlar"] {
-		previewMap, _ = h.server.DB().GetPreviewSqlarMap(relativePath)
+		previewMap, _ = h.server.IndexDB().GetPreviewSqlarMap(relativePath)
 	}
 
 	// Batch-load DB created_at if requested. created_at is the time MyLifeDB
@@ -648,7 +653,7 @@ func (h *Handlers) readDirRecursive(baseDir, relativePath string, maxDepth, curr
 	// since filesystem birthtime is not reliable on Linux/Docker.
 	var createdAtMap map[string]int64
 	if fields["createdAt"] {
-		createdAtMap, _ = h.server.DB().GetCreatedAtMap(relativePath)
+		createdAtMap, _ = h.server.IndexDB().GetCreatedAtMap(relativePath)
 	}
 
 	var nodes []FileNode
