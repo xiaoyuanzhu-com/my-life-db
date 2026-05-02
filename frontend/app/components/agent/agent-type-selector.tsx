@@ -109,7 +109,7 @@ export function AgentTypeSelector({
         >
           <span className="shrink-0">{currentType.icon}</span>
           {showLabel && (
-            <span className="hidden sm:inline">{currentType.label}</span>
+            <span>{currentType.label}</span>
           )}
         </button>
       </PopoverTrigger>

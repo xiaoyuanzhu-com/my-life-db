@@ -618,7 +618,7 @@ const SkillsSubMenu: FC<{ onSelectSkill: (name: string) => void }> = ({ onSelect
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger className="px-2 py-1.5 text-xs text-muted-foreground focus:text-foreground">
-        <span className="shrink-0">{t('thread.skills')}</span>
+        <span className="shrink-0">Skills</span>
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className="min-w-64 max-w-96 max-h-80 overflow-y-auto">
         {list.length === 0 && (
@@ -699,11 +699,12 @@ const ComposerOptionsMenu: FC<{
       <DropdownMenuContent align="start" side="bottom" sideOffset={4}>
         {agentType !== undefined && (
           <div className="flex items-center justify-between px-2 py-1.5 gap-4">
-            <span className="text-xs text-muted-foreground shrink-0">{t('thread.agent')}</span>
+            <span className="text-xs text-muted-foreground shrink-0">Agent</span>
             <AgentTypeSelector
               value={agentType as AgentType}
               onChange={onAgentTypeChange ? (t) => onAgentTypeChange(t) : () => {}}
               disabled={!onAgentTypeChange || hasActiveSession}
+              showLabel
             />
           </div>
         )}
