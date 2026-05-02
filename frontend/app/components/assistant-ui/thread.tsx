@@ -490,6 +490,150 @@ const DraftPersistenceSync: FC = () => {
   return null;
 };
 
+/**
+ * VoiceInputDiagnostics — fills the visibility gap for the long-standing
+ * voice-input duplicate bug.
+ *
+ * Existing logs (`[draft-sync]`) cover the React/state layer. They show what
+ * the composer state ends up being, but not WHO wrote it or WHAT the OS-level
+ * voice-input pipeline did to the textarea.
+ *
+ * This component instruments three layers that are currently silent:
+ *   1. The textarea DOM (input / beforeinput / composition* / focus / blur /
+ *      keydown). iOS keyboard mic + macOS dictation drive these events; if
+ *      duplication originates in the OS-React boundary, it shows up here.
+ *   2. composer.setText callers. We monkey-patch the runtime's setText with
+ *      a stack-tagged logger so any call (DraftPersistenceSync, ComposerInput
+ *      onChange, internal assistant-ui code, anything else) is traceable.
+ *   3. textarea.value vs composer.text agreement after each event — exposes
+ *      cases where the OS sees stale content and re-inserts text.
+ *
+ * Logs are prefixed `[voice-diag]`. Prune or guard with a flag once the bug
+ * is identified.
+ */
+const VoiceInputDiagnostics: FC<{
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>
+}> = ({ textareaRef }) => {
+  const composerRuntime = useComposerRuntime();
+  const { sessionId } = useAgentContext();
+
+  const instIdRef = useRef<string | null>(null);
+  if (instIdRef.current === null) {
+    instIdRef.current = Math.random().toString(36).slice(2, 6);
+  }
+  const inst = instIdRef.current;
+
+  const trunc = (s: string) =>
+    s.length > 80 ? `${s.slice(0, 80)}…(${s.length})` : s;
+
+  // Layer 2: monkey-patch composer.setText to log every caller.
+  // The runtime instance is stable (useExternalStoreRuntime creates it once
+  // via useState), but we re-patch defensively if it ever changes.
+  useEffect(() => {
+    if (!composerRuntime) return;
+    const original = composerRuntime.setText;
+    let setTextSeq = 0;
+    composerRuntime.setText = function (value: string) {
+      const s = ++setTextSeq;
+      const before = composerRuntime.getState?.()?.text ?? "";
+      const stack =
+        new Error().stack
+          ?.split("\n")
+          .slice(2, 6)
+          .map((l) => l.trim())
+          .join(" | ") ?? "";
+      const noop = before === value;
+      console.info(
+        `[voice-diag] [${inst}] setText#${s} prevLen=${before.length} newLen=${value.length} noop=${noop} prev="${trunc(before)}" next="${trunc(value)}"`,
+      );
+      console.info(`[voice-diag] [${inst}] setText#${s}   stack=${trunc(stack)}`);
+      return original.call(this, value);
+    };
+    console.info(
+      `[voice-diag] [${inst}] setText patched sessionId=${sessionId}`,
+    );
+    return () => {
+      // Restore by deleting the instance shadow so the prototype method shows through.
+      // (Original was captured from the prototype chain; this is the cleanest revert.)
+      try {
+        delete (composerRuntime as { setText?: unknown }).setText;
+      } catch {
+        composerRuntime.setText = original;
+      }
+      console.info(`[voice-diag] [${inst}] setText unpatched`);
+    };
+  }, [composerRuntime, inst, sessionId]);
+
+  // Layer 1+3: DOM-level events on the textarea.
+  // We attach in the capture phase so we see events before React's synthetic
+  // handlers and before assistant-ui's onChange consumes them.
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) {
+      console.info(
+        `[voice-diag] [${inst}] textarea ref is NULL — listeners NOT attached`,
+      );
+      return;
+    }
+    let evtSeq = 0;
+    const log = (evt: Event) => {
+      const s = ++evtSeq;
+      const ie = evt as InputEvent;
+      const ke = evt as KeyboardEvent;
+      const ce = evt as CompositionEvent;
+      const inputType = (ie as InputEvent).inputType;
+      const data = (ie as InputEvent | CompositionEvent).data ?? null;
+      const isComposing = (evt as { isComposing?: boolean }).isComposing;
+      const value = ta.value;
+      const selStart = ta.selectionStart;
+      const selEnd = ta.selectionEnd;
+      const composerText = composerRuntime?.getState?.()?.text ?? "";
+      const mismatch = value !== composerText;
+      const key = ke.key;
+      console.info(
+        `[voice-diag] [${inst}] dom#${s} ${evt.type} key=${key ?? "-"} inputType=${inputType ?? "-"} data=${JSON.stringify(data)} isComposing=${isComposing} sel=[${selStart},${selEnd}] mismatch=${mismatch} valLen=${value.length} composerLen=${composerText.length}`,
+      );
+      if (mismatch) {
+        console.warn(
+          `[voice-diag] [${inst}] dom#${s}   MISMATCH val="${trunc(value)}" composer="${trunc(composerText)}"`,
+        );
+      } else if (evt.type === "input" || evt.type === "compositionend") {
+        console.info(`[voice-diag] [${inst}] dom#${s}   val="${trunc(value)}"`);
+      }
+    };
+
+    const events: (keyof HTMLElementEventMap)[] = [
+      "input",
+      "beforeinput",
+      "compositionstart",
+      "compositionupdate",
+      "compositionend",
+      "keydown",
+      "focus",
+      "blur",
+      "select",
+    ];
+
+    events.forEach((evt) =>
+      ta.addEventListener(evt, log as EventListener, true),
+    );
+    console.info(
+      `[voice-diag] [${inst}] DOM listeners ATTACHED to textarea sessionId=${sessionId} events=[${events.join(",")}]`,
+    );
+
+    return () => {
+      events.forEach((evt) =>
+        ta.removeEventListener(evt, log as EventListener, true),
+      );
+      console.info(
+        `[voice-diag] [${inst}] DOM listeners DETACHED from textarea`,
+      );
+    };
+  }, [textareaRef, composerRuntime, inst, sessionId]);
+
+  return null;
+};
+
 const MCPServerRow: FC<{
   server: MCPServerEntry
   onToggleDisabled: (disabled: boolean) => void
@@ -877,6 +1021,7 @@ const Composer: FC<ComposerProps> = ({ onAttachmentsStorageIdChange, existingSto
       }}
     >
       <DraftPersistenceSync />
+      <VoiceInputDiagnostics textareaRef={textareaRef} />
       <SlashCommandPopover commands={sessionCommands} textareaRef={textareaRef} />
       <FileTagPopover textareaRef={textareaRef} workingDir={workingDir} />
       <input
@@ -921,6 +1066,22 @@ const Composer: FC<ComposerProps> = ({ onAttachmentsStorageIdChange, existingSto
             rows={1}
             autoFocus={!hasTouch}
             aria-label={t('thread.messageInput')}
+            onChange={(e) => {
+              // [voice-diag] React onChange — runs before assistant-ui's
+              // internal onChange (composeEventHandlers chains ours first).
+              // Captures what value React sees from the textarea right before
+              // assistant-ui calls composer.setText(e.target.value).
+              const ta = e.currentTarget;
+              const composerText = aui.composer().getState().text ?? "";
+              const ne = e.nativeEvent as InputEvent;
+              const valLen = ta.value.length;
+              const composerLen = composerText.length;
+              const truncS = (s: string) =>
+                s.length > 80 ? `${s.slice(0, 80)}…(${s.length})` : s;
+              console.info(
+                `[voice-diag] [composer-onChange] sid=${sessionId} inputType=${ne.inputType ?? "-"} data=${JSON.stringify(ne.data ?? null)} isComposing=${(ne as InputEvent & { isComposing?: boolean }).isComposing} sel=[${ta.selectionStart},${ta.selectionEnd}] valLen=${valLen} composerLen=${composerLen} delta=${valLen - composerLen} val="${truncS(ta.value)}"`,
+              );
+            }}
           />
           <div className="aui-composer-action-wrapper relative flex items-center justify-between">
             <div className="flex items-center gap-1">
