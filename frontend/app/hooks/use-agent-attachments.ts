@@ -105,6 +105,37 @@ export function useAgentAttachments(opts: { initialStorageId?: string | null } =
     }
   }, [])
 
+  /**
+   * Insert already-uploaded Attachment records as ready chips, skipping the
+   * upload pipeline entirely. Used by the native iOS bridge: Swift presents
+   * the document picker and POSTs the files itself, then hands back the
+   * resulting Attachment records here.
+   *
+   * The first attachment locks in the storageId for this draft if none is
+   * set, mirroring the addFiles() upload path so subsequent (web-side)
+   * uploads in the same draft land in the same folder.
+   */
+  const addReadyAttachments = useCallback((newAttachments: Attachment[]) => {
+    if (newAttachments.length === 0) return
+    if (storageIdRef.current === null && newAttachments[0]) {
+      storageIdRef.current = newAttachments[0].storageId
+      setStorageId(newAttachments[0].storageId)
+    }
+    setItems((prev) => [
+      ...prev,
+      ...newAttachments.map((attachment) => {
+        const clientID =
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+        return {
+          clientID,
+          state: { status: "ready", attachment } as AttachmentState,
+        }
+      }),
+    ])
+  }, [])
+
   const remove = useCallback(async (clientID: string) => {
     const ac = abortersRef.current.get(clientID)
     ac?.abort()
@@ -168,5 +199,5 @@ export function useAgentAttachments(opts: { initialStorageId?: string | null } =
     }
   }, [])
 
-  return { items, readyAttachments, storageId, hasPending, addFiles, remove, clear }
+  return { items, readyAttachments, storageId, hasPending, addFiles, addReadyAttachments, remove, clear }
 }

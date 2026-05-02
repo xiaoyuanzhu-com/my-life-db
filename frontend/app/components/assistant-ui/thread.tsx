@@ -55,6 +55,7 @@ import { useAgentContext } from "~/components/agent/agent-context";
 import { useFeatureFlags } from "~/contexts/feature-flags-context";
 import { AttachmentStrip } from "~/components/agent/attachment-strip";
 import { useAgentAttachments } from "~/hooks/use-agent-attachments";
+import { isNativeApp, nativePlatform, nativePickAndUploadFiles } from "~/lib/native-bridge";
 import { Paperclip } from "lucide-react";
 import {
   useSkills,
@@ -784,6 +785,22 @@ const Composer: FC<ComposerProps> = ({ onAttachmentsStorageIdChange, existingSto
     attachments.addFiles(arr);
   };
 
+  // iOS WKWebView blocks programmatic .click() on <input type=file> when
+  // it's invoked from Radix's deferred dropdown onSelect (gesture token
+  // expired by then). Route through the native bridge instead: Swift
+  // presents UIDocumentPickerViewController and POSTs the picked files to
+  // /api/agent/attachments using its own URLSession + AuthManager token,
+  // then hands back the resulting Attachment records.
+  const handleAttachFiles = () => {
+    if (isNativeApp() && nativePlatform() === "ios") {
+      nativePickAndUploadFiles(attachments.storageId).then((picked) => {
+        if (picked.length > 0) attachments.addReadyAttachments(picked);
+      });
+      return;
+    }
+    fileInputRef.current?.click();
+  };
+
   const handleAddContext = () => {
     const current = composerRuntime.getState().text ?? "";
     const needsSpace = current.length > 0 && !/\s$/.test(current);
@@ -921,7 +938,7 @@ const Composer: FC<ComposerProps> = ({ onAttachmentsStorageIdChange, existingSto
           <div className="aui-composer-action-wrapper relative flex items-center justify-between">
             <div className="flex items-center gap-1">
               <ComposerOptionsMenu
-                onAttachFiles={() => fileInputRef.current?.click()}
+                onAttachFiles={handleAttachFiles}
                 onAddContext={handleAddContext}
                 onShowCommands={handleShowCommands}
                 onUseSkill={handleUseSkill}

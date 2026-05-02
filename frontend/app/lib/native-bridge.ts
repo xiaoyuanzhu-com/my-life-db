@@ -12,6 +12,7 @@
  */
 
 import type { NavigateFunction } from "react-router";
+import type { Attachment } from "~/lib/agent-attachments";
 
 // ---------------------------------------------------------------------------
 // Detection
@@ -80,6 +81,43 @@ export const nativeBridge = {
     postNative("log", { message, level });
   },
 };
+
+/**
+ * Present the native file picker on iOS, upload picked files to the backend
+ * via the native shell, and resolve with the resulting Attachment records.
+ *
+ * iOS WKWebView's <input type="file"> click is gated by an in-gesture user
+ * activation token. Radix UI's deferred DropdownMenu callback consumes it
+ * before the click reaches WebKit, so the picker silently never opens. This
+ * route sidesteps that path entirely — Swift presents UIDocumentPickerViewController,
+ * uploads via the native API client, and returns Attachment records here.
+ *
+ * Returns an empty array on cancel or when not running in the native iOS shell.
+ *
+ * NOTE: Uses fetch('nativebridge://...') directly instead of postNative() so
+ * we can read the JSON response body. postNative is fire-and-forget.
+ */
+export async function nativePickAndUploadFiles(
+  storageId?: string | null,
+): Promise<Attachment[]> {
+  if (!isNativeApp() || nativePlatform() !== "ios") return [];
+  try {
+    const res = await fetch("nativebridge://message", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "pickAndUploadFiles",
+        storageId: storageId ?? null,
+      }),
+    });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { attachments?: Attachment[] };
+    return Array.isArray(data?.attachments) ? data.attachments : [];
+  } catch (e) {
+    console.warn("[native-bridge] pickAndUploadFiles failed:", e);
+    return [];
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Native → Web listeners
