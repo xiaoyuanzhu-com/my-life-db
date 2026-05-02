@@ -102,16 +102,3 @@ func runMigrations(db *sql.DB) error {
 
 	return nil
 }
-
-// GetCurrentVersion returns the current database schema version
-func GetCurrentVersion() (int, error) {
-	db := GetDB()
-
-	var version int
-	err := db.QueryRow("SELECT COALESCE(MAX(version), 0) FROM schema_version").Scan(&version)
-	if err != nil {
-		return 0, err
-	}
-
-	return version, nil
-}

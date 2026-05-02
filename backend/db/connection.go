@@ -36,13 +36,6 @@ var (
 	driverRegisterMu     sync.Mutex
 )
 
-var (
-	// globalDB is set by the server when it initializes
-	// All existing db query functions use this
-	globalDB *DB
-	mu       sync.RWMutex
-)
-
 // DB wraps a sql.DB connection plus a single-writer goroutine.
 // Reads use d.conn directly; writes go through d.writer.Do.
 type DB struct {
@@ -109,11 +102,6 @@ func Open(cfg Config) (*DB, error) {
 	}
 	go d.writer.run()
 
-	// Set as global for existing query functions (deprecated; removed in a later task)
-	mu.Lock()
-	globalDB = d
-	mu.Unlock()
-
 	return d, nil
 }
 
@@ -173,16 +161,9 @@ func registerSimpleDriver(extensionPath, dictDir string) error {
 
 // Close closes the database connection
 func (d *DB) Close() error {
-	mu.Lock()
-	defer mu.Unlock()
-
 	if d.conn != nil {
 		if d.writer != nil {
 			d.writer.stop()
-		}
-		// Clear global if this is the global instance
-		if globalDB == d {
-			globalDB = nil
 		}
 		return d.conn.Close()
 	}
@@ -192,43 +173,6 @@ func (d *DB) Close() error {
 // Conn returns the underlying sql.DB connection
 func (d *DB) Conn() *sql.DB {
 	return d.conn
-}
-
-// GetDB returns the global database connection for existing query functions
-// This is a compatibility layer during the refactoring
-func GetDB() *sql.DB {
-	mu.RLock()
-	defer mu.RUnlock()
-
-	if globalDB == nil {
-		return nil
-	}
-	return globalDB.conn
-}
-
-// Transaction executes a function within a database transaction (global version)
-func Transaction(fn func(*sql.Tx) error) error {
-	mu.RLock()
-	db := globalDB
-	mu.RUnlock()
-
-	if db == nil {
-		return fmt.Errorf("database not initialized")
-	}
-
-	return db.Transaction(fn)
-}
-
-// Close closes the global database connection
-// DEPRECATED: This is temporary for backward compatibility
-func Close() error {
-	mu.Lock()
-	defer mu.Unlock()
-
-	if globalDB != nil {
-		return globalDB.Close()
-	}
-	return nil
 }
 
 // ensureDatabaseDirectory creates the directory for the database file if it doesn't exist
@@ -241,28 +185,6 @@ func ensureDatabaseDirectory(dbPath string) error {
 		log.Info().Str("dir", dir).Msg("created database directory")
 	}
 	return nil
-}
-
-// Transaction executes a function within a database transaction
-func (d *DB) Transaction(fn func(*sql.Tx) error) error {
-	tx, err := d.conn.Begin()
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if p := recover(); p != nil {
-			tx.Rollback()
-			panic(p)
-		}
-	}()
-
-	if err := fn(tx); err != nil {
-		tx.Rollback()
-		return err
-	}
-
-	return tx.Commit()
 }
 
 // Write runs fn inside a write transaction on the per-DB writer goroutine.
