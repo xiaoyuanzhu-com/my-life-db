@@ -29,11 +29,6 @@ type Config struct {
 	SimpleExtensionPath string
 	SimpleDictDir       string
 
-	// External services
-	OpenAIAPIKey  string
-	OpenAIBaseURL string
-	OpenAIModel   string
-
 	// OAuth settings
 	AuthMode              string
 	OAuthClientID         string
@@ -107,11 +102,6 @@ func load() *Config {
 		// SQLite simple extension
 		SimpleExtensionPath: simpleExtPath,
 		SimpleDictDir:       simpleDictDir,
-
-		// OpenAI
-		OpenAIAPIKey:  getEnv("OPENAI_API_KEY", ""),
-		OpenAIBaseURL: getEnv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
-		OpenAIModel:   getEnv("OPENAI_MODEL", "gpt-4o-mini"),
 
 		// OAuth
 		AuthMode:              getEnv("MLD_AUTH_MODE", "none"),

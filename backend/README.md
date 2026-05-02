@@ -105,9 +105,6 @@ Environment variables:
 | MY_DATA_DIR | ./data | Data directory |
 | QDRANT_HOST | | Qdrant host URL |
 | QDRANT_COLLECTION | files | Qdrant collection name |
-| OPENAI_API_KEY | | OpenAI API key |
-| OPENAI_BASE_URL | https://api.openai.com/v1 | OpenAI base URL |
-| OPENAI_MODEL | gpt-4o-mini | Default model |
 | DB_LOG_QUERIES | | Set to "1" to log queries |
 | DEBUG | | Comma-separated module names for debug logging |
 

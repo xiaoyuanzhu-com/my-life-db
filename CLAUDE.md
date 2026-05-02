@@ -91,7 +91,6 @@ my-life-db/
 │   │   ├── server.go   # Server lifecycle & component management
 │   │   └── config.go   # Server configuration
 │   ├── utils/          # Shared utilities
-│   ├── vendors/        # External clients (OpenAI, HAID, Aliyun)
 │   ├── go.mod
 │   └── main.go         # Entry point - creates Server and wires routes
 └── run.js              # Helper script for running services (Node.js)
@@ -285,9 +284,6 @@ Never create shadcn components manually.
 | ENV | development | Environment (development/production) |
 | USER_DATA_DIR | ./data | User data directory (inbox, notes, etc.) |
 | APP_DATA_DIR | ./.my-life-db | App data directory (database, cache) |
-| OPENAI_API_KEY | | OpenAI API key (optional) |
-| OPENAI_BASE_URL | https://api.openai.com/v1 | OpenAI base URL (optional) |
-| OPENAI_MODEL | gpt-4o-mini | OpenAI model name (optional) |
 | MLD_AUTH_MODE | none | Auth mode: `none`, `password`, or `oauth` |
 | MLD_OAUTH_CLIENT_ID | | OAuth client ID |
 | MLD_OAUTH_CLIENT_SECRET | | OAuth client secret |
@@ -313,12 +309,10 @@ All API routes are defined in [backend/api/routes.go](backend/api/routes.go). Ke
 | Inbox | `/api/inbox`, `/api/inbox/:id` | Inbox CRUD + pinning + re-enrichment + status |
 | Library | `/api/library/*` | File management, tree structure, pinning, rename, move |
 | Search | `/api/search` | Full-text search |
-| AI | `/api/ai/summarize` | AI summarization |
 | Settings | `/api/settings` | GET/PUT/POST (get, update, reset) |
 | Stats | `/api/stats` | Application statistics |
 | Upload | `/api/upload/tus/*`, `/api/upload/finalize` | TUS protocol file uploads + finalization |
 | Directories | `/api/directories` | List available directories |
-| Vendors | `/api/vendors/openai/models` | OpenAI model listing |
 | Claude | `/api/claude/sessions/*` | Session CRUD, messages, WebSocket connections |
 | Notifications | `/api/notifications/stream` | SSE event stream |
 | Raw Files | `/raw/*path` | Serve (GET) / save (PUT) raw files |

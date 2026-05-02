@@ -38,11 +38,6 @@ type Config struct {
 	FSScanInterval time.Duration
 	FSWatchEnabled bool
 
-	// External services (can be hot-reloaded)
-	OpenAIAPIKey  string
-	OpenAIBaseURL string
-	OpenAIModel   string
-
 	// Agent LLM
 	AgentLLM AgentLLMConfig
 

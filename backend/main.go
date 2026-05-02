@@ -37,9 +37,6 @@ func main() {
 		SimpleDictDir:    cfg.SimpleDictDir,
 		FSScanInterval:   1 * time.Hour,
 		FSWatchEnabled:   true,
-		OpenAIAPIKey:     cfg.OpenAIAPIKey,
-		OpenAIBaseURL:    cfg.OpenAIBaseURL,
-		OpenAIModel:      cfg.OpenAIModel,
 		AgentLLM: func() server.AgentLLMConfig {
 			var agentModels []server.AgentModelInfo
 			if cfg.AgentModels != "" {

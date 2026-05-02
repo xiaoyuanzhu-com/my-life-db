@@ -3,7 +3,6 @@ module github.com/xiaoyuanzhu-com/my-life-db
 go 1.25.0
 
 require (
-	github.com/aliyun/alibabacloud-oss-go-sdk-v2 v1.3.0
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/coder/acp-go-sdk v0.6.4-0.20260227160919-584abe6abe22
 	github.com/coder/websocket v1.8.14
@@ -13,13 +12,11 @@ require (
 	github.com/gin-contrib/gzip v1.2.2
 	github.com/gin-gonic/gin v1.11.0
 	github.com/google/uuid v1.6.0
-	github.com/gorilla/websocket v1.5.3
 	github.com/mattn/go-sqlite3 v1.14.33
 	github.com/mholt/archives v0.1.5
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/rs/zerolog v1.34.0
-	github.com/sashabaranov/go-openai v1.41.2
 	github.com/tus/tusd/v2 v2.8.0
 	golang.org/x/image v0.36.0
 	golang.org/x/oauth2 v0.34.0
@@ -79,6 +76,5 @@ require (
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/text v0.36.0 // indirect
-	golang.org/x/time v0.14.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
