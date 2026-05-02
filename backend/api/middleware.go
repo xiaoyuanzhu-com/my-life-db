@@ -13,7 +13,7 @@ import (
 
 // AuthMiddleware returns a Gin middleware that enforces authentication
 // based on the configured auth mode (none, password, oauth).
-func AuthMiddleware() gin.HandlerFunc {
+func (h *Handlers) AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Skip auth if not required
 		if !auth.IsAuthRequired() {
@@ -39,7 +39,7 @@ func AuthMiddleware() gin.HandlerFunc {
 				return
 			}
 		} else if auth.IsPasswordAuthEnabled() {
-			if ValidatePasswordSession(c) == nil {
+			if h.ValidatePasswordSession(c) == nil {
 				RespondCoded(c, http.StatusUnauthorized, "AUTH_INVALID_SESSION", "Unauthorized")
 				c.Abort()
 				return

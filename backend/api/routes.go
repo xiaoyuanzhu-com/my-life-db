@@ -44,7 +44,7 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 
 	// Protected routes (require auth when auth mode is enabled)
 	api := r.Group("/api")
-	api.Use(AuthMiddleware())
+	api.Use(h.AuthMiddleware())
 	{
 		// Digest routes - static routes first
 		api.GET("/digest/digesters", h.GetDigesters)
@@ -132,7 +132,7 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 
 	// WebSocket routes - need auth but registered on main router
 	// Apply auth middleware individually
-	wsAuth := AuthMiddleware()
+	wsAuth := h.AuthMiddleware()
 	r.GET("/api/asr/realtime", wsAuth, h.RealtimeASR)
 	r.GET("/api/share/:token/subscribe", h.SharedSessionSubscribeWebSocket)
 

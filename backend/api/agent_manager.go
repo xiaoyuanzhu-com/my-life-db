@@ -9,7 +9,6 @@ import (
 
 	acp "github.com/coder/acp-go-sdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
-	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/mcptools"
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
@@ -408,14 +407,14 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 
 	sessionID := sess.ID()
 
-	if err := db.CreateAgentSession(sessionID, agentTypeStr, params.WorkingDir, params.Title, params.Source, params.AgentName, params.TriggerKind, params.TriggerData, storageID); err != nil {
+	if err := m.srv.DB().CreateAgentSession(ctx, sessionID, agentTypeStr, params.WorkingDir, params.Title, params.Source, params.AgentName, params.TriggerKind, params.TriggerData, storageID); err != nil {
 		log.Error().Err(err).Msg("failed to create agent session in DB")
 		sess.Close()
 		return nil, err
 	}
 
 	if params.PermissionMode != "" {
-		db.SaveAgentSessionPermissionMode(sessionID, params.PermissionMode)
+		m.srv.DB().SaveAgentSessionPermissionMode(ctx, sessionID, params.PermissionMode)
 	}
 
 	sessionState := m.SetupACP(sess, sessionID, params.PermissionMode, params.DefaultModel)
