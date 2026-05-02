@@ -9,7 +9,7 @@ All project documentation lives in `../my-life-db-docs/` (Astro Starlight site).
 - **Architecture** — System overview, backend architecture, tech design, module interfaces
 - **Components** — Deep dives into subsystems: claude-code, fs-service, notifications, auth, etc.
 - **API** — REST API reference, HTTP caching
-- **Features** — Inbox, search, voice, people, and more
+- **Features** — Inbox, search, and more
 
 Read the architecture overview first, then the relevant component doc for your task.
 
@@ -194,7 +194,7 @@ APP_DATA_DIR/           # Rebuildable app data (separate from user data)
 ### Database (SQLite)
 - Location: `APP_DATA_DIR/database.sqlite`
 - Driver: mattn/go-sqlite3 with CGO_ENABLED=1 (required for build)
-- Core tables: `files`, `sqlar` (archive format), `pins`, `people`, `settings`
+- Core tables: `files`, `sqlar` (archive format), `pins`, `settings`
 - Migration system in `db/migrations.go`
 
 ## Naming Conventions
@@ -202,7 +202,7 @@ APP_DATA_DIR/           # Rebuildable app data (separate from user data)
 | Category | Convention | Examples |
 |----------|-----------|----------|
 | Files | `kebab-case.ts/tsx` | `file-card.tsx`, `url-crawler.ts` |
-| Types/Interfaces | `PascalCase` | `FileRecord`, `Person` |
+| Types/Interfaces | `PascalCase` | `FileRecord`, `Pin` |
 | Functions/Variables | `camelCase` | `getFileByPath()`, `filePath` |
 | Constants | `SCREAMING_SNAKE_CASE` | `DATA_ROOT`, `INBOX_DIR` |
 | DB columns | `snake_case` | `file_path`, `created_at` |
@@ -312,7 +312,6 @@ All API routes are defined in [backend/api/routes.go](backend/api/routes.go). Ke
 | OAuth | `/api/oauth/*` | OAuth flow (authorize, callback, token, refresh, logout) |
 | Inbox | `/api/inbox`, `/api/inbox/:id` | Inbox CRUD + pinning + re-enrichment + status |
 | Library | `/api/library/*` | File management, tree structure, pinning, rename, move |
-| People | `/api/people`, `/api/people/:id` | Person management + merge |
 | Search | `/api/search` | Full-text search |
 | AI | `/api/ai/summarize` | AI summarization |
 | Settings | `/api/settings` | GET/PUT/POST (get, update, reset) |
@@ -321,7 +320,6 @@ All API routes are defined in [backend/api/routes.go](backend/api/routes.go). Ke
 | Directories | `/api/directories` | List available directories |
 | Vendors | `/api/vendors/openai/models` | OpenAI model listing |
 | Claude | `/api/claude/sessions/*` | Session CRUD, messages, WebSocket connections |
-| ASR | `/api/asr`, `/api/asr/realtime` | Non-realtime ASR + real-time ASR WebSocket |
 | Notifications | `/api/notifications/stream` | SSE event stream |
 | Raw Files | `/raw/*path` | Serve (GET) / save (PUT) raw files |
 | SQLAR | `/sqlar/*path` | Serve files from SQLAR archives |
@@ -334,12 +332,6 @@ The app embeds Claude Code sessions with a web UI for interacting with Claude CL
 - **Frontend** (`frontend/app/routes/claude.tsx`, `frontend/app/components/claude/`): Terminal UI, session list, chat interface, permission modal, todo panel
 - **WebSocket routes**: `/api/claude/sessions/:id/ws` (bidirectional), `/api/claude/sessions/:id/subscribe` (read-only)
 - **Docs**: See Claude Code section in `../my-life-db-docs/`
-
-### Voice / ASR System
-Real-time and batch speech recognition:
-- **Backend**: `backend/api/realtime_asr.go` (WebSocket), `backend/vendors/aliyun.go` (Aliyun Fun-ASR)
-- **Frontend**: `frontend/app/hooks/use-realtime-asr.ts`, `frontend/app/components/omni-input/` (multi-modal input: text, voice, files), recording visualizer, transcript viewer
-- **Docs**: See Features section in `../my-life-db-docs/` (voice, realtime-asr, aliyun-asr-config, omni-input)
 
 ### Authentication
 Three auth modes configured via `MLD_AUTH_MODE`:

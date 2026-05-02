@@ -118,9 +118,6 @@ func mergeSettings(current, updates *models.UserSettings) *models.UserSettings {
 			if updates.Vendors.Aliyun.Region != "" {
 				merged.Vendors.Aliyun.Region = updates.Vendors.Aliyun.Region
 			}
-			if updates.Vendors.Aliyun.ASRProvider != "" {
-				merged.Vendors.Aliyun.ASRProvider = updates.Vendors.Aliyun.ASRProvider
-			}
 			if updates.Vendors.Aliyun.OSSAccessKeyID != "" && !isMaskedAPIKey(updates.Vendors.Aliyun.OSSAccessKeyID) {
 				merged.Vendors.Aliyun.OSSAccessKeyID = updates.Vendors.Aliyun.OSSAccessKeyID
 			}

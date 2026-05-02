@@ -36,7 +36,6 @@ type OpenAI struct {
 type Aliyun struct {
 	APIKey       string `json:"apiKey,omitempty"`
 	Region       string `json:"region,omitempty"` // "beijing" or "singapore"
-	ASRProvider  string `json:"asrProvider,omitempty"` // "fun-asr-realtime" (default)
 	OSSAccessKeyID     string `json:"ossAccessKeyId,omitempty"`
 	OSSAccessKeySecret string `json:"ossAccessKeySecret,omitempty"`
 	OSSRegion          string `json:"ossRegion,omitempty"` // e.g., "cn-hangzhou", "oss-cn-beijing"

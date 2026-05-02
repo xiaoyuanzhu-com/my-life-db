@@ -563,7 +563,6 @@ func (s *Server) setupRouter() {
 	s.router.Use(gzip.Gzip(gzip.DefaultCompression,
 		gzip.WithExcludedPaths([]string{
 			"/api/notifications/stream", // SSE - needs streaming
-			"/api/asr/realtime",         // WebSocket - protocol upgrade
 			"/api/upload/tus/",          // TUS - needs ResponseController for timeout extension
 		}),
 		gzip.WithExcludedPathsRegexs([]string{

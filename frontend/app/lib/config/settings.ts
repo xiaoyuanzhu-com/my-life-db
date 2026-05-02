@@ -21,7 +21,6 @@ export interface UserSettings {
     aliyun?: {
       apiKey?: string;
       region?: 'beijing' | 'singapore';
-      asrProvider?: 'fun-asr-realtime';
       ossAccessKeyId?: string;
       ossAccessKeySecret?: string;
       ossRegion?: string;

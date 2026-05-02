@@ -25,21 +25,3 @@ export { rowToTask } from './task';
 // Database Models - Settings
 export type { Setting, SettingRecordRow } from './setting';
 export { rowToSetting } from './setting';
-
-// Database Models - People Registry
-export type { PeopleRecord, PeopleRecordRow, PeopleInput, PeopleWithCounts } from './people-record';
-export { rowToPeopleRecord } from './people-record';
-
-export type { PeopleCluster, PeopleClusterRow, PeopleClusterInput, ClusterType } from './people-cluster';
-export { rowToPeopleCluster, float32ArrayToBuffer } from './people-cluster';
-
-export type {
-  PeopleEmbedding,
-  PeopleEmbeddingRow,
-  PeopleEmbeddingInput,
-  PeopleEmbeddingWithSource,
-  VoiceSourceOffset,
-  FaceSourceOffset,
-  SourceOffset,
-} from './people-embedding';
-export { rowToPeopleEmbedding, float32ArrayToBuffer as embeddingFloat32ArrayToBuffer } from './people-embedding';

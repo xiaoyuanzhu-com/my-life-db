@@ -41,25 +41,6 @@ type Setting struct {
 	UpdatedAt int64  `json:"updatedAt,omitempty"`
 }
 
-// Person represents a person record
-type Person struct {
-	ID          string `json:"id"`
-	DisplayName string `json:"displayName"`
-	CreatedAt   int64  `json:"createdAt"`
-	UpdatedAt   int64  `json:"updatedAt"`
-}
-
-// PersonCluster represents a face/voice cluster
-type PersonCluster struct {
-	ID          string  `json:"id"`
-	PeopleID    *string `json:"peopleId,omitempty"`
-	ClusterType string  `json:"clusterType"`
-	Centroid    []byte  `json:"centroid,omitempty"`
-	SampleCount int     `json:"sampleCount"`
-	CreatedAt   int64   `json:"createdAt"`
-	UpdatedAt   int64   `json:"updatedAt"`
-}
-
 // Session represents an authentication session record
 type Session struct {
 	ID         string `json:"id"`

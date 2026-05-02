@@ -120,7 +120,6 @@ The Go server implements all the same API endpoints as the Node.js server:
 - **Inbox**: `/api/inbox`, `/api/inbox/:id`, `/api/inbox/pinned`
 - **Library**: `/api/library/*`
 - **Search**: `/api/search`
-- **People**: `/api/people/*`
 - **Settings**: `/api/settings`
 - **Stats**: `/api/stats`
 - **Upload**: `/api/upload/tus/*`, `/api/upload/finalize`

@@ -62,16 +62,6 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		// Notifications (SSE)
 		api.GET("/notifications/stream", h.NotificationStream)
 
-		// People routes
-		api.GET("/people", h.GetPeople)
-		api.POST("/people", h.CreatePerson)
-		api.GET("/people/:id", h.GetPerson)
-		api.PUT("/people/:id", h.UpdatePerson)
-		api.DELETE("/people/:id", h.DeletePerson)
-		api.POST("/people/:id/merge", h.MergePeople)
-		api.POST("/people/embeddings/:id/assign", h.AssignEmbedding)
-		api.POST("/people/embeddings/:id/unassign", h.UnassignEmbedding)
-
 		// Search
 		api.GET("/search", h.Search)
 
@@ -125,7 +115,6 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 	// WebSocket routes - need auth but registered on main router
 	// Apply auth middleware individually
 	wsAuth := h.AuthMiddleware()
-	r.GET("/api/asr/realtime", wsAuth, h.RealtimeASR)
 	r.GET("/api/share/:token/subscribe", h.SharedSessionSubscribeWebSocket)
 
 	// Agent routes (new unified API)
