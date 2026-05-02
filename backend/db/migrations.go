@@ -55,32 +55,31 @@ func runMigrations(db *sql.DB, role DBRole) error {
 		return fmt.Errorf("failed to get current version: %w", err)
 	}
 
-	// Compute the highest version registered for this role. We use this for
-	// the downgrade check — having a newer version of an OTHER role's
-	// migration in this DB's schema_version is harmless (e.g., legacy
-	// installs migrating from the single-DB layout), so only compare against
-	// migrations that actually run on this DB.
-	var maxRegistered int
+	// Compute the highest version this binary knows about across ALL roles.
+	// The downgrade check compares against this rather than the per-role max
+	// because schema_version may legitimately contain entries for other roles:
+	//   - Existing users migrating from the pre-split single-DB layout inherit
+	//     a schema_version with both app-tagged and index-tagged versions in
+	//     what becomes app.sqlite.
+	//   - Migrations whose effects were consolidated into a later one (e.g.,
+	//     11, 14, 27 → 028) are deleted from the registry but their version
+	//     numbers remain in legacy schema_version tables.
+	// Either case is harmless: those versions just don't get re-applied.
+	// The check still catches a true downgrade (a newer binary applied a
+	// version this binary doesn't know about, in any role).
+	var maxOverall int
 	for _, m := range migrations {
-		if m.Target == role && m.Version > maxRegistered {
-			maxRegistered = m.Version
+		if m.Version > maxOverall {
+			maxOverall = m.Version
 		}
 	}
 
-	// Refuse to run if the DB has a higher version than any registered migration
-	// for this role. This usually means the binary is older than the database
-	// (downgrade) or a role-matching migration file was removed. Silently
-	// resetting the version table would re-run migrations against an
-	// already-migrated schema and cause subtle runtime failures, so fail
-	// loudly instead. Skip the check entirely when this role has no
-	// registered migrations at all (maxRegistered == 0) — that would
-	// otherwise reject any non-empty schema_version.
-	if maxRegistered > 0 && currentVersion > maxRegistered {
+	if maxOverall > 0 && currentVersion > maxOverall {
 		return fmt.Errorf(
-			"schema version conflict: %s db is at version %d but the highest registered migration for this role is %d; "+
-				"this binary is likely older than the database, or a migration was removed. "+
-				"Refusing to start to avoid corrupting migration history",
-			role.String(), currentVersion, maxRegistered,
+			"schema version conflict: %s db is at version %d but the highest registered migration is %d; "+
+				"this binary is likely older than the database. Refusing to start to avoid "+
+				"corrupting migration history",
+			role.String(), currentVersion, maxOverall,
 		)
 	}
 
