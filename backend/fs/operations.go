@@ -103,7 +103,7 @@ func (s *Service) writeFile(ctx context.Context, req WriteRequest) (*WriteResult
 					Bool("hasTextPreview", result.TextPreview != nil).
 					Msg("async metadata computed and persisted")
 
-				// Notify digest service if content changed
+				// Notify subscribers (e.g. FTS index) if content changed
 				newHash := result.Hash
 				contentChanged := (asyncOldHash == "" && newHash != "") || (asyncOldHash != "" && asyncOldHash != newHash)
 				if contentChanged {
@@ -134,14 +134,14 @@ func (s *Service) writeFile(ctx context.Context, req WriteRequest) (*WriteResult
 	}
 	contentChanged := (oldHash == "" && newHash != "") || (oldHash != "" && newHash != "" && oldHash != newHash)
 
-	// 9. Notify digest service if content changed
+	// 9. Notify subscribers (e.g. FTS index) if content changed
 	if contentChanged {
 		log.Info().
 			Str("path", req.Path).
 			Str("oldHash", oldHash[:min(16, len(oldHash))]).
 			Str("newHash", newHash[:min(16, len(newHash))]).
 			Bool("isNew", isNew).
-			Msg("file content changed, notifying digest service")
+			Msg("file content changed, notifying file-change subscribers")
 
 		s.notifyFileChange(FileChangeEvent{
 			FilePath:       req.Path,
@@ -201,7 +201,7 @@ func (s *Service) readFile(ctx context.Context, path string) (io.ReadCloser, err
 
 // deleteFile removes a file from filesystem and database.
 // This is the SINGLE entry point for file deletion - all callers should use this.
-// Handles: filesystem, files table, digests, pins, files_fts.
+// Handles: filesystem, files table, pins, files_fts.
 func (s *Service) deleteFile(ctx context.Context, path string) error {
 	// 1. Validate path
 	if err := s.ValidatePath(path); err != nil {
@@ -219,7 +219,7 @@ func (s *Service) deleteFile(ctx context.Context, path string) error {
 		return fmt.Errorf("failed to delete file from filesystem: %w", err)
 	}
 
-	// 4. Cascade delete from database (files, digests, pins, files_fts)
+	// 4. Cascade delete from database (files, pins, files_fts)
 	if err := s.cfg.DB.DeleteFileWithCascade(path); err != nil {
 		log.Warn().
 			Err(err).
@@ -237,7 +237,7 @@ func (s *Service) deleteFile(ctx context.Context, path string) error {
 
 // moveFile moves a file from src to dst.
 // This is the SINGLE entry point for file moves/renames - all callers should use this.
-// Handles: filesystem, files table, digests, pins, files_fts.
+// Handles: filesystem, files table, pins, files_fts.
 func (s *Service) moveFile(ctx context.Context, src, dst string) error {
 	// 1. Validate paths
 	if err := s.ValidatePath(src); err != nil {
@@ -288,7 +288,7 @@ func (s *Service) moveFile(ctx context.Context, src, dst string) error {
 	newRecord.Hash = srcRecord.Hash
 	newRecord.TextPreview = srcRecord.TextPreview
 
-	// 7. Atomic DB update (files, digests, pins, files_fts).
+	// 7. Atomic DB update (files, pins, files_fts).
 	// MoveFileAtomic also rewrites files_fts.file_path inside the same
 	// transaction, so there is no separate "sync to external search"
 	// step now that Meilisearch is gone.
@@ -363,7 +363,7 @@ func (s *Service) renameOrMove(ctx context.Context, oldPath, newPath string) err
 
 // deleteFolder removes a directory and all its contents from filesystem and database.
 // This is the SINGLE entry point for folder deletion.
-// Handles: filesystem, files table, digests, pins, files_fts.
+// Handles: filesystem, files table, pins, files_fts.
 func (s *Service) deleteFolder(ctx context.Context, path string) error {
 	// 1. Validate path
 	if err := s.ValidatePath(path); err != nil {

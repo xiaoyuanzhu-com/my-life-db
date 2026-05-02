@@ -12,10 +12,9 @@ import (
 
 // Default settings
 var defaultSettings = map[string]string{
-	"openai_model":        "gpt-4o-mini",
-	"openai_base_url":     "",
-	"qdrant_host":         "",
-	"digest_auto_process": "true",
+	"openai_model":    "gpt-4o-mini",
+	"openai_base_url": "",
+	"qdrant_host":     "",
 }
 
 // GetSetting retrieves a setting by key
@@ -181,18 +180,9 @@ func (d *DB) LoadUserSettings() (*models.UserSettings, error) {
 
 	// Build preferences
 	preferences := models.Preferences{
-		Theme:        pickFromMap("preferences_theme", "", "auto"),
-		DefaultView:  pickFromMap("preferences_default_view", "", "home"),
-		WeeklyDigest: pickFromMap("preferences_weekly_digest", "", "false") == "true",
-		DigestDay:    0,
-		LogLevel:     pickFromMap("preferences_log_level", "", "info"),
-	}
-
-	// Parse digest day
-	if dayStr := pickFromMap("preferences_digest_day", "", "0"); dayStr != "" {
-		if day, err := strconv.Atoi(dayStr); err == nil {
-			preferences.DigestDay = day
-		}
+		Theme:       pickFromMap("preferences_theme", "", "auto"),
+		DefaultView: pickFromMap("preferences_default_view", "", "home"),
+		LogLevel:    pickFromMap("preferences_log_level", "", "info"),
 	}
 
 	// Optional preference fields
@@ -230,14 +220,6 @@ func (d *DB) LoadUserSettings() (*models.UserSettings, error) {
 			OSSRegion:          pickFromMap("vendors_aliyun_oss_region", "OSS_REGION", "oss-cn-beijing"),
 			OSSBucket:          pickFromMap("vendors_aliyun_oss_bucket", "OSS_BUCKET", ""),
 		},
-	}
-
-	// Build digesters
-	digesters := map[string]bool{
-		"url-crawler":       pickFromMap("digesters_url_crawler", "", "true") != "false",
-		"url-crawl-summary": pickFromMap("digesters_url_crawl_summary", "", "true") != "false",
-		"tags":              pickFromMap("digesters_tags", "", "true") != "false",
-		"search-semantic":   pickFromMap("digesters_search_semantic", "", "true") != "false",
 	}
 
 	// Build extraction
@@ -279,7 +261,6 @@ func (d *DB) LoadUserSettings() (*models.UserSettings, error) {
 	return &models.UserSettings{
 		Preferences: preferences,
 		Vendors:     vendors,
-		Digesters:   digesters,
 		Extraction:  extraction,
 		Storage:     storage,
 	}, nil
@@ -292,8 +273,6 @@ func (d *DB) SaveUserSettings(ctx context.Context, settings *models.UserSettings
 	// Preferences
 	updates["preferences_theme"] = settings.Preferences.Theme
 	updates["preferences_default_view"] = settings.Preferences.DefaultView
-	updates["preferences_weekly_digest"] = strconv.FormatBool(settings.Preferences.WeeklyDigest)
-	updates["preferences_digest_day"] = strconv.Itoa(settings.Preferences.DigestDay)
 	if settings.Preferences.LogLevel != "" {
 		updates["preferences_log_level"] = settings.Preferences.LogLevel
 	}
@@ -353,13 +332,6 @@ func (d *DB) SaveUserSettings(ctx context.Context, settings *models.UserSettings
 			if settings.Vendors.Aliyun.OSSBucket != "" {
 				updates["vendors_aliyun_oss_bucket"] = settings.Vendors.Aliyun.OSSBucket
 			}
-		}
-	}
-
-	// Digesters
-	if settings.Digesters != nil {
-		for key, value := range settings.Digesters {
-			updates["digesters_"+key] = strconv.FormatBool(value)
 		}
 	}
 

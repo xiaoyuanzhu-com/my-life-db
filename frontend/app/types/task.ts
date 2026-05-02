@@ -14,7 +14,7 @@ export interface TaskRecordRow {
   /** Task ID (UUID) */
   id: string;
 
-  /** Task type (e.g., 'digest_url_crawl') */
+  /** Task type */
   type: string;
 
   /** Input data (JSON string) */
@@ -60,7 +60,7 @@ export interface Task<TInput = unknown, TOutput = unknown> {
   /** Task ID (UUID) */
   id: string;
 
-  /** Task type (e.g., 'digest_url_crawl') */
+  /** Task type */
   type: string;
 
   /** Input data (parsed from JSON) */

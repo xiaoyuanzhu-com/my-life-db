@@ -120,7 +120,7 @@ func (s *Service) Stop() error {
 	return nil
 }
 
-// SetFileChangeHandler registers callback for file changes (used by digest service)
+// SetFileChangeHandler registers a callback invoked when files change.
 func (s *Service) SetFileChangeHandler(handler FileChangeHandler) {
 	s.handlerMu.Lock()
 	defer s.handlerMu.Unlock()

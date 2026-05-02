@@ -4,13 +4,11 @@ import { getFileContentUrl } from '../utils';
 
 interface ImageContentProps {
   file: FileWithDigests;
-  /** Whether digests panel is showing (disables click-to-close) */
-  showDigests?: boolean;
   /** Callback when image is clicked (for close behavior) */
   onClose?: () => void;
 }
 
-export function ImageContent({ file, showDigests, onClose }: ImageContentProps) {
+export function ImageContent({ file, onClose }: ImageContentProps) {
   const src = getFileContentUrl(file);
   const imgRef = useRef<HTMLImageElement>(null);
 
@@ -18,7 +16,7 @@ export function ImageContent({ file, showDigests, onClose }: ImageContentProps) 
     <div className="w-full h-full rounded-lg bg-[#fffffe] [@media(prefers-color-scheme:dark)]:bg-[#1e1e1e] flex items-center justify-center">
       <div
         className="w-full h-full flex items-center justify-center cursor-pointer p-4"
-        onClick={() => !showDigests && onClose?.()}
+        onClick={() => onClose?.()}
       >
         <div className="relative">
           <img

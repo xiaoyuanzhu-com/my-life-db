@@ -30,7 +30,7 @@ export function useCardModal(file: FileWithDigests) {
 interface UseModalNavigationOptions extends ModalNavigationProps {
   /** Whether the modal is open */
   isOpen: boolean;
-  /** Whether navigation should be enabled (e.g., disable when digests panel is open) */
+  /** Whether navigation should be enabled */
   enabled?: boolean;
 }
 

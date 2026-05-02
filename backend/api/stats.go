@@ -24,55 +24,10 @@ func (h *Handlers) GetStats(c *gin.Context) {
 		libraryCount, librarySize = 0, 0
 	}
 
-	// Query total files for digests
-	var totalFiles int64
-	err = h.server.IndexDB().Read().QueryRow(`
-		SELECT COUNT(*)
-		FROM files
-		WHERE is_folder = 0
-		AND path NOT LIKE 'app/%'
-	`).Scan(&totalFiles)
-	if err != nil {
-		log.Error().Err(err).Msg("failed to get total files")
-		totalFiles = 0
-	}
-
-	// Query digested files (completed status)
-	var digestedFiles int64
-	err = h.server.IndexDB().Read().QueryRow(`
-		SELECT COUNT(DISTINCT file_path)
-		FROM digests
-		WHERE status = 'completed'
-		AND file_path NOT LIKE 'app/%'
-	`).Scan(&digestedFiles)
-	if err != nil {
-		log.Error().Err(err).Msg("failed to get digested files")
-		digestedFiles = 0
-	}
-
-	// Query pending digests
-	var pendingDigests int64
-	err = h.server.IndexDB().Read().QueryRow(`
-		SELECT COUNT(*)
-		FROM digests
-		WHERE status IN ('todo', 'in-progress')
-		AND file_path NOT LIKE 'app/%'
-	`).Scan(&pendingDigests)
-	if err != nil {
-		log.Error().Err(err).Msg("failed to get pending digests")
-		pendingDigests = 0
-	}
-
-	// Return response matching Node.js schema exactly
 	c.JSON(http.StatusOK, gin.H{
 		"library": gin.H{
 			"fileCount": libraryCount,
 			"totalSize": librarySize,
-		},
-		"digests": gin.H{
-			"totalFiles":     totalFiles,
-			"digestedFiles":  digestedFiles,
-			"pendingDigests": pendingDigests,
 		},
 	})
 }

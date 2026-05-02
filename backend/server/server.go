@@ -26,7 +26,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/mcptools"
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 	"github.com/xiaoyuanzhu-com/my-life-db/skills"
-	"github.com/xiaoyuanzhu-com/my-life-db/workers/digest"
 	"github.com/xiaoyuanzhu-com/my-life-db/workers/textindex"
 )
 
@@ -35,12 +34,11 @@ type Server struct {
 	cfg *Config
 
 	// Components (owned by server)
-	indexDB         *db.DB // file index, rebuildable: files, files_fts, sqlar, digests
-	appDB           *db.DB // persistent user data: pins, settings, sessions, agent_*, explore_*
-	fsService       *fs.Service
-	digestWorker    *digest.Worker
-	textIndexer *textindex.Indexer
-	notifService    *notifications.Service
+	indexDB      *db.DB // file index, rebuildable: files, files_fts, sqlar
+	appDB        *db.DB // persistent user data: pins, settings, sessions, agent_*, explore_*
+	fsService    *fs.Service
+	textIndexer  *textindex.Indexer
+	notifService *notifications.Service
 	agentClient     *agentsdk.Client
 	explore         *explore.Service
 	hookRegistry    *hooks.Registry
@@ -86,7 +84,7 @@ func New(cfg *Config) (*Server, error) {
 	}
 
 	// 1. Open both databases. Index DB holds the rebuildable file/search
-	// index (files, files_fts, sqlar, digests); app DB holds persistent user
+	// index (files, files_fts, sqlar); app DB holds persistent user
 	// data (pins, settings, sessions, agent_*, explore_*).
 	//
 	// Bootstrap order is sensitive because of cross-DB ATTACHes:
@@ -484,7 +482,7 @@ http_headers = { "x-litellm-customer-id" = %q }
 	log.Info().Msg("initializing notifications service")
 	s.notifService = notifications.NewService()
 
-	// 4. Create FS service (uses index DB — files/digests/sqlar)
+	// 4. Create FS service (uses index DB — files/sqlar)
 	log.Info().Msg("initializing filesystem service")
 	fsCfg := cfg.ToFSConfig()
 	fsCfg.DB = fs.NewDBAdapter(s.indexDB)
@@ -493,12 +491,7 @@ http_headers = { "x-litellm-customer-id" = %q }
 	}
 	s.fsService = fs.NewService(fsCfg)
 
-	// 5. Create digest worker (uses index DB — digests/files/sqlar)
-	log.Info().Msg("initializing digest worker")
-	digestCfg := cfg.ToDigestConfig()
-	s.digestWorker = digest.NewWorker(digestCfg, s.indexDB)
-
-	// 5.5. Create text indexer (writes synchronously to SQLite FTS5 files_fts
+	// 5. Create text indexer (writes synchronously to SQLite FTS5 files_fts
 	// in the index DB)
 	log.Info().Msg("initializing text indexer")
 	s.textIndexer = textindex.NewIndexer(s.fsService.DataRoot(), s.indexDB)
@@ -519,11 +512,10 @@ http_headers = { "x-litellm-customer-id" = %q }
 
 // connectServices wires up event handlers between services
 func (s *Server) connectServices() {
-	// FS → Text Indexer + Digest: When files change, index for search and trigger digest processing
+	// FS → Text Indexer: When files change, index for search
 	s.fsService.SetFileChangeHandler(func(event fs.FileChangeEvent) {
 		if event.ContentChanged {
 			s.textIndexer.OnFileChange(event.FilePath, event.IsNew, true)
-			s.digestWorker.OnFileChange(event.FilePath, event.IsNew, true)
 		}
 
 		// Emit file events to hooks registry for auto-run agents
@@ -654,9 +646,6 @@ func (s *Server) Start() error {
 		return fmt.Errorf("failed to start FS service: %w", err)
 	}
 
-	// Start digest worker
-	go s.digestWorker.Start()
-
 	// Backfill the FTS5 index for any files that aren't yet indexed.
 	go s.textIndexer.Backfill()
 
@@ -741,7 +730,6 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 
 	// 6. Stop background services (in reverse order of startup)
-	s.digestWorker.Stop()
 	s.fsService.Stop()
 
 	// 7. Close databases last. Close app DB before index DB so any in-flight
@@ -803,7 +791,6 @@ func (s *Server) runAttachmentsJanitor() {
 func (s *Server) IndexDB() *db.DB                             { return s.indexDB }
 func (s *Server) AppDB() *db.DB                               { return s.appDB }
 func (s *Server) FS() *fs.Service                             { return s.fsService }
-func (s *Server) Digest() *digest.Worker                      { return s.digestWorker }
 func (s *Server) TextIndexer() *textindex.Indexer            { return s.textIndexer }
 func (s *Server) Notifications() *notifications.Service       { return s.notifService }
 func (s *Server) AgentClient() *agentsdk.Client                { return s.agentClient }

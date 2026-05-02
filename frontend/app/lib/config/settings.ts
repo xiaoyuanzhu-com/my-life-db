@@ -5,8 +5,6 @@ export interface UserSettings {
   preferences: {
     theme: 'light' | 'dark' | 'auto';
     defaultView: 'home' | 'library';
-    weeklyDigest: boolean;
-    digestDay: 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 = Sunday
     logLevel?: 'debug' | 'info' | 'warn' | 'error';
     userEmail?: string;
     language?: 'en' | 'zh-Hans'; // UI language (BCP-47). Distinct from `languages[]` (content languages).
@@ -32,12 +30,6 @@ export interface UserSettings {
     qdrant?: {
       host?: string;
     };
-  };
-
-  // Digester Configuration
-  digesters?: {
-    'tags'?: boolean;
-    'search-semantic'?: boolean;
   };
 
   // Extraction Options (defaults for enrichment)
@@ -101,13 +93,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   preferences: {
     theme: 'auto',
     defaultView: 'home',
-    weeklyDigest: false,
-    digestDay: 0, // Sunday
     logLevel: 'info',
-  },
-  digesters: {
-    'tags': true,
-    'search-semantic': true,
   },
   extraction: {
     autoEnrich: false,

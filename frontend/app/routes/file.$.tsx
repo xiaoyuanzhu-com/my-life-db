@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useFormatter } from "~/lib/i18n/use-formatter";
 import { useParams, useNavigate } from "react-router";
@@ -10,55 +9,14 @@ import {
   Hash,
   HardDrive,
   Calendar,
-  CheckCircle2,
   XCircle,
   Loader2,
-  AlertCircle,
-  Sparkles,
-  RotateCcw,
 } from "lucide-react";
-import type { FileRecord, Digest } from "~/types";
+import type { FileRecord } from "~/types";
 import { api } from "~/lib/api";
-import { parseApiError, formatApiError } from "~/lib/errors";
 
 interface FileInfoData extends FileRecord {
-  digests: Digest[];
   isPinned: boolean;
-}
-
-
-function getStatusIcon(status: string) {
-  switch (status) {
-    case "completed":
-      return <CheckCircle2 className="w-4 h-4 text-green-500" />;
-    case "in-progress":
-      return <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />;
-    case "failed":
-      return <XCircle className="w-4 h-4 text-red-500" />;
-    case "todo":
-      return <AlertCircle className="w-4 h-4 text-yellow-500" />;
-    case "skipped":
-      return <AlertCircle className="w-4 h-4 text-gray-400" />;
-    default:
-      return <AlertCircle className="w-4 h-4 text-muted-foreground" />;
-  }
-}
-
-function getStatusColor(status: string): string {
-  switch (status) {
-    case "completed":
-      return "text-green-500";
-    case "in-progress":
-      return "text-blue-500";
-    case "failed":
-      return "text-red-500";
-    case "todo":
-      return "text-yellow-500";
-    case "skipped":
-      return "text-muted-foreground";
-    default:
-      return "text-muted-foreground";
-  }
 }
 
 const TEXT_CONTENT_TYPES = new Set([
@@ -68,9 +26,6 @@ const TEXT_CONTENT_TYPES = new Set([
   "application/javascript",
   "application/x-sh",
 ]);
-
-const DIGEST_POLL_INTERVAL = 2000;
-const PENDING_DIGEST_STATUSES = new Set(["todo", "in-progress"]);
 
 const safeDecodeURIComponent = (value: string): string => {
   try {
@@ -87,134 +42,6 @@ function isTextContent(contentType: string | null): boolean {
   return normalized.startsWith("text/") || TEXT_CONTENT_TYPES.has(normalized);
 }
 
-interface DigestCardProps {
-  digest: Digest;
-  onReset?: (digester: string) => void;
-  isResetting?: boolean;
-}
-
-function DigestCard({ digest, onReset, isResetting }: DigestCardProps) {
-  let parsedContent: any = null;
-  if (digest.content) {
-    try {
-      parsedContent = JSON.parse(digest.content);
-    } catch {
-      // Content is not JSON, handled below
-    }
-  }
-
-  const isScreenshot = digest.digester.toLowerCase().includes("screenshot");
-  const screenshotSrc =
-    isScreenshot && digest.sqlarName
-      ? `/sqlar/${digest.sqlarName
-          .split("/")
-          .map((segment) => encodeURIComponent(segment))
-          .join("/")}`
-      : null;
-
-  let contentBody: ReactNode | null = null;
-  let showContentSection = true;
-
-  if (screenshotSrc) {
-    contentBody = (
-      <div className="flex justify-center">
-        <div className="w-full md:w-3/5 max-w-2xl">
-          <div className="rounded-md overflow-hidden border bg-muted/50 relative">
-            <img
-              src={screenshotSrc}
-              alt={`${digest.digester} screenshot`}
-              className="w-full h-auto object-contain bg-black/5"
-            />
-          </div>
-        </div>
-      </div>
-    );
-  } else if (
-    (digest.digester === "url-crawl-summary" || digest.digester === "summarize") &&
-    parsedContent?.summary
-  ) {
-    contentBody = (
-      <div className="p-2 bg-muted rounded text-sm whitespace-pre-wrap">{parsedContent.summary}</div>
-    );
-  } else if (digest.digester === "tags" && Array.isArray(parsedContent?.tags)) {
-    contentBody = (
-      <div className="flex flex-wrap gap-1">
-        {parsedContent.tags.map((tag: string, idx: number) => (
-          <span key={`${tag}-${idx}`} className="px-2 py-0.5 bg-primary/10 text-primary rounded-full text-xs">
-            {tag}
-          </span>
-        ))}
-      </div>
-    );
-  } else if (digest.digester === "search-keyword") {
-    if (digest.error) {
-      contentBody = (
-        <div className="p-2 bg-destructive/10 rounded text-xs text-destructive">
-          {digest.error}
-        </div>
-      );
-    } else {
-      showContentSection = false;
-    }
-  } else if (digest.digester === "search-semantic") {
-    if (digest.error) {
-      contentBody = (
-        <div className="p-2 bg-destructive/10 rounded text-xs text-destructive">
-          {digest.error}
-        </div>
-      );
-    } else {
-      showContentSection = false;
-    }
-  } else if (parsedContent) {
-    contentBody = (
-      <div className="p-2 bg-muted rounded text-xs font-mono whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
-        {JSON.stringify(parsedContent, null, 2)}
-      </div>
-    );
-  } else if (digest.content) {
-    contentBody = (
-      <div className="p-2 bg-muted rounded text-xs font-mono whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
-        {digest.content}
-      </div>
-    );
-  } else if (digest.error) {
-    contentBody = (
-      <div className="p-2 bg-destructive/10 rounded text-xs text-destructive">
-        {digest.error}
-      </div>
-    );
-  } else if (showContentSection) {
-    contentBody = <div className="text-sm text-muted-foreground">No content available.</div>;
-  }
-
-  const canReset = digest.status !== "in-progress" && digest.status !== "todo";
-
-  return (
-    <div className="border rounded-lg p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-sm">{digest.digester}</span>
-          {getStatusIcon(digest.status)}
-          <span className={`text-xs ${getStatusColor(digest.status)}`}>{digest.status}</span>
-        </div>
-        {canReset && onReset && (
-          <button
-            onClick={() => onReset(digest.digester)}
-            disabled={isResetting}
-            className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            title={`Reset and reprocess "${digest.digester}"`}
-          >
-            {isResetting ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
-            Reset
-          </button>
-        )}
-      </div>
-      {showContentSection && contentBody !== null && <div className="pt-2 border-t text-sm space-y-2">{contentBody}</div>}
-    </div>
-  );
-}
-
 export default function FileInfoPage() {
   const { t } = useTranslation('data');
   const params = useParams();
@@ -223,16 +50,11 @@ export default function FileInfoPage() {
   const [fileInfo, setFileInfo] = useState<FileInfoData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isDigesting, setIsDigesting] = useState(false);
-  const [isPollingDigests, setIsPollingDigests] = useState(false);
-  const [digestMessage, setDigestMessage] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
   const [fileContentType, setFileContentType] = useState<string | null>(null);
   const [isContentLoading, setIsContentLoading] = useState(true);
   const [fileContentError, setFileContentError] = useState<string | null>(null);
-  const [resettingDigester, setResettingDigester] = useState<string | null>(null);
-  const digestPollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Reconstruct file path from params
@@ -242,38 +64,28 @@ export default function FileInfoPage() {
     .map(safeDecodeURIComponent)
     .join("/");
 
-  const loadFileInfo = useCallback(
-    async (options?: { background?: boolean }) => {
-      if (!filePath) return;
+  const loadFileInfo = useCallback(async () => {
+    if (!filePath) return;
 
-      const isBackground = Boolean(options?.background);
-      if (!isBackground) {
-        setIsLoading(true);
-        setError(null);
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await api.get(`/api/library/file-info?path=${encodeURIComponent(filePath)}`);
+
+      if (!response.ok) {
+        throw new Error("Failed to load file information");
       }
 
-      try {
-        const response = await api.get(`/api/library/file-info?path=${encodeURIComponent(filePath)}`);
-
-        if (!response.ok) {
-          throw new Error("Failed to load file information");
-        }
-
-        const data = await response.json();
-        setFileInfo(data);
-      } catch (err) {
-        console.error("Failed to load file info:", err);
-        if (!isBackground) {
-          setError(err instanceof Error ? err.message : "Failed to load file information");
-        }
-      } finally {
-        if (!isBackground) {
-          setIsLoading(false);
-        }
-      }
-    },
-    [filePath]
-  );
+      const data = await response.json();
+      setFileInfo(data);
+    } catch (err) {
+      console.error("Failed to load file info:", err);
+      setError(err instanceof Error ? err.message : "Failed to load file information");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [filePath]);
 
   const loadFileContent = useCallback(async () => {
     if (!filePath) return;
@@ -323,14 +135,6 @@ export default function FileInfoPage() {
     }
   }, [filePath]);
 
-  const stopDigestPolling = useCallback(() => {
-    if (digestPollIntervalRef.current) {
-      clearInterval(digestPollIntervalRef.current);
-      digestPollIntervalRef.current = null;
-    }
-    setIsPollingDigests(false);
-  }, []);
-
   useEffect(() => {
     if (!filePath) return;
     loadFileInfo();
@@ -341,91 +145,8 @@ export default function FileInfoPage() {
     loadFileContent();
   }, [filePath, loadFileContent]);
 
-  useEffect(() => {
-    if (!isPollingDigests) {
-      return;
-    }
-
-    const runPoll = () => {
-      void loadFileInfo({ background: true });
-    };
-
-    runPoll();
-    digestPollIntervalRef.current = setInterval(runPoll, DIGEST_POLL_INTERVAL);
-
-    return () => {
-      if (digestPollIntervalRef.current) {
-        clearInterval(digestPollIntervalRef.current);
-        digestPollIntervalRef.current = null;
-      }
-    };
-  }, [isPollingDigests, loadFileInfo]);
-
-  useEffect(() => {
-    if (!fileInfo) {
-      stopDigestPolling();
-      return;
-    }
-
-    const hasPending = fileInfo.digests?.some((digest) => PENDING_DIGEST_STATUSES.has(digest.status)) ?? false;
-
-    if (hasPending) {
-      setIsPollingDigests(true);
-    } else {
-      stopDigestPolling();
-    }
-  }, [fileInfo, stopDigestPolling]);
-
   const handleBack = () => {
     navigate(-1);
-  };
-
-  const handleDigest = async () => {
-    setIsDigesting(true);
-    setDigestMessage(null);
-
-    try {
-      const response = await api.post(`/api/digest/file/${filePath}`);
-
-      if (!response.ok) {
-        const apiErr = await parseApiError(response);
-        throw new Error(formatApiError(apiErr));
-      }
-
-      const data = await response.json();
-      setDigestMessage(data.message || "Digest processing started");
-      setIsPollingDigests(true);
-      await loadFileInfo({ background: true });
-    } catch (err) {
-      console.error("Failed to trigger digest:", err);
-      setDigestMessage(err instanceof Error ? err.message : "Failed to trigger digest");
-    } finally {
-      setIsDigesting(false);
-    }
-  };
-
-  const handleResetDigest = async (digester: string) => {
-    setResettingDigester(digester);
-    setDigestMessage(null);
-
-    try {
-      const response = await api.post(`/api/digest/file/${filePath}?digester=${encodeURIComponent(digester)}`);
-
-      if (!response.ok) {
-        const apiErr = await parseApiError(response);
-        throw new Error(formatApiError(apiErr));
-      }
-
-      const data = await response.json();
-      setDigestMessage(data.message || `${digester} reset complete`);
-      setIsPollingDigests(true);
-      await loadFileInfo({ background: true });
-    } catch (err) {
-      console.error("Failed to reset digest:", err);
-      setDigestMessage(err instanceof Error ? err.message : `Failed to reset ${digester}`);
-    } finally {
-      setResettingDigester(null);
-    }
   };
 
   if (isLoading) {
@@ -453,7 +174,6 @@ export default function FileInfoPage() {
   }
 
   const file = fileInfo;
-  const digests = fileInfo.digests ?? [];
   const displayContentType = fileContentType || file.mimeType || null;
 
   let fileContentBody;
@@ -568,43 +288,6 @@ export default function FileInfoPage() {
               </div>
             </div>
           </div>
-        </section>
-
-        {/* Digests */}
-        <section>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-              Digests ({digests.length})
-            </h2>
-            <div className="flex items-center gap-3">
-              {digestMessage && <span className="text-xs text-muted-foreground">{digestMessage}</span>}
-              <button
-                onClick={handleDigest}
-                disabled={isDigesting}
-                className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium border rounded-lg hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title={t('file.metadata.triggerDigest')}
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                {isDigesting ? "Processing..." : "Digest"}
-              </button>
-            </div>
-          </div>
-          {digests.length > 0 ? (
-            <div className="space-y-3">
-              {digests.map((digest) => (
-                <DigestCard
-                  key={digest.id}
-                  digest={digest}
-                  onReset={handleResetDigest}
-                  isResetting={resettingDigester === digest.digester}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="border rounded-lg p-8 text-center text-muted-foreground">
-              No digests available for this file
-            </div>
-          )}
         </section>
       </div>
     </div>

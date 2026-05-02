@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -12,19 +11,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
-// RleMask represents an RLE mask for SAM segmentation
-type RleMask struct {
-	Size   []int `json:"size"`
-	Counts []int `json:"counts"`
-}
-
-// MatchedObject represents a matched object from image-objects digest
-type MatchedObject struct {
-	Title string    `json:"title"`
-	BBox  []float64 `json:"bbox"`
-	Rle   *RleMask  `json:"rle"`
-}
-
 // SearchResultItem represents a search result
 type SearchResultItem struct {
 	Path          string            `json:"path"`
@@ -34,7 +20,6 @@ type SearchResultItem struct {
 	MimeType      *string           `json:"mimeType,omitempty"`
 	ModifiedAt    int64             `json:"modifiedAt"`
 	CreatedAt     int64             `json:"createdAt"`
-	Digests       []db.Digest       `json:"digests"`
 	Score         float64           `json:"score"`
 	Snippet       string            `json:"snippet"`
 	TextPreview   *string           `json:"textPreview,omitempty"`
@@ -42,23 +27,15 @@ type SearchResultItem struct {
 	PreviewStatus *string           `json:"previewStatus,omitempty"`
 	Highlights    map[string]string `json:"highlights,omitempty"`
 	MatchContext  *MatchContext     `json:"matchContext,omitempty"`
-	MatchedObject *MatchedObject    `json:"matchedObject,omitempty"`
 }
 
-// MatchContext provides context about where the match was found
+// MatchContext provides context about where the match was found.
+// Source is "keyword" for FTS5 keyword hits.
 type MatchContext struct {
-	Source     string      `json:"source"` // "digest" or "semantic"
-	Snippet    string      `json:"snippet"`
-	Terms      []string    `json:"terms"`
-	Score      *float64    `json:"score,omitempty"`
-	SourceType string      `json:"sourceType,omitempty"` // For semantic matches
-	Digest     *DigestInfo `json:"digest,omitempty"`     // For keyword matches
-}
-
-// DigestInfo provides digest type and label for match context
-type DigestInfo struct {
-	Type  string `json:"type"`
-	Label string `json:"label"`
+	Source  string   `json:"source"`
+	Snippet string   `json:"snippet"`
+	Terms   []string `json:"terms"`
+	Label   string   `json:"label"` // "File path" or "File content"
 }
 
 // SearchResponse represents the search API response
@@ -147,7 +124,7 @@ func (h *Handlers) Search(c *gin.Context) {
 		terms := extractSearchTerms(query)
 
 		// Batch enrichment: gather all hit paths once, then issue one query
-		// per data source instead of three queries per hit.
+		// per data source instead of multiple queries per hit.
 		paths := make([]string, 0, len(hits))
 		for _, hit := range hits {
 			paths = append(paths, hit.FilePath)
@@ -158,26 +135,17 @@ func (h *Handlers) Search(c *gin.Context) {
 			log.Error().Err(err).Msg("batch fetch files failed")
 			filesByPath = map[string]*db.FileRecord{}
 		}
-		digestsByPath, err := h.server.IndexDB().GetDigestsForFiles(paths)
-		if err != nil {
-			log.Error().Err(err).Msg("batch fetch digests failed")
-			digestsByPath = map[string][]db.Digest{}
-		}
 		pinnedSet, err := h.server.AppDB().GetPinnedSet(paths)
 		if err != nil {
 			log.Error().Err(err).Msg("batch fetch pins failed")
 			pinnedSet = map[string]bool{}
 		}
+		_ = pinnedSet // currently unused in response shape; reserved for future enrichment
 
 		for _, hit := range hits {
-			fileRec := filesByPath[hit.FilePath]
-			if fileRec == nil {
+			file := filesByPath[hit.FilePath]
+			if file == nil {
 				continue
-			}
-			file := &db.FileWithDigests{
-				FileRecord: *fileRec,
-				Digests:    digestsByPath[hit.FilePath],
-				IsPinned:   pinnedSet[hit.FilePath],
 			}
 
 			// Highlights map mirrors the old meili shape so the frontend
@@ -192,12 +160,7 @@ func (h *Handlers) Search(c *gin.Context) {
 
 			snippet := safeSubstring(stripEm(hit.Snippet), 200)
 
-			matchContext := buildKeywordMatchContext(hit, file, terms)
-
-			var matchedObject *MatchedObject
-			if file.MimeType != nil && strings.HasPrefix(*file.MimeType, "image/") {
-				matchedObject = findMatchingObject(file, terms)
-			}
+			matchContext := buildKeywordMatchContext(hit, terms)
 
 			results = append(results, SearchResultItem{
 				Path:          file.Path,
@@ -207,7 +170,6 @@ func (h *Handlers) Search(c *gin.Context) {
 				MimeType:      file.MimeType,
 				ModifiedAt:    file.ModifiedAt,
 				CreatedAt:     file.CreatedAt,
-				Digests:       file.Digests,
 				Score:         -hit.Score, // bm25 is negative-better; flip for "higher is better" UX
 				Snippet:       snippet,
 				TextPreview:   file.TextPreview,
@@ -215,7 +177,6 @@ func (h *Handlers) Search(c *gin.Context) {
 				PreviewStatus: file.PreviewStatus,
 				Highlights:    highlights,
 				MatchContext:  matchContext,
-				MatchedObject: matchedObject,
 			})
 		}
 		enrichMs = time.Since(enrichStart).Milliseconds()
@@ -294,186 +255,36 @@ func max(a, b int) int {
 	return b
 }
 
-// findMatchingObject finds the first object in image-objects digest that matches any search term
-// Returns the object with its bbox and rle for highlighting
-func findMatchingObject(file *db.FileWithDigests, terms []string) *MatchedObject {
-	if file == nil || len(terms) == 0 {
-		return nil
-	}
-
-	// Find the image-objects digest
-	var objectsDigest *db.Digest
-	for i := range file.Digests {
-		if file.Digests[i].Digester == "image-objects" && file.Digests[i].Content != nil {
-			objectsDigest = &file.Digests[i]
-			break
-		}
-	}
-
-	if objectsDigest == nil || objectsDigest.Content == nil {
-		return nil
-	}
-
-	// Parse the JSON content
-	var data struct {
-		Objects []struct {
-			Title       string                 `json:"title"`
-			Description string                 `json:"description"`
-			BBox        []float64              `json:"bbox"`
-			Rle         map[string]interface{} `json:"rle"`
-		} `json:"objects"`
-	}
-
-	if err := json.Unmarshal([]byte(*objectsDigest.Content), &data); err != nil {
-		log.Warn().Err(err).Str("filePath", file.Path).Msg("failed to parse image-objects digest for matching")
-		return nil
-	}
-
-	// Find the first object that matches any search term
-	for _, obj := range data.Objects {
-		// Build searchable text from title and description
-		var searchableText strings.Builder
-		if obj.Title != "" {
-			searchableText.WriteString(obj.Title)
-		}
-		if obj.Description != "" {
-			if searchableText.Len() > 0 {
-				searchableText.WriteString(" ")
-			}
-			searchableText.WriteString(obj.Description)
-		}
-
-		searchText := strings.ToLower(searchableText.String())
-
-		// Check if any term matches (case-insensitive substring matching)
-		for _, term := range terms {
-			if strings.Contains(searchText, strings.ToLower(term)) {
-				// Found a match! Return this object
-				var rle *RleMask
-				if obj.Rle != nil {
-					// Convert the map to RleMask
-					if size, ok := obj.Rle["size"].([]interface{}); ok {
-						if counts, ok := obj.Rle["counts"].([]interface{}); ok {
-							sizeInts := make([]int, len(size))
-							for i, v := range size {
-								if fv, ok := v.(float64); ok {
-									sizeInts[i] = int(fv)
-								}
-							}
-							countsInts := make([]int, len(counts))
-							for i, v := range counts {
-								if fv, ok := v.(float64); ok {
-									countsInts[i] = int(fv)
-								}
-							}
-							rle = &RleMask{
-								Size:   sizeInts,
-								Counts: countsInts,
-							}
-						}
-					}
-				}
-
-				return &MatchedObject{
-					Title: obj.Title,
-					BBox:  obj.BBox,
-					Rle:   rle,
-				}
-			}
-		}
-	}
-
-	return nil
-}
-
-// buildKeywordMatchContext creates a MatchContext for an FTS5 hit. FTS5
-// indexes one content column that already concatenates the file path and
-// the file's text content, so we can't deduce *which* field matched purely
-// from the hit. Instead we:
-//
-//  1. If the path was highlighted, label the match as "File path".
-//  2. Otherwise scan the file's digests for the search terms and label by
-//     which digester contributed the matched text (Summary, OCR, etc).
-//  3. Fall back to a generic "File content" label.
-func buildKeywordMatchContext(hit db.FTSHit, file *db.FileWithDigests, terms []string) *MatchContext {
+// buildKeywordMatchContext creates a MatchContext for an FTS5 hit. Since
+// FTS5 indexes a single content column that concatenates the file path
+// and the file's text content, the hit itself tells us which side
+// matched: if the FilePathHL contains <em> markers and there's no
+// content hit, the match was on the path; otherwise it was on the
+// content.
+func buildKeywordMatchContext(hit db.FTSHit, terms []string) *MatchContext {
 	if len(terms) == 0 {
 		return nil
 	}
 
-	// File-path match — happens when the user searches for a filename.
-	if strings.Contains(hit.FilePathHL, "<em>") {
-		snippet := hit.FilePathHL
-		if !hit.HasContentHit {
-			return &MatchContext{
-				Source:  "digest",
-				Snippet: snippet,
-				Terms:   terms,
-				Digest: &DigestInfo{
-					Type:  "filePath",
-					Label: "File path",
-				},
-			}
+	pathMatched := strings.Contains(hit.FilePathHL, "<em>")
+
+	if pathMatched && !hit.HasContentHit {
+		return &MatchContext{
+			Source:  "keyword",
+			Snippet: hit.FilePathHL,
+			Terms:   terms,
+			Label:   "File path",
 		}
-		// If both path and content matched, prefer the content match below.
 	}
 
 	if !hit.HasContentHit {
 		return nil
 	}
 
-	// Digest labels matching the old TEXT_SOURCE_LABELS / ADDITIONAL_DIGEST_LABELS.
-	digestLabels := map[string]string{
-		"url-crawl-summary": "Summary",
-		"doc-to-markdown":   "Document content",
-		"image-objects":     "Image objects",
-		"tags":              "Tags",
-	}
-
-	// Probe digesters in priority order. The order roughly mirrors the
-	// fieldConfigs the old code walked.
-	priority := []string{
-		"url-crawl-summary",
-		"tags",
-		"doc-to-markdown",
-		"image-objects",
-	}
-
-	for _, digesterType := range priority {
-		var digest *db.Digest
-		for i := range file.Digests {
-			if file.Digests[i].Digester == digesterType && file.Digests[i].Content != nil {
-				digest = &file.Digests[i]
-				break
-			}
-		}
-		if digest == nil || digest.Content == nil {
-			continue
-		}
-		contentLower := strings.ToLower(*digest.Content)
-		for _, term := range terms {
-			if strings.Contains(contentLower, strings.ToLower(term)) {
-				return &MatchContext{
-					Source:  "digest",
-					Snippet: hit.Snippet,
-					Terms:   terms,
-					Digest: &DigestInfo{
-						Type:  "content",
-						Label: digestLabels[digesterType],
-					},
-				}
-			}
-		}
-	}
-
-	// Generic fallback — content matched but we couldn't attribute it to a
-	// specific digester (e.g., the file is plain text indexed verbatim).
 	return &MatchContext{
-		Source:  "digest",
+		Source:  "keyword",
 		Snippet: hit.Snippet,
 		Terms:   terms,
-		Digest: &DigestInfo{
-			Type:  "content",
-			Label: "File content",
-		},
+		Label:   "File content",
 	}
 }

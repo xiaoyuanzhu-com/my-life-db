@@ -7,43 +7,30 @@
 // Import for use within this file (for types defined in this file)
 import type {
   MessageType as MessageTypeModel,
-  DigestStatus,
 } from './models';
 
 // Re-export for external consumers
 export type {
   // Enums & Constants
   MessageType,
-  DigestStatus,
   TaskStatus,
   FileType,
   // Files Table
   FileRecord,
   FileRecordRow,
-  // Digests Table
-  Digest,
-  DigestInput,
-  DigestRecordRow,
   // Tasks Table
   Task,
   TaskRecordRow,
   // Settings Table
   Setting,
   SettingRecordRow,
-  // Qdrant Documents Table
-  QdrantDocument,
-  QdrantDocumentRow,
-  EmbeddingStatus,
-  SourceType,
   // Conversion Helpers
 } from './models';
 
 export {
   rowToFileRecord,
-  rowToDigest,
   rowToTask,
   rowToSetting,
-  rowToQdrantDocument,
 } from './models';
 
 /**

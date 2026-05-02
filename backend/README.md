@@ -9,7 +9,7 @@ The Go server provides:
 - Static file serving for the React frontend
 - SSE notifications
 - TUS resumable uploads
-- Background workers (file watcher, digest processor)
+- Background workers (file watcher)
 
 ## Requirements
 
@@ -33,8 +33,7 @@ backend/
 │   ├── files.go
 │   └── ...
 ├── workers/              # Background workers
-│   ├── fs/               # File system watcher
-│   └── digest/           # Digest processor
+│   └── fs/               # File system watcher
 ├── vendors/              # External service clients
 │   ├── qdrant.go
 │   ├── openai.go
@@ -119,7 +118,6 @@ The Go server implements all the same API endpoints as the Node.js server:
 - **Auth**: `/api/auth/login`, `/api/auth/logout`
 - **OAuth**: `/api/oauth/*`
 - **Inbox**: `/api/inbox`, `/api/inbox/:id`, `/api/inbox/pinned`
-- **Digest**: `/api/digest/*`
 - **Library**: `/api/library/*`
 - **Search**: `/api/search`
 - **People**: `/api/people/*`
@@ -159,7 +157,7 @@ make lint
 Enable debug logging for specific modules:
 
 ```bash
-DEBUG=VendorOpenAI,DigestWorker ./bin/server
+DEBUG=VendorOpenAI ./bin/server
 ```
 
 ## License

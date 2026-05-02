@@ -209,7 +209,7 @@ func (h *Handlers) FinalizeUpload(c *gin.Context) {
 		}
 
 		// Use fs.Service.WriteFile() - single entry point for all file operations
-		// This handles: file write, metadata computation, DB upsert, digest notification
+		// This handles: file write, metadata computation, DB upsert, fs change notification
 		result, err := h.server.FS().WriteFile(c.Request.Context(), fs.WriteRequest{
 			Path:            destPath,
 			Content:         uploadedFile,

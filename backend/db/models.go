@@ -21,34 +21,11 @@ type FileRecord struct {
 	PreviewStatus *string `json:"previewStatus,omitempty"`
 }
 
-// Digest represents a digest record
-type Digest struct {
-	ID        string  `json:"id"`
-	FilePath  string  `json:"filePath"`
-	Digester  string  `json:"digester"`
-	Status    string  `json:"status"`
-	Content   *string `json:"content,omitempty"`
-	SqlarName *string `json:"sqlarName,omitempty"`
-	Error     *string `json:"error,omitempty"`
-	Attempts  int     `json:"attempts"`
-	CreatedAt int64   `json:"createdAt"`
-	UpdatedAt int64   `json:"updatedAt"`
-}
-
 // Preview status constants
 const (
 	PreviewStatusPending = "pending"
 	PreviewStatusReady   = "ready"
 	PreviewStatusFailed  = "failed"
-)
-
-// DigestStatus constants
-const (
-	DigestStatusTodo      = "todo"
-	DigestStatusRunning   = "running"
-	DigestStatusDone      = "done"
-	DigestStatusFailed    = "failed"
-	DigestStatusSkipped   = "skipped"
 )
 
 // Pin represents a pinned file
@@ -144,16 +121,6 @@ func scanFileRecord(row interface{ Scan(...any) error }) (FileRecord, error) {
 	f.IsFolder = isFolder == 1
 	f.LastScannedAt = lastScannedAt.Int64
 	return f, err
-}
-
-// scanDigest scans a row into a Digest
-func scanDigest(row interface{ Scan(...any) error }) (Digest, error) {
-	var d Digest
-	err := row.Scan(
-		&d.ID, &d.FilePath, &d.Digester, &d.Status, &d.Content,
-		&d.SqlarName, &d.Error, &d.Attempts, &d.CreatedAt, &d.UpdatedAt,
-	)
-	return d, err
 }
 
 // NowUTC returns the current time in RFC3339 format

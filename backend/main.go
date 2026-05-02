@@ -37,8 +37,6 @@ func main() {
 		SimpleDictDir:    cfg.SimpleDictDir,
 		FSScanInterval:   1 * time.Hour,
 		FSWatchEnabled:   true,
-		DigestWorkers:    3,
-		DigestQueueSize:  1000,
 		OpenAIAPIKey:     cfg.OpenAIAPIKey,
 		OpenAIBaseURL:    cfg.OpenAIBaseURL,
 		OpenAIModel:      cfg.OpenAIModel,

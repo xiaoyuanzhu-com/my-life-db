@@ -10,10 +10,10 @@ import (
 // DB. File-mutation methods (DeleteFileWithCascade, RenameFilePath, ...) are
 // fully atomic across the index DB and the app DB: the index DB's writer
 // connection ATTACHes app.sqlite read-write as 'app', so a single SQL
-// transaction can DELETE/UPDATE files, digests, files_fts AND app.pins. No
+// transaction can DELETE/UPDATE files, files_fts AND app.pins. No
 // orphan pins on crash, no second-transaction follow-up.
 type dbAdapter struct {
-	indexDB *db.DB // files, digests, sqlar, files_fts; cross-DB writes also touch app.pins via ATTACH rw
+	indexDB *db.DB // files, sqlar, files_fts; cross-DB writes also touch app.pins via ATTACH rw
 }
 
 // NewDBAdapter creates a new database adapter. indexDB hosts the file index

@@ -61,7 +61,7 @@
     "newFolderNamePlaceholder": "New folder name",
     "closeTab": "Close tab",
     "details": "Details",
-    "detailsTooltip": "View file information and digests",
+    "detailsTooltip": "View file information",
     "cancelUpload": "Cancel upload",
     "unpin": "Unpin",
     "foldersAppearHere": "Library folders will appear here"
@@ -76,8 +76,7 @@
       "created": "Created",
       "modified": "Modified",
       "empty": "File is empty.",
-      "cannotPreview": "Preview not available for this file type.",
-      "triggerDigest": "Trigger AI digest processing for this file"
+      "cannotPreview": "Preview not available for this file type."
     },
     "delete": {
       "title": "Delete {{name}}?",
@@ -85,15 +84,6 @@
       "failed": "Failed to delete file. Please try again."
     },
     "unsavedChanges": "Unsaved changes"
-  },
-  "digests": {
-    "title": "Digests",
-    "empty": "No digests available",
-    "rerunAll": "Re-run all digests",
-    "clickToRerun": "Click to re-run",
-    "cleanup": "Cleanup",
-    "speechSummary": "Speech Recognition Summary",
-    "loading": "Loading digests..."
   },
   "explore": {
     "empty": {

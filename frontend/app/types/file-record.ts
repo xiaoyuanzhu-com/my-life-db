@@ -41,7 +41,7 @@ export interface FileRecordRow {
   /** Text preview for text files (first ~50 lines, null for non-text files) */
   text_preview: string | null;
 
-  /** Preview SQLAR path (cached from digests for fast inbox rendering) */
+  /** Preview SQLAR path (e.g., HEIC JPEG preview) for fast inbox rendering */
   preview_sqlar: string | null;
 }
 
@@ -81,7 +81,7 @@ export interface FileRecord {
   /** Text preview for text files (first ~50 lines, null for non-text files) */
   textPreview: string | null;
 
-  /** Preview SQLAR path (cached from digests for fast inbox rendering) */
+  /** Preview SQLAR path (e.g., HEIC JPEG preview) for fast inbox rendering */
   previewSqlar: string | null;
 }
 

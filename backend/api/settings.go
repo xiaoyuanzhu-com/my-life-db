@@ -72,8 +72,6 @@ func mergeSettings(current, updates *models.UserSettings) *models.UserSettings {
 	if updates.Preferences.DefaultView != "" {
 		merged.Preferences.DefaultView = updates.Preferences.DefaultView
 	}
-	merged.Preferences.WeeklyDigest = updates.Preferences.WeeklyDigest
-	merged.Preferences.DigestDay = updates.Preferences.DigestDay
 	if updates.Preferences.LogLevel != "" {
 		merged.Preferences.LogLevel = updates.Preferences.LogLevel
 	}
@@ -137,16 +135,6 @@ func mergeSettings(current, updates *models.UserSettings) *models.UserSettings {
 			}
 		}
 
-	}
-
-	// Merge digesters
-	if updates.Digesters != nil {
-		if merged.Digesters == nil {
-			merged.Digesters = make(map[string]bool)
-		}
-		for key, value := range updates.Digesters {
-			merged.Digesters[key] = value
-		}
 	}
 
 	// Merge extraction

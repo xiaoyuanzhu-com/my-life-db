@@ -1,22 +1,14 @@
 /**
  * Unified file model for UI components
  * Pure data from database - no computed fields
+ *
+ * Note: the type name is preserved for compatibility with the many existing
+ * imports across the FileCard subsystem; the digest-system fields it used
+ * to expose have been removed.
  */
 
 /**
- * Digest summary (minimal info from digests table)
- */
-export interface DigestSummary {
-  type: string; // digester name: 'tags', 'doc-to-screenshot', etc.
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'skipped' | 'todo';
-  content: string | null; // Text content (summary, JSON for tags)
-  sqlarName: string | null; // Filename in SQLAR (for binary digests)
-  error: string | null;
-  updatedAt: number;
-}
-
-/**
- * File with digests - ground truth from database
+ * File metadata - ground truth from database
  * Used by both inbox and search UIs
  */
 export interface FileWithDigests {
@@ -29,9 +21,6 @@ export interface FileWithDigests {
   hash: string | null; // SHA256 for small files
   modifiedAt: number;
   createdAt: number;
-
-  // Digests array (from digests table)
-  digests: DigestSummary[];
 
   // Optional text preview (truncated, for inbox/search list views)
   textPreview?: string;

@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
-	"github.com/xiaoyuanzhu-com/my-life-db/workers/digest"
 )
 
 // Config holds server configuration
@@ -38,10 +37,6 @@ type Config struct {
 	// FS settings (can be hot-reloaded)
 	FSScanInterval time.Duration
 	FSWatchEnabled bool
-
-	// Digest settings (can be hot-reloaded)
-	DigestWorkers   int
-	DigestQueueSize int
 
 	// External services (can be hot-reloaded)
 	OpenAIAPIKey  string
@@ -95,17 +90,6 @@ func (c *Config) ToFSConfig() fs.Config {
 		DataRoot:     c.UserDataDir,
 		ScanInterval: c.FSScanInterval,
 		WatchEnabled: c.FSWatchEnabled,
-	}
-}
-
-// ToDigestConfig converts server config to digest worker config
-func (c *Config) ToDigestConfig() digest.Config {
-	return digest.Config{
-		Workers:          c.DigestWorkers,
-		QueueSize:        c.DigestQueueSize,
-		OpenAIAPIKey:     c.OpenAIAPIKey,
-		OpenAIBaseURL:    c.OpenAIBaseURL,
-		OpenAIModel:      c.OpenAIModel,
 	}
 }
 

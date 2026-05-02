@@ -10,15 +10,12 @@ export interface SearchResultItem extends FileWithDigests {
     tags?: string;
   };
   matchContext?: {
-    source: 'digest' | 'semantic';
+    source: 'keyword' | 'semantic';
     snippet: string;
     terms: string[];
+    label?: string; // For keyword matches: "File path" or "File content"
     score?: number; // Similarity score for semantic matches (0.0-1.0)
     sourceType?: string; // Source type for semantic matches (content/summary/tags)
-    digest?: {
-      type: string;
-      label: string;
-    };
   };
 }
 

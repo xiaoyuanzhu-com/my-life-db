@@ -394,16 +394,8 @@ export function getFileContentUrl(file: FileWithDigests): string {
   // For HEIC/HEIF images, use preview if available
   const mimeType = file.mimeType || '';
   if (mimeType === 'image/heic' || mimeType === 'image/heif') {
-    // Check preview_sqlar first (set by backend for image-preview digest)
     if (file.previewSqlar) {
       return getSqlarUrl(file.previewSqlar);
-    }
-    // Fallback: check digests array
-    const previewDigest = file.digests?.find(
-      d => d.type === 'image-preview' && d.status === 'completed' && d.sqlarName
-    );
-    if (previewDigest?.sqlarName) {
-      return getSqlarUrl(previewDigest.sqlarName);
     }
   }
 
@@ -422,15 +414,11 @@ export function getSqlarUrl(sqlarName: string): string {
 }
 
 /**
- * Get screenshot URL from file digests
+ * Get the preview SQLAR URL for a file, if any.
  */
 export function getScreenshotUrl(file: FileWithDigests): string | null {
-  const sqlarName = file.previewSqlar || file.digests?.find(
-    d => d.type.includes('screenshot') && d.status === 'completed' && d.sqlarName
-  )?.sqlarName;
-
-  if (sqlarName) {
-    return getSqlarUrl(sqlarName);
+  if (file.previewSqlar) {
+    return getSqlarUrl(file.previewSqlar);
   }
   return null;
 }

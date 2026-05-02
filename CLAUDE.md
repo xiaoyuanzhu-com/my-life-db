@@ -7,9 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 All project documentation lives in `../my-life-db-docs/` (Astro Starlight site). Key sections for code changes:
 
 - **Architecture** — System overview, backend architecture, tech design, module interfaces
-- **Components** — Deep dives into subsystems: claude-code, digest-system, fs-service, notifications, auth, etc.
+- **Components** — Deep dives into subsystems: claude-code, fs-service, notifications, auth, etc.
 - **API** — REST API reference, HTTP caching
-- **Features** — Inbox, search, digest, voice, people, and more
+- **Features** — Inbox, search, voice, people, and more
 
 Read the architecture overview first, then the relevant component doc for your task.
 
@@ -19,7 +19,7 @@ MyLifeDB is a filesystem-based personal knowledge management system with:
 - **Frontend**: React Router 7 (SPA mode) + React 19 + TypeScript + Tailwind CSS 4 + Vite (in `frontend/`)
 - **Backend**: Go 1.25 HTTP server (Gin) with SQLite (in `backend/`)
 
-The backend provides all API endpoints, background workers (file system watcher, digest processor), SSE notifications, and static file serving. The frontend is a client-rendered React SPA that communicates with the backend API.
+The backend provides all API endpoints, background workers (file system watcher), SSE notifications, and static file serving. The frontend is a client-rendered React SPA that communicates with the backend API.
 
 ## Common Commands
 
@@ -92,8 +92,6 @@ my-life-db/
 │   │   └── config.go   # Server configuration
 │   ├── utils/          # Shared utilities
 │   ├── vendors/        # External clients (OpenAI, HAID, Aliyun)
-│   ├── workers/
-│   │   └── digest/     # Digest processor worker + digester registry
 │   ├── go.mod
 │   └── main.go         # Entry point - creates Server and wires routes
 └── run.js              # Helper script for running services (Node.js)
@@ -111,7 +109,6 @@ type Server struct {
     // Components (owned by server)
     database      *db.DB
     fsService     *fs.Service
-    digestWorker  *digest.Worker
     notifService  *notifications.Service
     claudeManager *claude.SessionManager
     agent         *agent.Agent
@@ -139,10 +136,9 @@ type Server struct {
 3. Notifications service (`notifications.NewService()`)
 4. Claude session manager (`claude.NewSessionManager()`)
 5. FS service (`fs.NewService()` with db reference)
-6. Digest worker (`digest.NewWorker()` with db + notifications)
-7. Agent (`agent.New()`, if `MLD_INBOX_AGENT=1`)
-8. Wire event handlers between components
-9. Setup Gin router
+6. Agent (`agent.New()`, if `MLD_INBOX_AGENT=1`)
+7. Wire event handlers between components
+8. Setup Gin router
 
 **API handlers pattern:**
 ```go
@@ -173,11 +169,9 @@ See the Architecture section in [`../my-life-db-docs/`](../my-life-db-docs/) for
 
 ### Background Workers
 
-The backend runs two concurrent workers:
+The backend runs one background worker:
 
-1. **FS Service** (`fs/`): Watches the data directory for file changes using fsnotify, scans periodically (hourly), and notifies the digest worker of changes via event handlers.
-
-2. **Digest Worker** (`workers/digest/`): Processes files through registered digesters (e.g., markdown, PDF, EPUB, images). Uses a registry pattern with 3 parallel processing goroutines. Supervisors ensure pending digests are eventually processed.
+1. **FS Service** (`fs/`): Watches the data directory for file changes using fsnotify and scans periodically (hourly), keeping the `files` table in sync with the filesystem.
 
 ### Data Storage
 ```
@@ -200,7 +194,7 @@ APP_DATA_DIR/           # Rebuildable app data (separate from user data)
 ### Database (SQLite)
 - Location: `APP_DATA_DIR/database.sqlite`
 - Driver: mattn/go-sqlite3 with CGO_ENABLED=1 (required for build)
-- Core tables: `files`, `digests`, `sqlar` (archive format), `pins`, `people`, `settings`
+- Core tables: `files`, `sqlar` (archive format), `pins`, `people`, `settings`
 - Migration system in `db/migrations.go`
 
 ## Naming Conventions
@@ -208,7 +202,7 @@ APP_DATA_DIR/           # Rebuildable app data (separate from user data)
 | Category | Convention | Examples |
 |----------|-----------|----------|
 | Files | `kebab-case.ts/tsx` | `file-card.tsx`, `url-crawler.ts` |
-| Types/Interfaces | `PascalCase` | `FileRecord`, `Digest` |
+| Types/Interfaces | `PascalCase` | `FileRecord`, `Person` |
 | Functions/Variables | `camelCase` | `getFileByPath()`, `filePath` |
 | Constants | `SCREAMING_SNAKE_CASE` | `DATA_ROOT`, `INBOX_DIR` |
 | DB columns | `snake_case` | `file_path`, `created_at` |
@@ -318,7 +312,6 @@ All API routes are defined in [backend/api/routes.go](backend/api/routes.go). Ke
 | OAuth | `/api/oauth/*` | OAuth flow (authorize, callback, token, refresh, logout) |
 | Inbox | `/api/inbox`, `/api/inbox/:id` | Inbox CRUD + pinning + re-enrichment + status |
 | Library | `/api/library/*` | File management, tree structure, pinning, rename, move |
-| Digest | `/api/digest/*` | Digester registry, stats, trigger/reset digests |
 | People | `/api/people`, `/api/people/:id` | Person management + merge |
 | Search | `/api/search` | Full-text search |
 | AI | `/api/ai/summarize` | AI summarization |

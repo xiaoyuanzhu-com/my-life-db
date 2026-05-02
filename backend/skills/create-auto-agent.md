@@ -231,7 +231,7 @@ Use the `create_post` tool from the `explore` MCP server to share the weekly sum
 
 - **Forgetting the subfolder** — `agents/foo.md` is ignored. It must be `agents/foo/foo.md`.
 - **Missing `path` on file triggers** — the runner rejects the def. Use `path: "**"` only if you genuinely want every file event.
-- **Over-broad globs** — `path: "**"` fires on every digest output, thumbnail, `sessions/` write, and more. Scope tighter unless you want that.
+- **Over-broad globs** — `path: "**"` fires on every thumbnail, `sessions/` write, and more. Scope tighter unless you want that.
 - **Missing `schedule` on cron** — also rejected by the runner.
 - **No skip case in the prompt** — every matching event fires the agent. Without a skip branch, the agent acts on things it shouldn't.
 - **Inventing MCP tool names** — only reference tools that are actually connected in the current session.

@@ -5,24 +5,21 @@ package models
 type UserSettings struct {
 	Preferences Preferences               `json:"preferences"`
 	Vendors     *Vendors                  `json:"vendors,omitempty"`
-	Digesters   map[string]bool           `json:"digesters,omitempty"`
 	Extraction  Extraction                `json:"extraction"`
 	Enrichment  map[string]map[string]any `json:"enrichment,omitempty"`
 	Storage     Storage                   `json:"storage"`
 }
 
 type Preferences struct {
-	Theme         string   `json:"theme"`
-	DefaultView   string   `json:"defaultView"`
-	WeeklyDigest  bool     `json:"weeklyDigest"`
-	DigestDay     int      `json:"digestDay"`
-	LogLevel      string   `json:"logLevel,omitempty"`
-	UserEmail     string   `json:"userEmail,omitempty"`
-	Languages     []string `json:"languages,omitempty"`
+	Theme       string   `json:"theme"`
+	DefaultView string   `json:"defaultView"`
+	LogLevel    string   `json:"logLevel,omitempty"`
+	UserEmail   string   `json:"userEmail,omitempty"`
+	Languages   []string `json:"languages,omitempty"`
 	// UI language (BCP-47): nil = system default, "en" or "zh-Hans" otherwise.
 	// Pointer so partial PUTs can distinguish "field omitted" (keep) from
 	// "explicitly cleared back to system default" (sent as JSON `""`).
-	Language      *string  `json:"language,omitempty"`
+	Language *string `json:"language,omitempty"`
 }
 
 type Vendors struct {

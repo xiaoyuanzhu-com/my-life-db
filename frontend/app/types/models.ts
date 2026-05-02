@@ -11,17 +11,12 @@
 
 // Enums
 export type { MessageType } from './message-type';
-export type { DigestStatus } from './digest-status';
 export type { TaskStatus } from './task-status';
 export type { FileType } from './file-type';
 
 // Database Models - Files
 export type { FileRecord, FileRecordRow } from './file-record';
 export { rowToFileRecord } from './file-record';
-
-// Database Models - Digests
-export type { Digest, DigestRecordRow, DigestInput } from './digest';
-export { rowToDigest } from './digest';
 
 // Database Models - Tasks
 export type { Task, TaskRecordRow } from './task';
@@ -30,10 +25,6 @@ export { rowToTask } from './task';
 // Database Models - Settings
 export type { Setting, SettingRecordRow } from './setting';
 export { rowToSetting } from './setting';
-
-// Database Models - Qdrant Documents
-export type { QdrantDocument, QdrantDocumentRow, EmbeddingStatus, SourceType } from './qdrant-document';
-export { rowToQdrantDocument } from './qdrant-document';
 
 // Database Models - People Registry
 export type { PeopleRecord, PeopleRecordRow, PeopleInput, PeopleWithCounts } from './people-record';

@@ -95,15 +95,14 @@ func (d *DB) GetAllPins() ([]Pin, error) {
 	return pins, nil
 }
 
-// GetPinnedFiles retrieves all pinned files with their file records.
+// GetPinnedFiles retrieves all pinned files as FileRecords.
 // Pins live in the app DB; files live in the index DB ATTACHed read-only as
 // 'idx' on every app-DB connection (see registerAppDriver). The JOIN below
 // requires that ATTACH to be present.
-func (d *DB) GetPinnedFiles() ([]FileWithDigests, error) {
+func (d *DB) GetPinnedFiles() ([]FileRecord, error) {
 	query := `
 		SELECT f.path, f.name, f.is_folder, f.size, f.mime_type, f.hash,
-			   f.modified_at, f.created_at, f.last_scanned_at, f.text_preview, f.preview_sqlar, f.preview_status,
-			   p.pinned_at as pin_created_at
+			   f.modified_at, f.created_at, f.last_scanned_at, f.text_preview, f.preview_sqlar, f.preview_status
 		FROM pins p
 		JOIN idx.files f ON f.path = p.file_path
 		ORDER BY p.pinned_at DESC
@@ -115,18 +114,18 @@ func (d *DB) GetPinnedFiles() ([]FileWithDigests, error) {
 	}
 	defer rows.Close()
 
-	var files []FileWithDigests
+	var files []FileRecord
 	for rows.Next() {
 		var f FileRecord
 		var isFolder int
 		var size sql.NullInt64
 		var hash, mimeType, textPreview, previewSqlar, previewStatus sql.NullString
-		var lastScannedAt, pinCreatedAt sql.NullInt64
+		var lastScannedAt sql.NullInt64
 
 		err := rows.Scan(
 			&f.Path, &f.Name, &isFolder, &size, &mimeType,
 			&hash, &f.ModifiedAt, &f.CreatedAt, &lastScannedAt,
-			&textPreview, &previewSqlar, &previewStatus, &pinCreatedAt,
+			&textPreview, &previewSqlar, &previewStatus,
 		)
 		if err != nil {
 			return nil, err
@@ -141,17 +140,7 @@ func (d *DB) GetPinnedFiles() ([]FileWithDigests, error) {
 		f.PreviewStatus = StringPtr(previewStatus)
 		f.LastScannedAt = lastScannedAt.Int64
 
-		// Get digests for this file
-		digests, err := d.GetDigestsForFile(f.Path)
-		if err != nil {
-			return nil, err
-		}
-
-		files = append(files, FileWithDigests{
-			FileRecord: f,
-			Digests:    digests,
-			IsPinned:   true,
-		})
+		files = append(files, f)
 	}
 
 	return files, nil

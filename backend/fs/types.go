@@ -40,7 +40,7 @@ type FileChangeEvent struct {
 	Trigger        string // "fsnotify", "api", "scan"
 }
 
-// FileChangeHandler is called when files change (used by digest service)
+// FileChangeHandler is called when files change (e.g., to update derived state).
 type FileChangeHandler func(event FileChangeEvent)
 
 // Config contains configuration for the FS service

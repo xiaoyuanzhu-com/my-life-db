@@ -5,14 +5,13 @@ import { useParams, Link } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
-import { Sparkles, Save, Check, Loader2, RotateCcw } from "lucide-react";
+import { Sparkles, Save, Check, Loader2 } from "lucide-react";
 import { useSettingsContext } from "~/components/settings/settings-context";
 import { LanguageSelector } from "~/components/settings/language-selector";
 import { UiLanguageSelector } from "~/components/settings/ui-language-selector";
 import { useAuth } from "~/contexts/auth-context";
 import type { UserSettings } from "~/lib/config/settings";
 import { api } from "~/lib/api";
-import { DataSourcesTab } from "~/components/settings/data-sources-tab";
 import { ConnectedAppsTab } from "~/components/settings/connected-apps-tab";
 
 interface ModelOption {
@@ -25,18 +24,6 @@ interface Stats {
     fileCount: number;
     totalSize: number;
   };
-  digests: {
-    totalFiles: number;
-    digestedFiles: number;
-    pendingDigests: number;
-  };
-}
-
-interface DigesterInfo {
-  name: string;
-  label: string;
-  description: string;
-  outputs: string[];
 }
 
 function SettingsHeader() {
@@ -65,10 +52,6 @@ function SettingsContent() {
   const [modelError, setModelError] = useState<string | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [isLoadingGeneralStats, setIsLoadingGeneralStats] = useState(false);
-  const [resetingDigester, setResetingDigester] = useState<string | null>(null);
-  const [confirmResetDigester, setConfirmResetDigester] = useState<string | null>(null);
-  const [digesters, setDigesters] = useState<DigesterInfo[]>([]);
-  const [isLoadingDigesters, setIsLoadingDigesters] = useState(false);
 
   const filteredModels = useMemo(() => {
     if (!modelQuery) return modelOptions;
@@ -144,41 +127,6 @@ function SettingsContent() {
     }
   }, []);
 
-  const fetchDigesters = useCallback(async () => {
-    setIsLoadingDigesters(true);
-    try {
-      const response = await api.get("/api/digest/digesters");
-      if (response.ok) {
-        const data = await response.json();
-        setDigesters(data.digesters || []);
-      }
-    } catch (error) {
-      console.error("Failed to fetch digesters:", error);
-    } finally {
-      setIsLoadingDigesters(false);
-    }
-  }, []);
-
-  const handleResetDigester = useCallback(async (digester: string) => {
-    setResetingDigester(digester);
-    try {
-      const response = await api.delete(`/api/digest/reset/${digester}`);
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log(`Reset ${digester}:`, data);
-      } else {
-        const error = await response.json();
-        console.error("Failed to reset digester:", error);
-      }
-    } catch (error) {
-      console.error("Failed to reset digester:", error);
-    } finally {
-      setResetingDigester(null);
-      setConfirmResetDigester(null);
-    }
-  }, []);
-
   // Fetch general stats when stats tab is active and refresh every 5 seconds
   useEffect(() => {
     if (activeTab === "stats") {
@@ -191,13 +139,6 @@ function SettingsContent() {
       return () => clearInterval(intervalId);
     }
   }, [activeTab, fetchGeneralStats]);
-
-  // Fetch digesters when digest tab is active
-  useEffect(() => {
-    if (activeTab === "digest") {
-      void fetchDigesters();
-    }
-  }, [activeTab, fetchDigesters]);
 
   if (isLoading) {
     return (
@@ -220,16 +161,12 @@ function SettingsContent() {
       saveSettings({ preferences: settings.preferences });
     } else if (activeTab === "vendors") {
       saveSettings({ vendors: settings.vendors });
-    } else if (activeTab === "digest") {
-      saveSettings({ digesters: settings.digesters });
     }
   };
 
   const tabs = [
     { label: t('tabs.general', 'General'), value: "general", path: "/me" },
     { label: t('tabs.vendors', 'Vendors'), value: "vendors", path: "/me/vendors" },
-    { label: t('tabs.digest', 'Digest'), value: "digest", path: "/me/digest" },
-    { label: t('tabs.dataSources', 'Data Sources'), value: "data-sources", path: "/me/data-sources" },
     { label: t('tabs.connectedApps', 'Connected Apps'), value: "connected-apps", path: "/me/connected-apps" },
     { label: t('tabs.stats', 'Stats'), value: "stats", path: "/me/stats" },
   ];
@@ -278,8 +215,6 @@ function SettingsContent() {
                         ...(settings.preferences || {
                           theme: "auto",
                           defaultView: "home",
-                          weeklyDigest: false,
-                          digestDay: 0,
                         }),
                         userEmail: e.target.value,
                       } as UserSettings["preferences"],
@@ -299,8 +234,6 @@ function SettingsContent() {
                         ...(settings.preferences || {
                           theme: "auto",
                           defaultView: "home",
-                          weeklyDigest: false,
-                          digestDay: 0,
                         }),
                         language: lang,
                       } as UserSettings["preferences"],
@@ -323,8 +256,6 @@ function SettingsContent() {
                         ...(settings.preferences || {
                           theme: "auto",
                           defaultView: "home",
-                          weeklyDigest: false,
-                          digestDay: 0,
                         }),
                         logLevel: e.target.value as "debug" | "info" | "warn" | "error",
                       } as UserSettings["preferences"],
@@ -354,8 +285,6 @@ function SettingsContent() {
                         ...(settings.preferences || {
                           theme: "auto",
                           defaultView: "home",
-                          weeklyDigest: false,
-                          digestDay: 0,
                         }),
                         languages: languages.length > 0 ? languages : undefined,
                       } as UserSettings["preferences"],
@@ -458,85 +387,6 @@ function SettingsContent() {
           </Card>
         )}
 
-        {/* Digesters Tab */}
-        {activeTab === "digest" && (
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('digest.title', 'Digester Configuration')}</CardTitle>
-              <p className="text-sm text-muted-foreground mt-2">
-                {t('digest.subtitle', 'Enable or disable individual digesters for file processing')}
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {isLoadingDigesters ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                </div>
-              ) : digesters.length === 0 ? (
-                <div className="text-center text-muted-foreground py-8">{t('digest.noDigesters', 'No digesters found')}</div>
-              ) : (
-                <div className="space-y-4">
-                  {digesters.map(({ name, label, description }) => (
-                    <div key={name} className="flex items-center justify-between py-2">
-                      <div className="space-y-0.5">
-                        <div className="text-sm font-medium">{label}</div>
-                        <p className="text-xs text-muted-foreground">{description}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setConfirmResetDigester(name)}
-                          disabled={resetingDigester !== null}
-                          className="h-8 gap-1.5"
-                          title={`Reset ${label}`}
-                        >
-                          {resetingDigester === name ? (
-                            <>
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              <span className="text-xs">{t('actions.resetting', 'Resetting')}</span>
-                            </>
-                          ) : (
-                            <>
-                              <RotateCcw className="h-3.5 w-3.5" />
-                              <span className="text-xs">{t('actions.reset', 'Reset')}</span>
-                            </>
-                          )}
-                        </Button>
-                        <button
-                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                            (settings.digesters?.[name as keyof typeof settings.digesters] ?? true) === true
-                              ? "bg-primary"
-                              : "bg-muted"
-                          }`}
-                          onClick={() => {
-                            const currentValue = settings.digesters?.[name as keyof typeof settings.digesters] ?? true;
-                            setSettings({
-                              ...settings,
-                              digesters: {
-                                ...settings.digesters,
-                                [name]: !currentValue,
-                              },
-                            });
-                          }}
-                        >
-                          <span
-                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                              (settings.digesters?.[name as keyof typeof settings.digesters] ?? true) === true
-                                ? "translate-x-6"
-                                : "translate-x-1"
-                            }`}
-                          />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
         {/* Stats Tab */}
         {activeTab === "stats" && (
           <Card>
@@ -564,31 +414,6 @@ function SettingsContent() {
                     </div>
                   </div>
 
-                  {/* Digest Stats */}
-                  <div>
-                    <h3 className="text-sm font-medium mb-3">{t('stats.digests', 'Digests')}</h3>
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="p-4 rounded-lg border bg-muted/50">
-                        <div className="text-2xl font-semibold">{fmt.number(stats.digests.digestedFiles)}</div>
-                        <div className="text-xs text-muted-foreground mt-1">{t('stats.digestedFiles', 'Digested Files')}</div>
-                      </div>
-                      <div className="p-4 rounded-lg border bg-muted/50">
-                        <div className="text-2xl font-semibold">{fmt.number(stats.digests.totalFiles)}</div>
-                        <div className="text-xs text-muted-foreground mt-1">{t('stats.totalFiles', 'Total Files')}</div>
-                      </div>
-                      <div className="p-4 rounded-lg border bg-muted/50">
-                        <div className="flex items-center gap-2">
-                          {stats.digests.pendingDigests > 0 ? (
-                            <div className="h-2 w-2 rounded-full bg-yellow-500 animate-pulse" />
-                          ) : (
-                            <div className="h-2 w-2 rounded-full bg-green-500" />
-                          )}
-                          <div className="text-2xl font-semibold">{fmt.number(stats.digests.pendingDigests)}</div>
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-1">{t('stats.pending', 'Pending')}</div>
-                      </div>
-                    </div>
-                  </div>
                 </div>
               ) : (
                 <div className="text-center text-muted-foreground py-8">{t('stats.loadFailed', 'Failed to load statistics')}</div>
@@ -597,18 +422,13 @@ function SettingsContent() {
           </Card>
         )}
 
-        {/* Data Sources Tab */}
-        {activeTab === "data-sources" && (
-          <DataSourcesTab />
-        )}
-
         {/* Connected Apps Tab */}
         {activeTab === "connected-apps" && (
           <ConnectedAppsTab />
         )}
 
         {/* Save Button */}
-        {activeTab !== "stats" && activeTab !== "data-sources" && activeTab !== "connected-apps" && (
+        {activeTab !== "stats" && activeTab !== "connected-apps" && (
           <div className="flex items-center justify-end gap-3 pt-6">
             {saveMessage && (
               <div className="flex items-center gap-2">
@@ -688,26 +508,6 @@ function SettingsContent() {
         </div>
       )}
 
-      {/* Reset Confirmation Dialog */}
-      {confirmResetDigester && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
-          onClick={() => setConfirmResetDigester(null)}
-        >
-          <div className="w-full max-w-md rounded-lg bg-background p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold mb-2">{t('digestReset.dialogTitle', 'Reset Digester')}</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              {t('digestReset.description', 'This will delete all existing {{name}} digests and trigger regeneration for all files. Use this to refresh data after changing settings or to fix processing errors.', { name: confirmResetDigester })}
-            </p>
-            <div className="flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setConfirmResetDigester(null)}>
-                {t('actions.cancel', 'Cancel')}
-              </Button>
-              <Button onClick={() => handleResetDigester(confirmResetDigester)}>{t('actions.reset', 'Reset')}</Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

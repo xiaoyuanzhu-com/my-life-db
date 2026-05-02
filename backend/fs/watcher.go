@@ -303,7 +303,7 @@ func (w *watcher) handleDelete(path string) {
 		Str("path", path).
 		Msg("detected external file deletion, updating database")
 
-	// Delete from database with cascade (deletes digests, pins, files_fts, qdrant)
+	// Delete from database with cascade (deletes pins, files_fts)
 	if err := w.service.cfg.DB.DeleteFileWithCascade(path); err != nil {
 		log.Warn().
 			Err(err).
@@ -382,12 +382,12 @@ func (w *watcher) processExternalFile(path string, trigger string) {
 	newHash := metadata.Hash
 	contentChanged := (oldHash == "" && newHash != "") || (oldHash != "" && oldHash != newHash)
 
-	// Notify digest service if content changed
+	// Notify subscribers (e.g. FTS index) if content changed
 	if contentChanged {
 		log.Info().
 			Str("path", path).
 			Bool("isNew", isNew).
-			Msg("external file content changed, notifying digest service")
+			Msg("external file content changed, notifying file-change subscribers")
 
 		w.service.notifyFileChange(FileChangeEvent{
 			FilePath:       path,
@@ -407,7 +407,7 @@ func (w *watcher) processExternalFile(path string, trigger string) {
 
 // processMove handles an external file move/rename operation.
 // It atomically updates the database to reflect the new path while preserving
-// related records (digests, pins).
+// related records (pins).
 func (w *watcher) processMove(oldPath, newPath string) {
 	// Get file info at new location
 	fullPath := filepath.Join(w.service.cfg.DataRoot, newPath)

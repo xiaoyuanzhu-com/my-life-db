@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, type ReactNode } from 'react';
-import { motion, AnimatePresence, type PanInfo } from 'framer-motion';
+import { useState, useEffect, type ReactNode } from 'react';
+import { motion } from 'framer-motion';
 import { cn } from '~/lib/utils';
 import type { ModalNavigationProps } from '../types';
 import { useModalKeyboardNavigation, useModalSwipeNavigation } from './use-modal-navigation';
@@ -7,8 +7,6 @@ import { useModalKeyboardNavigation, useModalSwipeNavigation } from './use-modal
 // Constants
 const A4_RATIO = 1.414; // √2
 const ASPECT_THRESHOLD = 1 / A4_RATIO; // ~0.707
-const GAP_REM = 1; // 1rem gap between panes
-const SAFETY_MARGIN = 0.95; // 95% of viewport for fitting check
 
 export type LayoutMode = 'landscape' | 'portrait';
 
@@ -16,7 +14,6 @@ export interface ModalLayoutConfig {
   mode: LayoutMode;
   contentWidth: number; // in pixels
   contentHeight: number; // in pixels
-  canFitSideBySide: boolean;
 }
 
 /**
@@ -54,14 +51,12 @@ function calculateLayout(): ModalLayoutConfig {
       mode: 'landscape',
       contentWidth: 640,
       contentHeight: 900,
-      canFitSideBySide: true,
     };
   }
 
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const aspectRatio = vw / vh;
-  const gap = GAP_REM * 16; // Convert rem to px
 
   let mode: LayoutMode;
   let contentWidth: number;
@@ -79,42 +74,29 @@ function calculateLayout(): ModalLayoutConfig {
     contentHeight = Math.min(vw * A4_RATIO, vh * 0.95); // 141vw, capped at 95vh
   }
 
-  // Check if side-by-side layout fits
-  const sideBySideWidth = contentWidth * 2 + gap;
-  const canFitSideBySide = sideBySideWidth <= vw * SAFETY_MARGIN;
-
   return {
     mode,
     contentWidth,
     contentHeight,
-    canFitSideBySide,
   };
 }
 
 // Props for the ModalLayout component
 export interface ModalLayoutProps extends ModalNavigationProps {
   children: ReactNode;
-  digestsContent?: ReactNode;
-  showDigests: boolean;
-  onCloseDigests: () => void;
   className?: string;
   contentClassName?: string;
-  /** Whether navigation is enabled (swipe and keyboard). Defaults to true when not showing digests. */
+  /** Whether navigation is enabled (swipe and keyboard). Defaults to true. */
   navigationEnabled?: boolean;
 }
 
 /**
  * ModalLayout component that handles:
  * - Responsive sizing based on viewport (A4 ratio)
- * - Side-by-side vs overlay digests layout
- * - Framer-motion swipe animations for overlay mode
  * - Keyboard and swipe navigation between files
  */
 export function ModalLayout({
   children,
-  digestsContent,
-  showDigests,
-  onCloseDigests,
   className,
   contentClassName,
   navigationEnabled,
@@ -124,11 +106,8 @@ export function ModalLayout({
   onNext,
 }: ModalLayoutProps) {
   const layout = useModalLayout();
-  const gap = GAP_REM * 16;
 
-  // Swipe navigation disabled when digests are showing (conflicts with swipe-to-dismiss)
-  const isSwipeNavigationEnabled = navigationEnabled ?? !showDigests;
-  // Keyboard navigation always enabled (no conflict with digests)
+  const isSwipeNavigationEnabled = navigationEnabled ?? true;
   const isKeyboardNavigationEnabled = navigationEnabled ?? true;
 
   // Enable keyboard navigation (left/right arrows)
@@ -150,22 +129,6 @@ export function ModalLayout({
     onNext,
   });
 
-  // Swipe handler for digests overlay mode
-  const handleDigestsDragEnd = useCallback(
-    (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-      // Swipe right to close (positive x offset)
-      if (info.offset.x > 100 || info.velocity.x > 500) {
-        onCloseDigests();
-      }
-    },
-    [onCloseDigests]
-  );
-
-  // Container dimensions
-  const containerWidth = showDigests && layout.canFitSideBySide
-    ? layout.contentWidth * 2 + gap
-    : layout.contentWidth;
-
   // Check if swipe navigation is available
   const hasSwipeNavigation = (hasPrev || hasNext) && isSwipeNavigationEnabled;
 
@@ -173,7 +136,7 @@ export function ModalLayout({
     <div
       className={cn('relative overflow-hidden', className)}
       style={{
-        width: containerWidth,
+        width: layout.contentWidth,
         height: layout.contentHeight,
         maxWidth: '100vw',
         maxHeight: '100vh',
@@ -199,48 +162,6 @@ export function ModalLayout({
           {children}
         </div>
       )}
-
-      {/* Digests panel */}
-      <AnimatePresence>
-        {showDigests && digestsContent && (
-          layout.canFitSideBySide ? (
-            // Side-by-side layout
-            <motion.div
-              key="digests-side"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              transition={{ duration: 0.2 }}
-              className="absolute top-0 h-full overflow-hidden"
-              style={{
-                left: layout.contentWidth + gap,
-                width: layout.contentWidth,
-              }}
-            >
-              {digestsContent}
-            </motion.div>
-          ) : (
-            // Overlay layout with swipe-to-dismiss
-            <motion.div
-              key="digests-overlay"
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              drag="x"
-              dragConstraints={{ left: 0, right: 0 }}
-              dragElastic={{ left: 0, right: 0.5 }}
-              onDragEnd={handleDigestsDragEnd}
-              className="absolute inset-0 overflow-hidden touch-pan-y"
-              style={{
-                width: layout.contentWidth,
-              }}
-            >
-              {digestsContent}
-            </motion.div>
-          )
-        )}
-      </AnimatePresence>
     </div>
   );
 }
@@ -248,14 +169,9 @@ export function ModalLayout({
 /**
  * Get CSS styles for DialogContent based on layout
  */
-export function getModalContainerStyles(layout: ModalLayoutConfig, showDigests: boolean): React.CSSProperties {
-  const gap = GAP_REM * 16;
-  const width = showDigests && layout.canFitSideBySide
-    ? layout.contentWidth * 2 + gap
-    : layout.contentWidth;
-
+export function getModalContainerStyles(layout: ModalLayoutConfig): React.CSSProperties {
   return {
-    width,
+    width: layout.contentWidth,
     height: layout.contentHeight,
     maxWidth: '100vw',
     maxHeight: '100vh',

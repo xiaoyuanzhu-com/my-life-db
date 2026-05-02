@@ -28,8 +28,6 @@ export function pendingItemToFile(
     hash: null,
     modifiedAt: item.createdAt,
     createdAt: item.createdAt,
-    // No digests for local items
-    digests: [],
     // Text preview for text files
     textPreview,
     // Blob URL for content display

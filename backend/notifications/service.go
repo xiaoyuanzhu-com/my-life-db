@@ -11,7 +11,6 @@ type EventType string
 const (
 	EventLibraryChanged       EventType = "library-changed"
 	EventPinChanged           EventType = "pin-changed"
-	EventDigestUpdate         EventType = "digest-update"
 	EventPreviewUpdated       EventType = "preview-updated"
 	EventConnected            EventType = "connected"
 	EventAgentSessionUpdated EventType = "agent-session-updated"
@@ -100,16 +99,6 @@ func (s *Service) NotifyPinChanged(path string) {
 		Type:      EventPinChanged,
 		Timestamp: time.Now().UnixMilli(),
 		Path:      path,
-	})
-}
-
-// NotifyDigestUpdate sends a digest-update event
-func (s *Service) NotifyDigestUpdate(path string, data any) {
-	s.Notify(Event{
-		Type:      EventDigestUpdate,
-		Timestamp: time.Now().UnixMilli(),
-		Path:      path,
-		Data:      data,
 	})
 }
 

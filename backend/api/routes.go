@@ -46,14 +46,6 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 	api := r.Group("/api")
 	api.Use(h.AuthMiddleware())
 	{
-		// Digest routes - static routes first
-		api.GET("/digest/digesters", h.GetDigesters)
-		api.GET("/digest/stats", h.GetDigestStats)
-		api.DELETE("/digest/reset/:digester", h.ResetDigester)
-		// Wildcard routes use /digest/file/* to avoid conflict with static routes
-		api.GET("/digest/file/*path", h.GetDigest)
-		api.POST("/digest/file/*path", h.TriggerDigest)
-
 		// Library routes
 		api.DELETE("/library/file", h.DeleteLibraryFile)
 		api.GET("/library/file-info", h.GetLibraryFileInfo)

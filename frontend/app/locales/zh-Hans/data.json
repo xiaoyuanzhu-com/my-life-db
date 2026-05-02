@@ -70,7 +70,7 @@
     "newFolderNamePlaceholder": "新文件夹名称",
     "closeTab": "关闭标签页",
     "details": "详情",
-    "detailsTooltip": "查看文件信息和摘要",
+    "detailsTooltip": "查看文件信息",
     "cancelUpload": "取消上传",
     "unpin": "取消置顶",
     "foldersAppearHere": "文件夹将显示在这里"
@@ -85,8 +85,7 @@
       "created": "创建时间",
       "modified": "修改时间",
       "empty": "文件为空。",
-      "cannotPreview": "此文件类型无法预览。",
-      "triggerDigest": "触发该文件的 AI 摘要处理"
+      "cannotPreview": "此文件类型无法预览。"
     },
     "delete": {
       "title": "删除 {{name}}？",
@@ -94,15 +93,6 @@
       "failed": "删除文件失败，请重试。"
     },
     "unsavedChanges": "有未保存的更改"
-  },
-  "digests": {
-    "title": "摘要",
-    "empty": "暂无摘要",
-    "rerunAll": "重新运行所有摘要",
-    "clickToRerun": "点击重新运行",
-    "cleanup": "清理",
-    "speechSummary": "语音识别摘要",
-    "loading": "加载摘要中…"
   },
   "explore": {
     "empty": {

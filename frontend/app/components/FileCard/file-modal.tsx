@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { Download, Share2, Sparkles } from 'lucide-react';
+import { Download, Share2 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Dialog,
@@ -11,7 +11,6 @@ import type { ContextMenuAction } from './types';
 import { getFileContentType, downloadFile, shareFile, canShare, isIOS, getFileContentUrl } from './utils';
 import { ModalCloseButton } from './ui/modal-close-button';
 import { ModalActionButtons } from './ui/modal-action-buttons';
-import { DigestsPanel } from './ui/digests-panel';
 import { ModalLayout, useModalLayout, getModalContainerStyles } from './ui/modal-layout';
 import { useModalNavigation } from '~/contexts/modal-navigation-context';
 import type { TextContentHandle } from './modal-contents/text-content';
@@ -29,31 +28,25 @@ import { FallbackContent } from './modal-contents/fallback-content';
 const PdfContent = lazy(() => import('./modal-contents/pdf-content').then(m => ({ default: m.PdfContent })));
 const EpubContent = lazy(() => import('./modal-contents/epub-content').then(m => ({ default: m.EpubContent })));
 
-type ModalView = 'content' | 'digests';
-
 /**
  * FileModal - Centralized modal component that renders at the provider level.
  *
  * Design principles:
  * 1. Navigation is transparent to content - content components don't know about navigation
  * 2. Each modal is an A4 rounded content with background
- * 3. Digests is another A4 div shown side-by-side or as overlay
- * 4. Communication via callbacks: Content ↔ Modal ↔ DigestsPanel
  *
  * Keeps the Dialog mounted while navigating between files to prevent flash.
  */
 export function FileModal() {
   const { currentFile, prevFile, nextFile, isOpen, hasPrev, hasNext, closeModal, goToPrev, goToNext } = useModalNavigation();
-  const [activeView, setActiveView] = useState<ModalView>('content');
   const [isDirty, setIsDirty] = useState(false);
   const layout = useModalLayout();
 
   // Ref for TextContent imperative handle
   const textContentRef = useRef<TextContentHandle>(null);
 
-  // Reset view and state when file changes
+  // Reset state when file changes
   useEffect(() => {
-    setActiveView('content');
     setIsDirty(false);
   }, [currentFile?.path]);
 
@@ -96,30 +89,15 @@ export function FileModal() {
     }
   }, [currentFile]);
 
-  const handleToggleDigests = useCallback(() => {
-    setActiveView(prev => prev === 'digests' ? 'content' : 'digests');
-  }, []);
-
-  const handleCloseDigests = useCallback(() => {
-    setActiveView('content');
-  }, []);
-
   const modalActions: ContextMenuAction[] = useMemo(() => [
     { icon: Download, label: 'Download', onClick: handleDownload, hidden: isIOS() },
     { icon: Share2, label: 'Share', onClick: handleShare, hidden: !canShare() },
-    { icon: Sparkles, label: 'Digests', onClick: handleToggleDigests },
-  ], [handleDownload, handleShare, handleToggleDigests]);
+  ], [handleDownload, handleShare]);
 
-  const showDigests = activeView === 'digests';
-  const containerStyles = getModalContainerStyles(layout, showDigests);
+  const containerStyles = getModalContainerStyles(layout);
 
   // Determine content type for the current file
   const contentType = currentFile ? getFileContentType(currentFile) : null;
-
-  const digestsPanelProps = useMemo(() => {
-    if (!currentFile) return null;
-    return { file: currentFile };
-  }, [currentFile]);
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
@@ -134,11 +112,8 @@ export function FileModal() {
         <ModalCloseButton onClick={handleCloseRequest} isDirty={isDirty} />
         <ModalActionButtons actions={modalActions} />
 
-        {currentFile && digestsPanelProps && (
+        {currentFile && (
           <ModalLayout
-            showDigests={showDigests}
-            onCloseDigests={handleCloseDigests}
-            digestsContent={<DigestsPanel {...digestsPanelProps} />}
             contentClassName="flex items-center justify-center"
             hasPrev={hasPrev}
             hasNext={hasNext}
@@ -158,7 +133,6 @@ export function FileModal() {
                   <ModalContentRenderer
                     contentType={contentType}
                     file={currentFile}
-                    showDigests={showDigests}
                     onClose={handleCloseRequest}
                     onDirtyStateChange={setIsDirty}
                     onTextCloseConfirmed={handleTextCloseConfirmed}
@@ -181,7 +155,6 @@ export function FileModal() {
 function ModalContentRenderer({
   contentType,
   file,
-  showDigests,
   onClose,
   onDirtyStateChange,
   onTextCloseConfirmed,
@@ -189,7 +162,6 @@ function ModalContentRenderer({
 }: {
   contentType: string | null;
   file: NonNullable<ReturnType<typeof useModalNavigation>['currentFile']>;
-  showDigests: boolean;
   onClose: () => void;
   onDirtyStateChange: (isDirty: boolean) => void;
   onTextCloseConfirmed: () => void;
@@ -200,7 +172,6 @@ function ModalContentRenderer({
       return (
         <ImageContent
           file={file}
-          showDigests={showDigests}
           onClose={onClose}
         />
       );

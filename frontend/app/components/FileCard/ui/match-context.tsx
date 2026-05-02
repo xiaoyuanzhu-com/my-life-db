@@ -34,14 +34,14 @@ export function MatchContext({ context }: MatchContextProps) {
     );
   }
 
-  // Handle digest match context (keyword)
-  // Snippet may contain <em> tags from FTS5 highlight() (for fuzzy matches)
+  // Handle keyword match context
+  // Snippet may contain <em> tags from FTS5 highlight()
   const snippetWithHighlights = renderHighlightedSnippet(context.snippet);
 
   return (
     <div className={baseClasses}>
       <p className="mb-1 font-semibold text-muted-foreground">
-        Matched in {context.digest?.label ?? 'content'}
+        Matched in {context.label ?? 'content'}
       </p>
       <div className="text-xs text-foreground leading-relaxed break-words">
         {snippetWithHighlights}

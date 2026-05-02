@@ -25,12 +25,6 @@
   "UPLOAD_FILENAME_REQUIRED": "文件名不能为空",
   "UPLOAD_WRITE_FAILED": "写入文件失败",
 
-  "DIGEST_NAME_REQUIRED": "消化器名称不能为空",
-  "DIGEST_RESET_FAILED": "重置消化器失败",
-  "DIGEST_PATH_REQUIRED": "路径不能为空",
-  "DIGEST_FILE_NOT_FOUND": "未找到文件",
-  "DIGEST_TRIGGER_FAILED": "触发消化失败",
-
   "SEARCH_QUERY_REQUIRED": "请输入搜索内容",
   "SEARCH_QUERY_TOO_SHORT": "搜索内容至少需要 2 个字符",
   "SEARCH_INVALID_TYPES": "搜索筛选无效"

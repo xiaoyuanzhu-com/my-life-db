@@ -62,7 +62,7 @@ export function DocCard({
   ];
 
   // Check if MatchContext will be shown
-  const showMatchContext = matchContext && matchContext.digest?.type !== 'filePath';
+  const showMatchContext = matchContext && matchContext.label !== 'File path';
 
   const cardContent = (
     <div

@@ -60,7 +60,7 @@ export function XlsCard({
   ];
 
   // Check if MatchContext will be shown (skip filePath matches when filename is visible in fallback)
-  const showMatchContext = matchContext && !(matchContext.digest?.type === 'filePath' && !screenshotSrc);
+  const showMatchContext = matchContext && !(matchContext.label === 'File path' && !screenshotSrc);
 
   const cardContent = (
     <div

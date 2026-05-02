@@ -276,11 +276,6 @@ func (o *OpenAIClient) ListModels() (map[string]interface{}, error) {
 	return map[string]interface{}{"models": models}, nil
 }
 
-// GetOpenAI returns the OpenAI client (wrapper for digest workers)
-func GetOpenAI(database *db.DB) *OpenAIClient {
-	return GetOpenAIClient(database)
-}
-
 // Summarize generates a summary of the text (for URL crawl summary)
 func (o *OpenAIClient) Summarize(text string) (string, error) {
 	if o == nil {

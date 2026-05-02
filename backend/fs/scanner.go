@@ -374,13 +374,13 @@ func (s *scanner) processFile(f fileToProcess) error {
 	newHash := metadata.Hash
 	contentChanged := (oldHash == "" && newHash != "") || (oldHash != "" && oldHash != newHash)
 
-	// Notify digest service if content changed
+	// Notify subscribers (e.g. FTS index) if content changed
 	if contentChanged {
 		log.Info().
 			Str("path", f.path).
 			Bool("isNew", isNew).
 			Str("reason", f.reason).
-			Msg("scan detected content change, notifying digest service")
+			Msg("scan detected content change, notifying file-change subscribers")
 
 		s.service.notifyFileChange(FileChangeEvent{
 			FilePath:       f.path,

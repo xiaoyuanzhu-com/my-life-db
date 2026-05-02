@@ -17,7 +17,7 @@ const DefaultMoveDetectorTTL = 500 * time.Millisecond
 //   2. CREATE event with the NEW path (file now exists here)
 //
 // By tracking recent RENAMEs, we can detect when a CREATE is actually part of a move
-// operation and handle it atomically (preserving related records like digests and pins).
+// operation and handle it atomically (preserving related records like pins).
 type moveDetector struct {
 	recentRenames map[string]renameInfo
 	mu            sync.Mutex

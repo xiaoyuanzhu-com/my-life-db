@@ -98,7 +98,7 @@ func (h *Handlers) SaveRawFile(c *gin.Context) {
 	}
 
 	// Use fs.Service.WriteFile() - single entry point for all file operations
-	// This handles: file locking, metadata computation (hash, text preview), DB upsert, digest notification
+	// This handles: file locking, metadata computation (hash, text preview), DB upsert
 	mimeType := utils.DetectMimeType(path)
 	result, err := h.server.FS().WriteFile(c.Request.Context(), fs.WriteRequest{
 		Path:            path,
@@ -169,10 +169,10 @@ func (h *Handlers) ServeSqlarFile(c *gin.Context) {
 	// Detect MIME type
 	mimeType := utils.DetectMimeType(name)
 
-	// Set cache headers for SQLAR files (these are immutable digest outputs)
+	// Set cache headers for SQLAR files (these are immutable cached derivatives)
 	// Use mtime from SQLAR as modification time
 	modTime := time.Unix(int64(sqlarFile.Mtime), 0)
-	// SQLAR files are digest outputs that never change, use immutable cache
+	// SQLAR files never change once written, so use immutable cache
 	setCacheHeaders(c, name, modTime, true)
 
 	// Set ETag for conditional requests
@@ -336,7 +336,7 @@ func (h *Handlers) GetLibraryFileInfo(c *gin.Context) {
 		return
 	}
 
-	file, err := h.server.IndexDB().GetFileWithDigests(path)
+	file, err := h.server.IndexDB().GetFileByPath(path)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to get file info")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get file info"})
@@ -349,11 +349,26 @@ func (h *Handlers) GetLibraryFileInfo(c *gin.Context) {
 	}
 
 	// Pins live in the app DB; populate IsPinned from there.
+	isPinned := false
 	if pinned, perr := h.server.AppDB().IsPinned(path); perr == nil {
-		file.IsPinned = pinned
+		isPinned = pinned
 	}
 
-	c.JSON(http.StatusOK, file)
+	c.JSON(http.StatusOK, gin.H{
+		"path":          file.Path,
+		"name":          file.Name,
+		"isFolder":      file.IsFolder,
+		"size":          file.Size,
+		"mimeType":      file.MimeType,
+		"hash":          file.Hash,
+		"modifiedAt":    file.ModifiedAt,
+		"createdAt":     file.CreatedAt,
+		"lastScannedAt": file.LastScannedAt,
+		"textPreview":   file.TextPreview,
+		"previewSqlar":  file.PreviewSqlar,
+		"previewStatus": file.PreviewStatus,
+		"isPinned":      isPinned,
+	})
 }
 
 // PinFile handles POST /api/library/pin
@@ -951,7 +966,7 @@ func setCacheHeaders(c *gin.Context, path string, modTime time.Time, isImmutable
 	// - ETag changes automatically if file is modified
 	// - Good balance between freshness and efficiency
 	//
-	// For digest outputs (SQLAR): max-age=1 year + immutable
+	// For SQLAR-cached derivatives: max-age=1 year + immutable
 	// - These files NEVER change (they're content-addressed)
 	// - immutable directive = browser won't even revalidate
 	// - Maximum performance with zero staleness risk

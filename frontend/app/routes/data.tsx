@@ -39,7 +39,6 @@ function fileNodeToFileWithDigests(node: FileNode): FileWithDigests {
     hash: null,
     modifiedAt: node.modifiedAt ?? 0,
     createdAt: node.createdAt ?? node.modifiedAt ?? 0,
-    digests: [],
     previewSqlar: node.previewSqlar,
   };
 }

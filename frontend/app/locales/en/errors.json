@@ -25,12 +25,6 @@
   "UPLOAD_FILENAME_REQUIRED": "Filename is required",
   "UPLOAD_WRITE_FAILED": "Failed to write file",
 
-  "DIGEST_NAME_REQUIRED": "Digester name is required",
-  "DIGEST_RESET_FAILED": "Failed to reset digester",
-  "DIGEST_PATH_REQUIRED": "Path is required",
-  "DIGEST_FILE_NOT_FOUND": "File not found",
-  "DIGEST_TRIGGER_FAILED": "Failed to trigger digest",
-
   "SEARCH_QUERY_REQUIRED": "Please enter a search query",
   "SEARCH_QUERY_TOO_SHORT": "Query must be at least 2 characters",
   "SEARCH_INVALID_TYPES": "Invalid search filter"

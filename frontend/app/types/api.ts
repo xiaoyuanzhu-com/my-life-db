@@ -1,35 +1,14 @@
 // Types for API endpoint responses
 // Generated from backend/api/*.go and backend/db/models.go
 
-export interface Digest {
-  id: string;
-  filePath: string;
-  type: string; // digester name - alias for 'digester' field
-  digester: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'skipped' | 'todo';
-  content: string | null;
-  sqlarName: string | null;
-  error: string | null;
-  attempts: number;
-  createdAt: number;
-  updatedAt: number;
-}
-
 // Types for /api/search endpoint responses
 // Generated from backend/api/search.go
 
-export interface DigestInfo {
-  type: string;
-  label: string;
-}
-
 export interface MatchContext {
-  source: 'digest' | 'semantic';
+  source: string; // "keyword"
   snippet: string;
   terms: string[];
-  score?: number;
-  sourceType?: string; // For semantic matches
-  digest?: DigestInfo; // For keyword matches
+  label: string; // "File path" or "File content"
 }
 
 export interface SearchResultItem {
@@ -41,7 +20,6 @@ export interface SearchResultItem {
   hash: string | null;
   modifiedAt: number;
   createdAt: number;
-  digests: Digest[];
   score: number;
   snippet: string;
   textPreview?: string;
