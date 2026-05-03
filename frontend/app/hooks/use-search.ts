@@ -85,7 +85,7 @@ export function useSearch(options?: UseSearchOptions): SearchControls {
       try {
         const params = new URLSearchParams({ q: searchQuery, types: 'keyword', limit: String(SEARCH_BATCH_SIZE) });
         if (path) params.set('path', path);
-        const response = await api.get(`/api/search?${params}`, {
+        const response = await api.get(`/api/data/search?${params}`, {
           signal: keywordController.signal,
         });
 

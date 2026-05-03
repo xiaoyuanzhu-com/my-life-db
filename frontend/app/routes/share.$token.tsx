@@ -18,7 +18,7 @@ export default function SharePage() {
   useEffect(() => {
     if (!token) return
 
-    fetch(`/api/share/${token}`)
+    fetch(`/api/agent/share/${token}`)
       .then(async (res) => {
         if (res.status === 404) {
           setError('This shared session is no longer available.')

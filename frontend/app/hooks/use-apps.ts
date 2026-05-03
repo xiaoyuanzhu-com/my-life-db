@@ -6,7 +6,7 @@ export function useApps() {
   return useQuery({
     queryKey: ["apps"],
     queryFn: async (): Promise<App[]> => {
-      const res = await api.get("/api/apps");
+      const res = await api.get("/api/data/apps");
       const body = await res.json();
       return body.apps ?? [];
     },
@@ -18,7 +18,7 @@ export function useApp(id: string | null) {
   return useQuery({
     queryKey: ["apps", id],
     queryFn: async (): Promise<AppDetail> => {
-      const res = await api.get(`/api/apps/${id}`);
+      const res = await api.get(`/api/data/apps/${id}`);
       if (!res.ok) throw new Error(`app ${id} not found`);
       return res.json();
     },

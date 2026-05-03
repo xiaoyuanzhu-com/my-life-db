@@ -46,7 +46,7 @@ function SettingsContent() {
       setIsLoadingGeneralStats(true);
     }
     try {
-      const response = await api.get("/api/stats");
+      const response = await api.get("/api/system/stats");
       if (response.ok) {
         const data = await response.json();
         setStats(data);

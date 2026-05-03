@@ -78,8 +78,8 @@ export function FileGrid({
     if (showLoadingState) setIsLoading(true);
     try {
       const url = currentPath
-        ? `/api/library/tree?path=${encodeURIComponent(currentPath)}`
-        : '/api/library/tree';
+        ? `/api/data/tree?path=${encodeURIComponent(currentPath)}`
+        : '/api/data/tree';
       const response = await api.get(url);
       const data = await response.json();
       setChildren(data.children || []);
@@ -184,7 +184,7 @@ export function FileGrid({
     }
 
     try {
-      const response = await api.post('/api/library/folder', { path: currentPath, name: newFolderName.trim() });
+      const response = await api.post('/api/data/folders', { parent: currentPath, name: newFolderName.trim() });
       if (!response.ok) {
         const apiErr = await parseApiError(response);
         alert(tErr(apiErr));
@@ -282,7 +282,7 @@ export function FileGrid({
     if (!folderName?.trim()) return;
 
     try {
-      const response = await api.post('/api/library/folder', { path: parentPath, name: folderName.trim() });
+      const response = await api.post('/api/data/folders', { parent: parentPath, name: folderName.trim() });
       if (!response.ok) {
         const apiErr = await parseApiError(response);
         alert(tErr(apiErr));

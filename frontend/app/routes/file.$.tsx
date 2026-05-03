@@ -13,7 +13,7 @@ import {
   Loader2,
 } from "lucide-react";
 import type { FileRecord } from "~/types";
-import { api } from "~/lib/api";
+import { api, encodePath } from "~/lib/api";
 
 interface FileInfoData extends FileRecord {
   isPinned: boolean;
@@ -71,7 +71,7 @@ export default function FileInfoPage() {
     setError(null);
 
     try {
-      const response = await api.get(`/api/library/file-info?path=${encodeURIComponent(filePath)}`);
+      const response = await api.get(`/api/data/files/${encodePath(filePath)}`);
 
       if (!response.ok) {
         throw new Error("Failed to load file information");

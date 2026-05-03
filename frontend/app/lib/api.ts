@@ -5,7 +5,7 @@
  *   import { api } from '~/lib/api';
  *
  *   // GET request
- *   const res = await api.get('/api/settings');
+ *   const res = await api.get('/api/system/settings');
  *   const data = await res.json();
  *
  *   // POST request
@@ -24,6 +24,19 @@
  */
 
 import { fetchWithRefresh } from './fetch-with-refresh';
+
+/**
+ * Encode a relative filesystem path for use as a URL segment.
+ *
+ * Splits on `/`, encodes each segment with encodeURIComponent, then rejoins
+ * — so "journal/2026 spring/04.md" becomes "journal/2026%20spring/04.md".
+ * Leading slash is stripped to keep the result append-friendly:
+ *
+ *   `/api/data/files/${encodePath(p)}`
+ */
+export function encodePath(path: string): string {
+  return path.replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/');
+}
 
 export const api = {
   /**

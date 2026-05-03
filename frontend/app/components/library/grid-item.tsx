@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pencil, Trash2, Copy, Loader2, CircleAlert, Download, Upload, FolderUp, FolderPlus, PackageOpen } from 'lucide-react';
 import { cn } from '~/lib/utils';
-import { api } from '~/lib/api';
+import { api, encodePath } from '~/lib/api';
 import { downloadFile, downloadFolder, getSqlarUrl } from '~/components/FileCard/utils';
 import { FOLDER_GENERIC_ICON, getSystemDir } from './system-dirs';
 import {
@@ -104,7 +104,7 @@ export function GridItem({
     }
 
     try {
-      const response = await api.post('/api/library/rename', { path: fullPath, newName: renameValue.trim() });
+      const response = await api.patch(`/api/data/files/${encodePath(fullPath)}`, { name: renameValue.trim() });
       if (!response.ok) {
         const error = await response.json();
         alert(error.error || t('data:errors.renameFailed'));
@@ -133,7 +133,7 @@ export function GridItem({
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
-      const response = await api.delete(`/api/library/file?path=${encodeURIComponent(fullPath)}`);
+      const response = await api.delete(`/api/data/files/${encodePath(fullPath)}`);
       if (!response.ok) {
         const error = await response.json();
         alert(error.error || t('data:errors.deleteFailed'));
@@ -163,7 +163,7 @@ export function GridItem({
   const handleExtract = async () => {
     setIsExtracting(true);
     try {
-      const response = await api.post('/api/library/extract', { path: fullPath });
+      const response = await api.post('/api/data/extract', { path: fullPath });
       if (!response.ok) {
         const error = await response.json();
         alert(error.error || t('data:errors.extractFailed'));

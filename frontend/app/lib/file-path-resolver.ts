@@ -24,7 +24,7 @@ export interface ResolvedPath {
 export async function initLibraryRoot(): Promise<string | null> {
   if (libraryRoot !== null) return libraryRoot
   try {
-    const res = await api.get('/api/library/root')
+    const res = await api.get('/api/data/root')
     if (!res.ok) return null
     const data = await res.json()
     libraryRoot = data.root

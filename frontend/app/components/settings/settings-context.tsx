@@ -29,7 +29,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   async function loadSettings() {
     try {
-      const response = await api.get("/api/settings");
+      const response = await api.get("/api/system/settings");
       const data = await response.json();
       setSettings(data);
       setOriginalSettings(data);
@@ -64,7 +64,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         updatedSettings.preferences = { ...updatedSettings.preferences, language: "" as never };
       }
 
-      const response = await api.put("/api/settings", updatedSettings);
+      const response = await api.put("/api/system/settings", updatedSettings);
 
       if (response.ok) {
         setSaveMessage(i18n.t('settings:toast.saveSuccess', 'Settings saved successfully!'));

@@ -1,6 +1,6 @@
 import type { FileWithDigests } from '~/types/file-card';
 import type { FileContentType } from './types';
-import { api } from '~/lib/api';
+import { api, encodePath } from '~/lib/api';
 export { formatFileSize } from '~/lib/i18n/format';
 
 // =============================================================================
@@ -210,7 +210,7 @@ export function downloadFile(path: string, filename: string): void {
  */
 export function downloadFolder(path: string, folderName: string): void {
   const link = document.createElement('a');
-  link.href = `/api/library/download?path=${encodeURIComponent(path)}`;
+  link.href = `/api/data/download?path=${encodeURIComponent(path)}`;
   link.download = `${folderName}.zip`;
   document.body.appendChild(link);
   link.click();
@@ -281,12 +281,16 @@ export async function shareText(title: string, text: string): Promise<void> {
 // =============================================================================
 
 /**
- * Toggle pin status for a file
- * Returns true if successful
+ * Toggle pin status for a file. Caller passes the current pin state so we
+ * know whether to add (PUT) or remove (DELETE) the pin idempotently.
+ * Returns true if successful.
  */
-export async function togglePin(path: string): Promise<boolean> {
+export async function togglePin(path: string, currentlyPinned: boolean): Promise<boolean> {
   try {
-    const response = await api.post('/api/library/pin', { path });
+    const url = `/api/data/pins/${encodePath(path)}`;
+    const response = currentlyPinned
+      ? await api.delete(url)
+      : await api.fetch(url, { method: 'PUT' });
     return response.ok;
   } catch (error) {
     console.error('Failed to toggle pin:', error);
@@ -300,7 +304,7 @@ export async function togglePin(path: string): Promise<boolean> {
  */
 export async function deleteFile(path: string): Promise<boolean> {
   try {
-    const response = await api.delete(`/api/library/file?path=${encodeURIComponent(path)}`);
+    const response = await api.delete(`/api/data/files/${encodePath(path)}`);
     return response.ok;
   } catch (error) {
     console.error('Failed to delete file:', error);

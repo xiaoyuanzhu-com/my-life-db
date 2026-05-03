@@ -4,7 +4,7 @@ import { ChevronRight, ChevronDown, Folder, Pencil, Trash2, FolderPlus, Copy, Lo
 import { toast } from 'sonner';
 import { cn } from '~/lib/utils';
 import type { PendingInboxItem } from '~/lib/send-queue/types';
-import { api } from '~/lib/api';
+import { api, encodePath } from '~/lib/api';
 import { useLibraryNotifications } from '~/hooks/use-notifications';
 import { downloadFile, downloadFolder } from '~/components/FileCard/utils';
 import { parseApiError } from '~/lib/errors';
@@ -147,7 +147,7 @@ function TreeNode({
       setIsLoading(true);
     }
     try {
-      const response = await api.get(`/api/library/tree?path=${encodeURIComponent(fullPath)}`);
+      const response = await api.get(`/api/data/tree?path=${encodeURIComponent(fullPath)}`);
       const data = await response.json();
       setChildren(data.children || []);
     } catch (error) {
@@ -216,7 +216,7 @@ function TreeNode({
     }
 
     try {
-      const response = await api.post('/api/library/rename', { path: fullPath, newName: renameValue.trim() });
+      const response = await api.patch(`/api/data/files/${encodePath(fullPath)}`, { name: renameValue.trim() });
 
       if (!response.ok) {
         const apiErr = await parseApiError(response);
@@ -247,7 +247,7 @@ function TreeNode({
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
-      const response = await api.delete(`/api/library/file?path=${encodeURIComponent(fullPath)}`);
+      const response = await api.delete(`/api/data/files/${encodePath(fullPath)}`);
 
       if (!response.ok) {
         const apiErr = await parseApiError(response);
@@ -279,7 +279,7 @@ function TreeNode({
   const handleExtract = async () => {
     setIsExtracting(true);
     try {
-      const response = await api.post('/api/library/extract', { path: fullPath });
+      const response = await api.post('/api/data/extract', { path: fullPath });
       if (!response.ok) {
         const error = await response.json();
         alert(error.error || t('data:errors.extractFailed'));
@@ -326,7 +326,7 @@ function TreeNode({
     }
 
     try {
-      const response = await api.post('/api/library/folder', { path: fullPath, name: subfolderName.trim() });
+      const response = await api.post('/api/data/folders', { parent: fullPath, name: subfolderName.trim() });
       if (!response.ok) {
         const apiErr = await parseApiError(response);
         alert(tErr(apiErr));
@@ -436,7 +436,7 @@ function TreeNode({
     }
 
     try {
-      const response = await api.post('/api/library/move', { path: draggedItem.path, targetPath: fullPath });
+      const response = await api.patch(`/api/data/files/${encodePath(draggedItem.path)}`, { parent: fullPath });
 
       if (!response.ok) {
         const apiErr = await parseApiError(response);
@@ -706,7 +706,7 @@ export function FileTree({
   // Core tree loading function
   const loadRootImpl = useCallback(async () => {
     try {
-      const response = await api.get('/api/library/tree');
+      const response = await api.get('/api/data/tree');
       const data = await response.json();
       setRootNodes(data.children || []);
     } catch (error) {
@@ -835,7 +835,7 @@ export function FileTree({
     }
 
     try {
-      const response = await api.post('/api/library/folder', { path: '', name: newFolderName.trim() });
+      const response = await api.post('/api/data/folders', { parent: '', name: newFolderName.trim() });
 
       if (!response.ok) {
         const error = await response.json();
@@ -984,7 +984,7 @@ export function FileTree({
     }
 
     try {
-      const response = await api.post('/api/library/move', { path: draggedItem.path, targetPath: '' });
+      const response = await api.patch(`/api/data/files/${encodePath(draggedItem.path)}`, { parent: '' });
 
       if (!response.ok) {
         const error = await response.json();

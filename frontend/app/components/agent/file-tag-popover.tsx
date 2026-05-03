@@ -1,6 +1,6 @@
 /**
  * FileTagPopover — triggered when user types "@" at the start of a token
- * in the composer. Fetches file tree from /api/library/tree and shows
+ * in the composer. Fetches file tree from /api/data/tree and shows
  * fuzzy-matched results for quick file path insertion.
  *
  * Performance: fetches up to 1000 files initially. If the directory has more,
@@ -142,7 +142,7 @@ export function FileTagPopover({ textareaRef, workingDir }: FileTagPopoverProps)
           fields: "path,type",
         })
         if (workingDir) params.set("path", workingDir)
-        const response = await api.get(`/api/library/tree?${params}`)
+        const response = await api.get(`/api/data/tree?${params}`)
         if (response.ok) {
           const data = await response.json()
           const flattened = flattenTree(data.children ?? [])
@@ -197,7 +197,7 @@ export function FileTagPopover({ textareaRef, workingDir }: FileTagPopoverProps)
           query,
         })
         if (workingDir) params.set("path", workingDir)
-        const response = await api.get(`/api/library/tree?${params}`, {
+        const response = await api.get(`/api/data/tree?${params}`, {
           signal: controller.signal,
         })
         if (response.ok) {

@@ -565,7 +565,7 @@ export class UploadQueueManager {
       size: item.size,
     });
 
-    const response = await api.fetch(`/api/upload/simple/${encodedPath}`, {
+    const response = await api.fetch(`/api/data/uploads/simple/${encodedPath}`, {
       method: 'PUT',
       headers: {
         'Content-Type': item.type || 'application/octet-stream',
@@ -620,7 +620,7 @@ export class UploadQueueManager {
       });
 
       const upload = new tus.Upload(item.blob, {
-        endpoint: '/api/upload/tus/',
+        endpoint: '/api/data/uploads/tus/',
         retryDelays: [], // We handle retries ourselves
         chunkSize: 10 * 1024 * 1024, // 10MB chunks
         uploadUrl: item.tusUploadUrl || undefined,
@@ -672,7 +672,7 @@ export class UploadQueueManager {
               requestBody.destination = item.destination;
             }
 
-            const response = await api.post('/api/upload/finalize', requestBody);
+            const response = await api.post('/api/data/uploads/finalize', requestBody);
 
             if (!response.ok) {
               const apiErr = await parseApiError(response);

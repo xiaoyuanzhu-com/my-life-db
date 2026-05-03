@@ -65,7 +65,7 @@ export function TextCard({
   const handleOpen = () => navigate(href);
 
   const handleTogglePin = async () => {
-    const success = await togglePin(file.path);
+    const success = await togglePin(file.path, !!file.isPinned);
     if (success) {
       window.location.reload();
     }

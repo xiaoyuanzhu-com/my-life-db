@@ -58,7 +58,7 @@ function connectToNotifications() {
     return; // Already connected
   }
 
-  let url = '/api/notifications/stream';
+  let url = '/api/data/events';
   const w = window as any;
   if (w.isNativeApp && w.__nativeAccessToken) {
     url += `?access_token=${encodeURIComponent(w.__nativeAccessToken)}`;

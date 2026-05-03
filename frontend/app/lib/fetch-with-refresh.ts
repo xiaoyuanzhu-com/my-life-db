@@ -33,7 +33,7 @@ export async function refreshAccessToken(): Promise<boolean> {
       }
 
       // Web: cookie-based refresh
-      const response = await fetch('/api/oauth/refresh', {
+      const response = await fetch('/api/system/oauth/refresh', {
         method: 'POST',
         credentials: 'same-origin',
       });

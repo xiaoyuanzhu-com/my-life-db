@@ -20,7 +20,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkAuth = async () => {
     try {
-      const response = await api.get('/api/settings');
+      const response = await api.get('/api/system/settings');
       setIsAuthenticated(response.ok);
     } catch {
       setIsAuthenticated(false);
@@ -44,7 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = () => {
-    window.location.href = '/api/oauth/authorize';
+    window.location.href = '/api/system/oauth/authorize';
   };
 
   return (

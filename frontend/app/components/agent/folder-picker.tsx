@@ -59,7 +59,7 @@ export function FolderPicker({ value, onChange, disabled = false, onChangedFiles
         fields: 'path',
       })
 
-      const response = await api.get(`/api/library/tree?${params}`)
+      const response = await api.get(`/api/data/tree?${params}`)
       if (response.ok) {
         const data = await response.json()
         const responseBasePath = data.basePath || ''
@@ -92,7 +92,7 @@ export function FolderPicker({ value, onChange, disabled = false, onChangedFiles
         folderOnly: 'true',
         fields: 'path',
       })
-      const response = await api.get(`/api/library/tree?${params}`)
+      const response = await api.get(`/api/data/tree?${params}`)
       if (response.ok) {
         const data = await response.json()
         const responseBasePath = data.basePath || ''
