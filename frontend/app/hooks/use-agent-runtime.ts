@@ -944,7 +944,7 @@ export function useAgentRuntime(options: {
 
   // ── WebSocket Connection ──────────────────────────────────────────
 
-  const { connected, sendPrompt, sendCancel, sendKill, sendPermissionResponse, sendSetMode, sendSetModel, sendSetConfigOption } =
+  const { connected, sendPrompt, sendCancel, sendPermissionResponse, sendSetMode, sendSetModel, sendSetConfigOption } =
     useAgentWebSocket({
       sessionId,
       token,
@@ -1088,13 +1088,28 @@ export function useAgentRuntime(options: {
         }
       },
       onCancel: async () => {
+        // Just send the cancel — no kill safety net.
+        //
+        // Previously this armed a 3s setTimeout that called sendKill() if
+        // isRunningRef was still true. Two reasons it was removed:
+        //
+        //   1. Redundant. The backend's session.cancel handler now tears
+        //      down the ACP subprocess (Close + RemoveSession), so cancel
+        //      is always terminal — see agent_ws.go session.cancel for the
+        //      full story (heavy-handed workaround for a Claude Code ACP
+        //      wedge after Cancel + premature ctx cancel).
+        //
+        //   2. Racy. The timer guarded only on isRunningRef, not on which
+        //      turn was running. If the user sent a new prompt within 3s,
+        //      isRunning flipped back to true for the *new* turn, and the
+        //      timer would fire session.kill on the freshly-created ACP
+        //      session — killing the new turn the user just sent.
+        //
+        // Restore this safety net only if the backend cancel reverts to a
+        // non-terminal form (see migration path in agent_ws.go), and even
+        // then track which turn is being cancelled so the timer doesn't
+        // fire on a subsequent turn.
         sendCancel()
-        // If still running after 3s, force-kill the session
-        setTimeout(() => {
-          if (isRunningRef.current) {
-            sendKill()
-          }
-        }, 3000)
       },
       // Thread list adapter — conditionally included when sessions data is provided
       ...(sessions ? {
@@ -1127,7 +1142,7 @@ export function useAgentRuntime(options: {
         },
       } : {}),
     }),
-    [rootMessages, isRunning, sendPrompt, sendCancel, sendKill, onSend, sessions, activeSessionId, onSwitchToThread, onSwitchToNewThread, onRenameThread, onArchiveThread, onUnarchiveThread, onDeleteThread, nextId, sessionId]
+    [rootMessages, isRunning, sendPrompt, sendCancel, onSend, sessions, activeSessionId, onSwitchToThread, onSwitchToNewThread, onRenameThread, onArchiveThread, onUnarchiveThread, onDeleteThread, nextId, sessionId]
   )
 
   // ── Runtime ───────────────────────────────────────────────────────

@@ -559,18 +559,77 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				Msg("prompt sent to agent session via WebSocket")
 
 		case "session.cancel":
+			// HEAVY-HANDED CANCEL — kills the ACP subprocess and forces a
+			// fresh one on the next prompt.
+			//
+			// Why: sending only the ACP Cancel notification + cancelling our
+			// per-prompt ctx (the "proper" way) leaves Claude Code's server
+			// in a state where the *next* conn.Prompt() call returns
+			// immediately with stopReason=end_turn and zero content frames.
+			// The user's next turn then renders as just a user message with
+			// no reply. Verified symptom: backend logs show
+			//     ACP prompt completed stop_reason=end_turn
+			// for the new prompt with no agent_message_chunk frames between
+			// IsProcessing=true and the completion. Restarting the backend
+			// recovers (same code path runs below — lazy create on next
+			// prompt), which is what we replicate here per-cancel.
+			//
+			// Likely cause: we cancel our ctx (pc() below) before Claude
+			// Code's server has finished its own cancel handling, abandoning
+			// the in-flight Prompt request mid-flight. Late frames arriving
+			// after our synthetic turn.complete confirm the server was still
+			// processing. The state machines desync, and Claude Code rejects
+			// the next prompt as if the previous turn never closed.
+			//
+			// Cost of this workaround:
+			//   - Spawns a fresh claude-agent-acp subprocess (~few-hundred-ms
+			//     startup) on the next prompt after every stop.
+			//   - Resets Claude Code's in-session conversation memory: the
+			//     agent doesn't remember previous turns within this session.
+			//     UI history is unaffected (preserved in rawMessages); only
+			//     the agent's working memory is fresh.
+			//   - LoadSession is NOT called on the recreated session. ACP
+			//     LoadSession is unreliable (see agentsdk/client.go), and
+			//     the existing lazy-create path doesn't call it either, so
+			//     this matches restart-recovery behavior.
+			//
+			// Migration path to a proper implementation:
+			//   1. Try removing pc() and letting conn.Prompt() return
+			//      naturally when Claude Code responds to the Cancel
+			//      notification (stopReason=cancelled). Add a fallback
+			//      timeout (~3s) that *then* falls back to Close() if the
+			//      server is genuinely wedged. If this works, conversation
+			//      memory is preserved across cancels.
+			//   2. Watch coder/acp-go-sdk and zed-industries/claude-code-acp
+			//      (a.k.a. claude-agent-acp) for fixes. Specifically a
+			//      protocol-level "cancel ack" that lets the client know
+			//      when the server has actually finished cancelling, or a
+			//      bug fix on the server side that handles a fresh Prompt
+			//      cleanly even if the previous one was abandoned.
+			//   3. If/when migrated, this whole branch goes back to the
+			//      old shape: Stop() + pc() + ack broadcast, no Close().
+			//
+			// See also: 3s sendKill safety net was removed from the frontend
+			// (use-agent-runtime.ts onCancel) at the same time as introducing
+			// this — it's redundant when cancel always reliably terminates,
+			// and was racy because a new prompt within 3s would arm the
+			// timer to kill the *new* turn's freshly-created ACP session.
 			acpSession, exists := h.agentMgr.GetSession(sessionID)
 
 			if exists {
+				h.agentMgr.RemoveSession(sessionID)
 				acpSession.CancelAllPermissions()
-				if err := acpSession.Stop(); err != nil {
-					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to cancel agent session")
+				if err := acpSession.Close(); err != nil {
+					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to close agent session on cancel")
 				} else {
-					log.Info().Str("sessionId", sessionID).Msg("agent session cancelled via WebSocket")
+					log.Info().Str("sessionId", sessionID).Msg("agent session cancelled via WebSocket (process closed)")
 				}
 			}
 
-			// Cancel the per-prompt context so conn.Prompt() returns promptly.
+			// Cancel the per-prompt context so conn.Prompt() returns
+			// promptly. The acpSess.Done() watcher also fires pCancel when
+			// the process exits; calling it here is idempotent and avoids
+			// waiting on the OS-level process death.
 			sessionState.Mu.RLock()
 			pc := sessionState.PromptCancel
 			sessionState.Mu.RUnlock()
@@ -578,8 +637,10 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				pc()
 			}
 
-			// Send ack so the client can immediately update UI (stop spinner, clear permissions).
-			// turn.complete from ACP will arrive later and is idempotent.
+			// Send ack so the client can immediately update UI (stop
+			// spinner, clear permissions). turn.complete from the SDK will
+			// arrive later (synth turn.complete on ctx-cancel path) and is
+			// idempotent on the frontend.
 			if ackBytes, err := json.Marshal(map[string]any{
 				"type": "session.cancelled",
 			}); err == nil {
