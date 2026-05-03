@@ -1,7 +1,0 @@
-id: oura
-name: "Oura Ring"
-category: health
-website: https://ouraring.com
-description: "Smart ring tracking sleep, readiness, and activity."
-import_prompt: |
-  Help me export my Oura data. Walk me through generating a personal access token at https://cloud.ouraring.com/personal-access-tokens, then run a script that pulls daily sleep, readiness, activity, and HRV JSON into imports/oura/.

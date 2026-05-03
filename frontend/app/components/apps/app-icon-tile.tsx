@@ -6,6 +6,7 @@ import yuqueSvg from "~/assets/yuque.svg?raw";
 // Raster image assets (bundled as URL by Vite).
 import bearImg from "~/assets/bear.png";
 import flomoImg from "~/assets/flomo.webp";
+import keepImg from "~/assets/keep.png";
 
 // Existing icons.
 import notion from "thesvg/notion";
@@ -82,6 +83,7 @@ import netflix from "thesvg/netflix";
 import amazonKindle from "thesvg/amazon-kindle";
 import goodreads from "thesvg/goodreads";
 import letterboxd from "thesvg/letterboxd";
+import lastdotfm from "thesvg/lastdotfm";
 
 // Productivity / other.
 import todoist from "thesvg/todoist";
@@ -174,6 +176,7 @@ const SVG_BY_ID: Record<string, string> = {
   kindle: amazonKindle.variants.default,
   goodreads: goodreads.variants.default,
   letterboxd: letterboxd.variants.default,
+  lastfm: lastdotfm.variants.default,
 
   // Productivity / other.
   todoist: todoist.variants.default,
@@ -191,6 +194,7 @@ const SVG_BY_ID: Record<string, string> = {
 const IMG_BY_ID: Record<string, string> = {
   bear: bearImg,
   flomo: flomoImg,
+  "keep-fitness": keepImg,
 };
 
 // Prefix `id="x"` / `url(#x)` / `href="#x"` / `xlink:href="#x"` so multiple
