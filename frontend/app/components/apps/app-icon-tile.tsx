@@ -184,7 +184,7 @@ function scopeSvgIds(svg: string, scope: string): string {
 export function AppIconTile({ app }: { app: App }) {
   const svg = SVG_BY_ID[app.id];
   return (
-    <div className="h-20 w-20 rounded-[1.4rem] bg-white flex items-center justify-center overflow-hidden shadow-sm shrink-0">
+    <div className="h-20 w-20 rounded-[1.4rem] bg-white flex items-center justify-center overflow-hidden shadow-sm shrink-0 text-black">
       {svg ? (
         <div
           className="h-[65%] w-[65%] [&_svg]:w-full [&_svg]:h-full"

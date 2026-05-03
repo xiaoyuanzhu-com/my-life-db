@@ -1038,6 +1038,18 @@ export default function AgentPage() {
     }))
   }, [defaultConfigOptions, newSessionAgentType, newSessionDefaults])
 
+  const handleRestartSession = useCallback(async () => {
+    if (!activeSessionId) return
+    try {
+      await api.post(`/api/agent/sessions/${activeSessionId}/restart`)
+    } catch (err) {
+      console.error('[agent] restart session failed:', err)
+    }
+    // Force WS reconnect — backend killed the process, so the old connection
+    // is stale. Reconnecting triggers session.info with fresh state.
+    reconnect()
+  }, [activeSessionId, reconnect])
+
   // Show loading state while checking authentication
   if (authLoading || loading) {
     return (
@@ -1066,18 +1078,6 @@ export default function AgentPage() {
 
   // Shared context value for AgentContextProvider — keeps the reference stable
   // across the multiple conditional render branches below.
-  const handleRestartSession = useCallback(async () => {
-    if (!activeSessionId) return
-    try {
-      await api.post(`/api/agent/sessions/${activeSessionId}/restart`)
-    } catch (err) {
-      console.error('[agent] restart session failed:', err)
-    }
-    // Force WS reconnect — backend killed the process, so the old connection
-    // is stale. Reconnecting triggers session.info with fresh state.
-    reconnect()
-  }, [activeSessionId, reconnect])
-
   const agentContextValue = {
     sendPermissionResponse,
     pendingPermissions,
