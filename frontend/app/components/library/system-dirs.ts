@@ -1,12 +1,13 @@
-import folderGenericIcon from '~/assets/folder-generic.svg';
-import folderAgentsIcon from '~/assets/folder-agents.svg';
-import folderSessionsIcon from '~/assets/folder-sessions.svg';
-import folderExploreIcon from '~/assets/folder-explore.svg';
+import folderGenericIcon from '~/assets/folder-generic.svg?raw';
+import folderAgentsIcon from '~/assets/folder-agents.svg?raw';
+import folderSessionsIcon from '~/assets/folder-sessions.svg?raw';
+import folderExploreIcon from '~/assets/folder-explore.svg?raw';
 
 export const FOLDER_GENERIC_ICON = folderGenericIcon;
 
 interface SystemDirInfo {
-  /** Icon asset URL for this system dir */
+  /** Inline SVG markup for this system dir. Uses fill="currentColor" so the
+   * outer body tints with the parent's CSS color. */
   icon: string;
   /** i18n key under data:library.systemDirs (e.g. "agents") — value is the description shown to the user */
   descriptionKey: string;

@@ -83,7 +83,7 @@ export function GridItem({
   const systemDirDescription = systemDir
     ? t(`data:library.systemDirs.${systemDir.descriptionKey}`)
     : null;
-  const folderIconSrc = systemDir ? systemDir.icon : FOLDER_GENERIC_ICON;
+  const folderIconSvg = systemDir ? systemDir.icon : FOLDER_GENERIC_ICON;
 
   useEffect(() => {
     if (isRenaming && renameInputRef.current) {
@@ -211,11 +211,14 @@ export function GridItem({
       )}
     >
       {isFolder ? (
-        <img
-          src={folderIconSrc}
-          alt=""
-          loading="lazy"
-          className={cn(isList ? 'w-8 h-8' : 'w-12 h-12', 'object-contain')}
+        <span
+          aria-hidden="true"
+          className={cn(
+            isList ? 'w-8 h-8' : 'w-12 h-12',
+            '[&>svg]:w-full [&>svg]:h-full',
+          )}
+          style={{ color: '#4b5563' }}
+          dangerouslySetInnerHTML={{ __html: folderIconSvg }}
         />
       ) : node.previewSqlar ? (
         <img
