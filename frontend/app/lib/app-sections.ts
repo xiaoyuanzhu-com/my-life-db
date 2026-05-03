@@ -28,18 +28,10 @@ export const SECTION_ORDER: SectionKey[] = [
 // Order here is the order shown in the Featured section.
 const FEATURED_ORDER: string[] = [
   "apple-health",
-  "garmin",
-  "strava",
   "google",
-  "chatgpt",
-  "claude",
   "notion",
-  "obsidian",
   "telegram",
-  "slack",
   "wechat",
-  "twitter",
-  "xiaohongshu",
 ];
 const FEATURED_IDS = new Set<string>(FEATURED_ORDER);
 
@@ -61,6 +53,7 @@ const PRODUCTIVITY_IDS = new Set<string>([
   "ticktick",
   "todoist",
   "github",
+  "slack",
 ]);
 
 // Maps a backend category to a section key. AI and productivity override by id.
