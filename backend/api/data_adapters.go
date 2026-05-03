@@ -188,6 +188,15 @@ func (h *Handlers) PatchDataFile(c *gin.Context) {
 		return
 	}
 
+	// Connect-scope check on the destination (the source path was already
+	// gated by RequireConnectScope("files.write") in routes.go). For rename
+	// the destination shares the source's parent so this is usually a no-op,
+	// but for move the parent changes — we must not let a token scoped to
+	// /notes move a file into /journal.
+	if !h.CheckConnectScope(c, "files.write", newPath) {
+		return
+	}
+
 	newFullPath := filepath.Join(cfg.UserDataDir, newPath)
 	if _, err := os.Stat(newFullPath); err == nil {
 		RespondCoded(c, http.StatusConflict, "LIBRARY_FILE_CONFLICT", "A file with this name already exists")
@@ -239,6 +248,12 @@ func (h *Handlers) CreateDataFolder(c *gin.Context) {
 		folderPath = body.Name
 	} else {
 		folderPath = body.Parent + "/" + body.Name
+	}
+
+	// Connect-scope check on the new folder's path. Body-derived paths can't
+	// be gated by routes.go middleware, so it lives here.
+	if !h.CheckConnectScope(c, "files.write", folderPath) {
+		return
 	}
 
 	cfg := config.Get()

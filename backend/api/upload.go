@@ -134,6 +134,12 @@ func (h *Handlers) FinalizeUpload(c *gin.Context) {
 		destination = *body.Destination
 	}
 
+	// Connect-scope check on the resolved destination directory.
+	// Body-derived path → can't be gated by routes.go middleware.
+	if !h.CheckConnectScope(c, "files.write", destination) {
+		return
+	}
+
 	// Ensure destination directory exists
 	destDir := filepath.Join(cfg.UserDataDir, destination)
 	if err := os.MkdirAll(destDir, 0755); err != nil {

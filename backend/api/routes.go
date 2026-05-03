@@ -25,6 +25,8 @@ import (
 // the new namespace.
 func SetupRoutes(r *gin.Engine, h *Handlers) {
 	auth := h.AuthMiddleware()
+	connectAuth := h.ConnectAuthMiddleware()
+	bufferBody := h.BufferJSONBody()
 
 	// =========================================================================
 	// Outside `/api/` — OAuth public endpoints + RFC 8414 discovery
@@ -49,7 +51,6 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 	//   3. RequireConnectScope    — for Connect-authenticated callers,
 	//      check that the resolved scope satisfies the path; pass-through
 	//      for owner-session callers.
-	connectAuth := h.ConnectAuthMiddleware()
 	r.GET("/raw/*path", connectAuth, auth, h.RequireConnectScope("files.read"), h.ServeRawFile)
 	r.PUT("/raw/*path", connectAuth, auth, h.RequireConnectScope("files.write"), h.SaveRawFile)
 	r.GET("/sqlar/*path", auth, h.ServeSqlarFile)
@@ -97,48 +98,91 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 	{
 		// ---------------------------------------------------------------------
 		// /api/data/* — file I/O, search, events, uploads, ingestion config
+		//
+		// Phase E: Connect-scope-gated. `connectAuth` resolves a Connect
+		// token (if present) into request context; per-route middleware
+		// then enforces files.read / files.write against the request's
+		// effective path.
+		//
+		// Three path-extraction strategies:
+		//   - RequireConnectScope        — gin catch-all `*path`
+		//   - RequireConnectScopeQuery   — `?path=` query parameter
+		//   - RequireConnectScopeRoot    — implicit "/" (whole-FS scope)
+		//
+		// Body-derived paths (POST /folders, PATCH /files move-variant,
+		// POST /extract, POST /uploads/finalize) use BufferJSONBody +
+		// inline h.CheckConnectScope(...) calls inside the handler.
 		// ---------------------------------------------------------------------
 		data := api.Group("/data")
+		data.Use(connectAuth)
 		{
 			// File metadata + lifecycle (REST: path is the resource).
-			data.GET("/files/*path", h.GetDataFile)
-			data.DELETE("/files/*path", h.DeleteDataFile)
-			data.PATCH("/files/*path", h.PatchDataFile)
+			data.GET("/files/*path",
+				h.RequireConnectScope("files.read"), h.GetDataFile)
+			data.DELETE("/files/*path",
+				h.RequireConnectScope("files.write"), h.DeleteDataFile)
+			// PATCH: middleware checks write scope on the SOURCE path; the
+			// handler additionally calls CheckConnectScope on the DEST path
+			// for the move-variant.
+			data.PATCH("/files/*path",
+				bufferBody, h.RequireConnectScope("files.write"), h.PatchDataFile)
 
-			// Folder creation.
-			data.POST("/folders", h.CreateDataFolder)
+			// Folder creation. Body has {parent, name}; effective path is
+			// parent/name. Handler calls CheckConnectScope inline.
+			data.POST("/folders",
+				bufferBody, h.CreateDataFolder)
 
 			// Tree view of a folder. Note: `tree` is a derived view, so it
 			// gets its own subroot rather than `/folders/*path/tree` (which
 			// gin's catch-all syntax cannot express — `*path` must be the
 			// final segment).
-			data.GET("/tree", h.GetLibraryTree)
+			data.GET("/tree",
+				h.RequireConnectScopeQuery("files.read"), h.GetLibraryTree)
 
 			// Pin lifecycle (idempotent PUT/DELETE on the pin resource).
-			data.PUT("/pins/*path", h.PutDataPin)
-			data.DELETE("/pins/*path", h.DeleteDataPin)
+			// Pins are "owner-side state about a file" — gated as files.write.
+			data.PUT("/pins/*path",
+				h.RequireConnectScope("files.write"), h.PutDataPin)
+			data.DELETE("/pins/*path",
+				h.RequireConnectScope("files.write"), h.DeleteDataPin)
 
 			// Misc.
-			data.GET("/download", h.DownloadLibraryPath)
-			data.POST("/extract", h.ExtractArchive)
-			data.GET("/root", h.GetLibraryRoot)
-			data.GET("/directories", h.GetDirectories)
-			data.GET("/search", h.Search)
+			data.GET("/download",
+				h.RequireConnectScopeQuery("files.read"), h.DownloadLibraryPath)
+			data.POST("/extract",
+				bufferBody, h.ExtractArchive)
+			data.GET("/root",
+				h.RequireConnectScopeRoot("files.read"), h.GetLibraryRoot)
+			data.GET("/directories",
+				h.RequireConnectScopeRoot("files.read"), h.GetDirectories)
+			data.GET("/search",
+				h.RequireConnectScopeRoot("files.read"), h.Search)
 
 			// Filesystem event stream (renamed from /api/notifications/stream:
 			// these are filesystem events, not user-facing notifications).
-			data.GET("/events", h.NotificationStream)
+			// The stream itself requires files.read at root; events are
+			// filtered per-event by the handler against the token's scopes.
+			data.GET("/events",
+				h.RequireConnectScopeRoot("files.read"), h.NotificationStream)
 
 			// Uploads (Simple PUT for small files + TUS for large files).
-			data.PUT("/uploads/simple/*path", h.SimpleUpload)
-			data.POST("/uploads/finalize", h.FinalizeUpload)
-			data.Any("/uploads/tus/*path", h.TUSHandler)
+			data.PUT("/uploads/simple/*path",
+				h.RequireConnectScope("files.write"), h.SimpleUpload)
+			data.POST("/uploads/finalize",
+				bufferBody, h.FinalizeUpload)
+			data.Any("/uploads/tus/*path",
+				h.RequireConnectScope("files.write"), h.TUSHandler)
 
-			// App + collector catalogs (ingestion config).
-			data.GET("/apps", h.GetApps)
-			data.GET("/apps/:id", h.GetApp)
-			data.GET("/collectors", h.GetCollectors)
-			data.PUT("/collectors/:id", h.UpsertCollector)
+			// App + collector catalogs (ingestion config). These are
+			// owner-side metadata — gate at root scope.
+			data.GET("/apps",
+				h.RequireConnectScopeRoot("files.read"), h.GetApps)
+			data.GET("/apps/:id",
+				h.RequireConnectScopeRoot("files.read"), h.GetApp)
+			data.GET("/collectors",
+				h.RequireConnectScopeRoot("files.read"), h.GetCollectors)
+			data.PUT("/collectors/:id",
+				h.RequireConnectScopeRoot("files.write"), h.UpsertCollector)
 		}
 
 		// ---------------------------------------------------------------------

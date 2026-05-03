@@ -81,6 +81,13 @@ func (h *Handlers) ExtractArchive(c *gin.Context) {
 		return
 	}
 
+	// Connect-scope check on the archive path. Extraction writes to the
+	// same parent dir, so files.write coverage of the archive path is
+	// sufficient.
+	if !h.CheckConnectScope(c, "files.write", body.Path) {
+		return
+	}
+
 	if !isArchiveFile(body.Path) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "File is not a supported archive format"})
 		return

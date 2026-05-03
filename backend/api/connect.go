@@ -439,6 +439,8 @@ func (h *Handlers) ConnectMetadata(c *gin.Context) {
 		"code_challenge_methods_supported":  []string{"S256"},
 		"token_endpoint_auth_methods_supported": []string{"none"}, // public clients with PKCE
 		"scopes_supported":                  []string{"files.read", "files.write"},
+		// RFC 8414 §2 — pointer to human-readable docs for app developers.
+		"service_documentation":             "https://my.xiaoyuanzhu.com/features/connect/",
 	})
 }
 
