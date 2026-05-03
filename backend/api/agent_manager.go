@@ -36,6 +36,7 @@ type AgentManager struct {
 	agentClient  *agentsdk.Client
 	notifService *notifications.Service
 	shutdownCtx  context.Context
+	frameStore   *agentsdk.FrameStore // optional, may be nil
 
 	sessionsMu sync.Mutex
 	sessions   map[string]agentsdk.Session
@@ -54,6 +55,13 @@ func NewAgentManager(srv *server.Server) *AgentManager {
 		sessions:     make(map[string]agentsdk.Session),
 		states:       make(map[string]*agentsdk.SessionState),
 	}
+}
+
+// SetFrameStore wires a FrameStore into the manager. Must be called before
+// any sessions are created. The frame store is propagated to each new
+// SessionState so frames are persisted to disk.
+func (m *AgentManager) SetFrameStore(fs *agentsdk.FrameStore) {
+	m.frameStore = fs
 }
 
 // GatewayModels returns the subset of AGENT_MODELS compatible with the given
@@ -168,7 +176,8 @@ func (m *AgentManager) RestartSession(sessionID string) error {
 // -------- Session state map --------
 
 // GetOrCreateState returns the SessionState for the given session ID,
-// creating one if it doesn't exist.
+// creating one if it doesn't exist. When a FrameStore is configured,
+// it is wired into new states so frames are persisted automatically.
 func (m *AgentManager) GetOrCreateState(sessionID string) *agentsdk.SessionState {
 	m.statesMu.Lock()
 	defer m.statesMu.Unlock()
@@ -176,6 +185,9 @@ func (m *AgentManager) GetOrCreateState(sessionID string) *agentsdk.SessionState
 		return state
 	}
 	state := agentsdk.NewSessionState(sessionID)
+	if m.frameStore != nil {
+		state.SetFrameStore(m.frameStore)
+	}
 	m.states[sessionID] = state
 	return state
 }

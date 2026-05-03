@@ -11,20 +11,24 @@ import (
 
 // AgentSessionRecord represents a full agent session row.
 type AgentSessionRecord struct {
-	SessionID   string  `json:"sessionId"`
-	AgentType   string  `json:"agentType"`
-	WorkingDir  string  `json:"workingDir"`
-	Title       string  `json:"title"`
-	Source      string  `json:"source"`      // "user" or "auto"
-	AgentName   string  `json:"agentName"`   // agent folder name (for auto sessions)
-	TriggerKind string  `json:"triggerKind"` // e.g. "cron.tick", "file.created" (auto sessions)
-	TriggerData string  `json:"triggerData"` // JSON-encoded hooks.Payload.Data (auto sessions)
-	StorageID   string  `json:"storageId"`
-	GroupID     *string `json:"groupId,omitempty"`
-	PinnedAt    *int64  `json:"pinnedAt,omitempty"`
-	CreatedAt   int64   `json:"createdAt"`
-	UpdatedAt   int64   `json:"updatedAt"`
-	ArchivedAt  *int64  `json:"archivedAt,omitempty"`
+	SessionID      string  `json:"sessionId"`
+	AgentType      string  `json:"agentType"`
+	WorkingDir     string  `json:"workingDir"`
+	Title          string  `json:"title"`
+	Source         string  `json:"source"`      // "user" or "auto"
+	AgentName      string  `json:"agentName"`   // agent folder name (for auto sessions)
+	TriggerKind    string  `json:"triggerKind"` // e.g. "cron.tick", "file.created" (auto sessions)
+	TriggerData    string  `json:"triggerData"` // JSON-encoded hooks.Payload.Data (auto sessions)
+	StorageID      string  `json:"storageId"`
+	GroupID        *string `json:"groupId,omitempty"`
+	PinnedAt       *int64  `json:"pinnedAt,omitempty"`
+	CreatedAt      int64   `json:"createdAt"`
+	UpdatedAt      int64   `json:"updatedAt"`
+	ArchivedAt     *int64  `json:"archivedAt,omitempty"`
+	LastPromptText string  `json:"lastPromptText,omitempty"`
+	LastPromptAt   *int64  `json:"lastPromptAt,omitempty"`
+	IsProcessing   bool    `json:"isProcessing"`
+	InterruptedAt  *int64  `json:"interruptedAt,omitempty"`
 }
 
 // CreateAgentSession inserts a new agent session record.
@@ -57,13 +61,14 @@ func (d *DB) CreateAgentSession(ctx context.Context, sessionID, agentType, worki
 // GetAgentSession retrieves a single session record.
 func (d *DB) GetAgentSession(sessionID string) (*AgentSessionRecord, error) {
 	var r AgentSessionRecord
-	var archivedAt, pinnedAt sql.NullInt64
-	var groupID sql.NullString
+	var archivedAt, pinnedAt, lastPromptAt, interruptedAt sql.NullInt64
+	var groupID, lastPromptText sql.NullString
+	var isProcessing int
 	err := d.conn.QueryRow(
-		`SELECT session_id, agent_type, working_dir, title, source, agent_name, trigger_kind, trigger_data, storage_id, group_id, pinned_at, created_at, updated_at, archived_at
+		`SELECT session_id, agent_type, working_dir, title, source, agent_name, trigger_kind, trigger_data, storage_id, group_id, pinned_at, created_at, updated_at, archived_at, last_prompt_text, last_prompt_at, is_processing, interrupted_at
 		 FROM agent_sessions WHERE session_id = ?`,
 		sessionID,
-	).Scan(&r.SessionID, &r.AgentType, &r.WorkingDir, &r.Title, &r.Source, &r.AgentName, &r.TriggerKind, &r.TriggerData, &r.StorageID, &groupID, &pinnedAt, &r.CreatedAt, &r.UpdatedAt, &archivedAt)
+	).Scan(&r.SessionID, &r.AgentType, &r.WorkingDir, &r.Title, &r.Source, &r.AgentName, &r.TriggerKind, &r.TriggerData, &r.StorageID, &groupID, &pinnedAt, &r.CreatedAt, &r.UpdatedAt, &archivedAt, &lastPromptText, &lastPromptAt, &isProcessing, &interruptedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -79,6 +84,16 @@ func (d *DB) GetAgentSession(sessionID string) (*AgentSessionRecord, error) {
 	if pinnedAt.Valid {
 		r.PinnedAt = &pinnedAt.Int64
 	}
+	if lastPromptText.Valid {
+		r.LastPromptText = lastPromptText.String
+	}
+	if lastPromptAt.Valid {
+		r.LastPromptAt = &lastPromptAt.Int64
+	}
+	r.IsProcessing = isProcessing != 0
+	if interruptedAt.Valid {
+		r.InterruptedAt = &interruptedAt.Int64
+	}
 	return &r, nil
 }
 
@@ -86,7 +101,7 @@ func (d *DB) GetAgentSession(sessionID string) (*AgentSessionRecord, error) {
 // cursor is the updated_at value of the last item from the previous page (0 for first page).
 // limit is the max number of results to return (0 for no limit).
 func (d *DB) ListAgentSessions(includeArchived bool, cursor int64, limit int) ([]AgentSessionRecord, error) {
-	query := `SELECT session_id, agent_type, working_dir, title, source, agent_name, trigger_kind, trigger_data, storage_id, group_id, pinned_at, created_at, updated_at, archived_at
+	query := `SELECT session_id, agent_type, working_dir, title, source, agent_name, trigger_kind, trigger_data, storage_id, group_id, pinned_at, created_at, updated_at, archived_at, last_prompt_text, last_prompt_at, is_processing, interrupted_at
 		 FROM agent_sessions`
 
 	var conditions []string
@@ -118,9 +133,10 @@ func (d *DB) ListAgentSessions(includeArchived bool, cursor int64, limit int) ([
 	var results []AgentSessionRecord
 	for rows.Next() {
 		var r AgentSessionRecord
-		var archivedAt, pinnedAt sql.NullInt64
-		var groupID sql.NullString
-		if err := rows.Scan(&r.SessionID, &r.AgentType, &r.WorkingDir, &r.Title, &r.Source, &r.AgentName, &r.TriggerKind, &r.TriggerData, &r.StorageID, &groupID, &pinnedAt, &r.CreatedAt, &r.UpdatedAt, &archivedAt); err != nil {
+		var archivedAt, pinnedAt, lastPromptAt, interruptedAt sql.NullInt64
+		var groupID, lastPromptText sql.NullString
+		var isProcessing int
+		if err := rows.Scan(&r.SessionID, &r.AgentType, &r.WorkingDir, &r.Title, &r.Source, &r.AgentName, &r.TriggerKind, &r.TriggerData, &r.StorageID, &groupID, &pinnedAt, &r.CreatedAt, &r.UpdatedAt, &archivedAt, &lastPromptText, &lastPromptAt, &isProcessing, &interruptedAt); err != nil {
 			return nil, err
 		}
 		if archivedAt.Valid {
@@ -131,6 +147,16 @@ func (d *DB) ListAgentSessions(includeArchived bool, cursor int64, limit int) ([
 		}
 		if pinnedAt.Valid {
 			r.PinnedAt = &pinnedAt.Int64
+		}
+		if lastPromptText.Valid {
+			r.LastPromptText = lastPromptText.String
+		}
+		if lastPromptAt.Valid {
+			r.LastPromptAt = &lastPromptAt.Int64
+		}
+		r.IsProcessing = isProcessing != 0
+		if interruptedAt.Valid {
+			r.InterruptedAt = &interruptedAt.Int64
 		}
 		results = append(results, r)
 	}
@@ -463,4 +489,75 @@ func (d *DB) GetAllShareTokens() (map[string]string, error) {
 		return nil, err
 	}
 	return result, nil
+}
+
+// ── Interrupted-state operations ─────────────────────────────────────────────
+
+// SetPromptInFlight records that a prompt is now being processed.
+// Called just before Send() so the DB tracks the in-flight prompt.
+func (d *DB) SetPromptInFlight(ctx context.Context, sessionID, promptText string) error {
+	now := NowMs()
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(
+			`UPDATE agent_sessions
+			 SET last_prompt_text = ?, last_prompt_at = ?, is_processing = 1, interrupted_at = NULL, updated_at = ?
+			 WHERE session_id = ?`,
+			promptText, now, now, sessionID,
+		)
+		return err
+	})
+}
+
+// ClearPromptInFlight marks a prompt as completed (clears is_processing).
+// Called when the events channel closes normally (turn complete).
+func (d *DB) ClearPromptInFlight(ctx context.Context, sessionID string) error {
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(
+			`UPDATE agent_sessions SET is_processing = 0, interrupted_at = NULL WHERE session_id = ?`,
+			sessionID,
+		)
+		return err
+	})
+}
+
+// MarkInterrupted sets interrupted_at and clears is_processing.
+// Called on server shutdown (via MarkAllInProgressInterrupted) or explicit kill.
+func (d *DB) MarkInterrupted(ctx context.Context, sessionID string, interruptedAt int64) error {
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(
+			`UPDATE agent_sessions SET is_processing = 0, interrupted_at = ? WHERE session_id = ?`,
+			interruptedAt, sessionID,
+		)
+		return err
+	})
+}
+
+// MarkAllInProgressInterrupted bulk-updates all sessions that have is_processing=1
+// to set interrupted_at = interruptedAt and is_processing = 0.
+// Called at server startup to recover sessions that were interrupted by a crash/restart.
+func (d *DB) MarkAllInProgressInterrupted(ctx context.Context, interruptedAt int64) (int64, error) {
+	var affected int64
+	err := d.Write(ctx, func(tx *sql.Tx) error {
+		res, err := tx.Exec(
+			`UPDATE agent_sessions SET is_processing = 0, interrupted_at = ? WHERE is_processing = 1`,
+			interruptedAt,
+		)
+		if err != nil {
+			return err
+		}
+		affected, _ = res.RowsAffected()
+		return nil
+	})
+	return affected, err
+}
+
+// ClearInterrupted clears interrupted_at for a session (dismiss banner).
+func (d *DB) ClearInterrupted(ctx context.Context, sessionID string) error {
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(
+			`UPDATE agent_sessions SET interrupted_at = NULL WHERE session_id = ?`,
+			sessionID,
+		)
+		return err
+	})
 }

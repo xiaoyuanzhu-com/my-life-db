@@ -44,7 +44,13 @@
     "moreOptions": "More options",
     "addAttachment": "Add Attachment",
     "expandPreview": "Expand preview",
-    "restartSession": "Restart session"
+    "restartSession": "Restart session",
+    "interrupted": {
+      "title": "Session interrupted",
+      "lastPrompt": "Last prompt",
+      "resume": "Resume",
+      "dismiss": "Dismiss"
+    }
   },
   "autoAgent": {
     "back": "Back to agents",

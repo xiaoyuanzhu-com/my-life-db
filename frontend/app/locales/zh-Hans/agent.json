@@ -44,7 +44,13 @@
     "moreOptions": "更多选项",
     "addAttachment": "添加附件",
     "expandPreview": "展开预览",
-    "restartSession": "重启会话"
+    "restartSession": "重启会话",
+    "interrupted": {
+      "title": "会话已中断",
+      "lastPrompt": "上次提示",
+      "resume": "继续",
+      "dismiss": "忽略"
+    }
   },
   "autoAgent": {
     "back": "返回助手列表",

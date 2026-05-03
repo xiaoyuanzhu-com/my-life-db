@@ -156,6 +156,11 @@ export function useAgentRuntime(options: {
   const [historyLoadError, setHistoryLoadError] = useState<string | null>(null)
   // Set when a live session errors before any message can render
   const [sessionError, setSessionError] = useState<string | null>(null)
+  // Interrupted state: set when the session was interrupted mid-prompt
+  const [interruptedAt, setInterruptedAt] = useState<number | null>(null)
+  const [lastPromptText, setLastPromptText] = useState<string | null>(null)
+  // Source of the session ("user" or "auto") — from session.info
+  const [sessionSource, setSessionSource] = useState<string | null>(null)
 
   // Optimistic message text that should survive the session ID reset
   // when transitioning from "no session" → "new session created"
@@ -198,6 +203,9 @@ export function useAgentRuntime(options: {
     setPendingPermissions(new Map())
     setHistoryLoadError(null)
     setSessionError(null)
+    setInterruptedAt(null)
+    setLastPromptText(null)
+    setSessionSource(null)
   }
 
   // Whether the session is active (loaded via ACP + at least one prompt sent).
@@ -233,6 +241,10 @@ export function useAgentRuntime(options: {
           setPendingPermissions(new Map())
           setHistoryLoadError(null)
           setSessionError(null)
+          // Interrupted state from DB
+          setInterruptedAt(f.interruptedAt ?? null)
+          setLastPromptText(f.lastPromptText ?? null)
+          setSessionSource(f.source ?? null)
           // Seed session-level config from the backend baseline (sourced from
           // /api/agent/config + AGENT_MODELS). Real ACP config_option_update
           // frames arrive afterwards (claude_code/codex) and override. Agents
@@ -1182,6 +1194,10 @@ export function useAgentRuntime(options: {
     pendingComposerText,
     clearPendingComposerText,
     reconnect,
+    interruptedAt,
+    lastPromptText,
+    sessionSource,
+    sendPrompt,
   }
 }
 

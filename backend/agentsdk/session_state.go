@@ -48,6 +48,10 @@ type SessionState struct {
 	// Diagnostics: tracks when the last ACP frame arrived for logging.
 	LastFrameAt time.Time  // last time an ACP frame arrived via onFrame
 	sessionID   string     // for logging
+
+	// Optional frame persistence. When non-nil, every frame appended via
+	// AppendAndBroadcast is also written to disk. Nil = no persistence.
+	frameStore *FrameStore
 }
 
 // NewSessionState creates a new SessionState.
@@ -56,6 +60,14 @@ func NewSessionState(sessionID string) *SessionState {
 		clients:   make(map[*WSClient]bool),
 		sessionID: sessionID,
 	}
+}
+
+// SetFrameStore sets the optional FrameStore for this session. Must be called
+// before any AppendAndBroadcast calls that should be persisted.
+func (s *SessionState) SetFrameStore(fs *FrameStore) {
+	s.Mu.Lock()
+	s.frameStore = fs
+	s.Mu.Unlock()
 }
 
 // SetProcessing updates isProcessing with transition logging.
@@ -115,6 +127,8 @@ func (s *SessionState) ClearPrompt() {
 }
 
 // AppendAndBroadcast appends data to the message buffer and notifies all connected clients.
+// If a FrameStore is configured, the frame is also enqueued for disk persistence
+// (non-blocking channel send, outside the lock).
 func (s *SessionState) AppendAndBroadcast(data []byte) {
 	s.Mu.Lock()
 	s.rawMessages = append(s.rawMessages, data)
@@ -122,12 +136,43 @@ func (s *SessionState) AppendAndBroadcast(data []byte) {
 	for c := range s.clients {
 		clients = append(clients, c)
 	}
+	fs := s.frameStore
+	sessionID := s.sessionID
 	s.Mu.Unlock()
+
+	// Persist to disk outside the lock — the channel send in FrameStore.Append
+	// is non-blocking (drops on overflow with a log warning).
+	if fs != nil {
+		fs.Append(sessionID, data)
+	}
 
 	for _, c := range clients {
 		select {
 		case c.Notify <- struct{}{}:
 		default: // already notified, write loop will catch up
+		}
+	}
+}
+
+// LoadHistoricalFrames bulk-appends frames from disk into rawMessages and
+// broadcasts each one to connected clients. Unlike AppendAndBroadcast it does
+// NOT call FrameStore.Append — the frames are already on disk.
+// This prevents double-writing when loading persisted history on reconnect.
+func (s *SessionState) LoadHistoricalFrames(frames [][]byte) {
+	for _, frame := range frames {
+		s.Mu.Lock()
+		s.rawMessages = append(s.rawMessages, frame)
+		clients := make([]*WSClient, 0, len(s.clients))
+		for c := range s.clients {
+			clients = append(clients, c)
+		}
+		s.Mu.Unlock()
+
+		for _, c := range clients {
+			select {
+			case c.Notify <- struct{}{}:
+			default:
+			}
 		}
 	}
 }

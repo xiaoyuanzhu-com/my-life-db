@@ -1012,7 +1012,7 @@ export default function AgentPage() {
       ? effectiveActiveSession.agentType
       : undefined
   const onSendForRuntime = !hasActiveSession ? createSessionWithMessage : undefined
-  const { runtime, connected, sessionMeta, pendingPermissions, planEntries, sendPermissionResponse, sendSetConfigOption, historyLoadError, sessionError, subagentChildrenMap, pendingComposerText, clearPendingComposerText, reconnect } =
+  const { runtime, connected, sessionMeta, pendingPermissions, planEntries, sendPermissionResponse, sendSetConfigOption, historyLoadError, sessionError, subagentChildrenMap, pendingComposerText, clearPendingComposerText, reconnect, interruptedAt, lastPromptText, sessionSource, sendPrompt } =
     useAgentRuntime({
       sessionId: activeSessionId || "",
       token: "",
@@ -1047,6 +1047,22 @@ export default function AgentPage() {
     }
     // Force WS reconnect — backend killed the process, so the old connection
     // is stale. Reconnecting triggers session.info with fresh state.
+    reconnect()
+  }, [activeSessionId, reconnect])
+
+  const handleResume = useCallback(() => {
+    if (!lastPromptText) return
+    sendPrompt(lastPromptText)
+  }, [lastPromptText, sendPrompt])
+
+  const handleDismissInterrupted = useCallback(async () => {
+    if (!activeSessionId) return
+    try {
+      await api.patch(`/api/agent/sessions/${activeSessionId}`, { clearInterrupted: true })
+    } catch (err) {
+      console.error('[agent] dismiss interrupted failed:', err)
+    }
+    // Reconnect to refresh session.info (interruptedAt will be null)
     reconnect()
   }, [activeSessionId, reconnect])
 
@@ -1110,6 +1126,11 @@ export default function AgentPage() {
     clearPendingComposerText,
     resultCount,
     onRestart: hasActiveSession ? handleRestartSession : undefined,
+    interruptedAt: hasActiveSession ? interruptedAt : null,
+    lastPromptText: hasActiveSession ? lastPromptText : null,
+    sessionSource: hasActiveSession ? sessionSource : null,
+    onResume: hasActiveSession && interruptedAt && lastPromptText ? handleResume : undefined,
+    onDismissInterrupted: hasActiveSession && interruptedAt ? handleDismissInterrupted : undefined,
   }
 
   // ─── Native app: single layout, no responsive split ─────────────────────────

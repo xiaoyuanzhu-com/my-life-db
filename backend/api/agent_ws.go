@@ -127,6 +127,12 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 		if opts := buildAgentConfigOptions(rec.AgentType, h.server.Cfg().AgentLLM.Models); len(opts) > 0 {
 			infoFields["defaultConfigOptions"] = opts
 		}
+		// Interrupted state: surface to the frontend so it can show the Resume banner.
+		if rec.InterruptedAt != nil {
+			infoFields["interruptedAt"] = *rec.InterruptedAt
+			infoFields["lastPromptText"] = rec.LastPromptText
+		}
+		infoFields["source"] = rec.Source
 	}
 	if infoFrame, err := json.Marshal(infoFields); err == nil {
 		if err := conn.Write(ctx, websocket.MessageText, infoFrame); err != nil {
@@ -186,11 +192,26 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 		}
 	}()
 
-	// If no messages in memory (e.g., server restart), try loading history via ACP.
-	// sync.Once ensures only one concurrent connection triggers LoadSession;
+	// If no messages in memory (e.g., server restart), try loading history.
+	// Phase 1: try the local JSONL frame store (instant, no agent process needed).
+	// Phase 2: fall back to ACP session/load if disk has no data.
+	// sync.Once ensures only one concurrent connection triggers history loading;
 	// others block until it completes, then receive frames via the cursor-based write loop.
 	if sessionState.MessageCount() == 0 {
 		sessionState.HistoryOnce.Do(func() {
+			// --- Phase 1: Disk-based frame replay ---
+			if fs := h.server.FrameStore(); fs != nil {
+				frames, err := fs.Load(sessionID)
+				if err != nil {
+					log.Info().Err(err).Str("sessionId", sessionID).Msg("frame_store: load error, falling back to ACP session/load")
+				} else if len(frames) > 0 {
+					log.Info().Str("sessionId", sessionID).Int("frameCount", len(frames)).Msg("frame_store: loaded history from disk, skipping ACP session/load")
+					sessionState.LoadHistoricalFrames(frames)
+					// Mark history as done — no ACP load needed.
+					return
+				}
+			}
+
 			log.Info().Str("sessionId", sessionID).Msg("no in-memory messages, attempting history load via ACP session/load")
 			sessionRecord, _ := h.server.AppDB().GetAgentSession(sessionID)
 			if sessionRecord == nil || sessionRecord.WorkingDir == "" {
@@ -447,6 +468,12 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			sessionState.RegisterPrompt(done, pCancel)
 			sessionState.Mu.Unlock()
 
+			// Persist prompt in DB so a crash/restart can surface the
+			// interrupted banner. Fire-and-forget; failure is non-fatal.
+			if err := h.server.AppDB().SetPromptInFlight(ctx, sessionID, promptText); err != nil {
+				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to set prompt in-flight in DB")
+			}
+
 			// Send prompt and start frame forwarding
 			go func(acpSess agentsdk.Session, prompt string, pCtx context.Context, pCancel context.CancelFunc) {
 				defer close(done)
@@ -540,6 +567,10 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 						Int("resultCount", newResultCount).
 						Str("source", "ws-prompt-complete").
 						Msg("[diag] turn complete: ResultCount++")
+					// Clear is_processing in DB now that the turn completed cleanly.
+					if err := h.server.AppDB().ClearPromptInFlight(context.Background(), sessionID); err != nil {
+						log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to clear prompt in-flight in DB")
+					}
 					h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "result")
 				}
 			}(acpSession, promptText, promptCtx, pCancel)

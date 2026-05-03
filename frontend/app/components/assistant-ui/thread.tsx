@@ -77,7 +77,7 @@ type ThreadProps = {
 }
 
 export const Thread: FC<ThreadProps> = ({ onAttachmentsStorageIdChange, existingStorageId }) => {
-  const { pendingPermissions, hasActiveSession, historyLoadError, sessionError } = useAgentContext();
+  const { pendingPermissions, hasActiveSession, historyLoadError, sessionError, interruptedAt, lastPromptText, sessionSource, onResume, onDismissInterrupted } = useAgentContext();
   const { hybridTopInset } = useFeatureFlags();
   const hasSession = useAuiState((s) => !s.thread.isEmpty);
   const isRunning = useAuiState((s) => s.thread.isRunning);
@@ -126,6 +126,14 @@ export const Thread: FC<ThreadProps> = ({ onAttachmentsStorageIdChange, existing
           </AuiIf>
         )}
         <InitialScrollToBottom />
+
+        {interruptedAt != null && sessionSource !== 'auto' && (
+          <ThreadInterruptedBanner
+            lastPromptText={lastPromptText}
+            onResume={onResume}
+            onDismiss={onDismissInterrupted}
+          />
+        )}
 
         <div className="mx-auto w-full max-w-(--thread-max-width) px-4 md:px-18">
           <ThreadPrimitive.Messages>
@@ -249,6 +257,40 @@ const ThreadSessionError: FC<{ message: string }> = ({ message }) => {
       <p className="text-muted-foreground text-sm">{t('thread.sessionFailed')}</p>
       <p className="text-muted-foreground/60 text-xs max-w-sm text-center break-words">{message}</p>
       <p className="text-muted-foreground/60 text-xs">You can start a new session or retry with a new message.</p>
+    </div>
+  );
+};
+
+const ThreadInterruptedBanner: FC<{
+  lastPromptText?: string | null
+  onResume?: () => void
+  onDismiss?: () => void
+}> = ({ lastPromptText, onResume, onDismiss }) => {
+  const { t } = useTranslation('agent');
+  return (
+    <div className="mx-auto w-full max-w-(--thread-max-width) px-4 md:px-18 pt-2 pb-1">
+      <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 px-4 py-3">
+        <p className="text-sm font-medium text-amber-800 dark:text-amber-200 mb-1">
+          {t('thread.interrupted.title', 'Session interrupted')}
+        </p>
+        {lastPromptText && (
+          <p className="text-xs text-amber-700/80 dark:text-amber-300/70 mb-2 truncate max-w-md">
+            {t('thread.interrupted.lastPrompt', 'Last prompt')}: {lastPromptText}
+          </p>
+        )}
+        <div className="flex gap-2">
+          {onResume && (
+            <Button size="sm" variant="default" className="h-7 text-xs" onClick={onResume}>
+              {t('thread.interrupted.resume', 'Resume')}
+            </Button>
+          )}
+          {onDismiss && (
+            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={onDismiss}>
+              {t('thread.interrupted.dismiss', 'Dismiss')}
+            </Button>
+          )}
+        </div>
+      </div>
     </div>
   );
 };

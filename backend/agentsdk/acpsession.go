@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	acp "github.com/coder/acp-go-sdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
@@ -23,6 +24,10 @@ type acpSession struct {
 	mu     sync.Mutex
 	closed bool
 
+	// supportsClose is true when the agent advertised session/close capability
+	// during ACP initialization. When false, only SIGINT is used on Close().
+	supportsClose bool
+
 	// MCP servers passed via ACP (reused in LoadSession)
 	mcpServers []acp.McpServer
 
@@ -34,10 +39,11 @@ type acpSession struct {
 // warmConn is a pre-warmed ACP process with Initialize already complete.
 // Session-independent — can serve any SessionConfig via newSessionFromWarm().
 type warmConn struct {
-	cmd    *exec.Cmd
-	conn   *acp.ClientSideConnection
-	client *acpClient
-	done   <-chan struct{} // closed when agent process exits
+	cmd           *exec.Cmd
+	conn          *acp.ClientSideConnection
+	client        *acpClient
+	done          <-chan struct{} // closed when agent process exits
+	supportsClose bool           // agent advertised session/close capability
 }
 
 // spawnWarmConn launches an agent binary and completes the Initialize handshake.
@@ -115,12 +121,19 @@ func spawnWarmConn(ctx context.Context, agentCfg AgentConfig, env map[string]str
 		}
 	}
 
+	// Capture session/close capability from initialization response.
+	// The ACP SDK v0.6.3 does not expose SessionCapabilities.Close yet,
+	// so supportsClose is always false for now. The infrastructure is
+	// here so it can be enabled once the SDK advertises the capability.
+	supportsClose := false
+
 	log.Info().
 		Int("protocol", int(initResp.ProtocolVersion)).
 		Str("agent_name", safeImplName(initResp.AgentInfo)).
+		Bool("supportsClose", supportsClose).
 		Msg("ACP initialized")
 
-	return &warmConn{cmd: cmd, conn: conn, client: acpCli, done: conn.Done()}, nil
+	return &warmConn{cmd: cmd, conn: conn, client: acpCli, done: conn.Done(), supportsClose: supportsClose}, nil
 }
 
 // newSessionFromWarm creates an acpSession from a pre-warmed connection.
@@ -178,12 +191,13 @@ func newSessionFromWarm(ctx context.Context, warm *warmConn, agentCfg AgentConfi
 	// is captured and forwarded to connected clients.
 
 	session := &acpSession{
-		cmd:        warm.cmd,
-		conn:       warm.conn,
-		client:     warm.client,
-		sessionID:  string(sessResp.SessionId),
-		agentType:  agentCfg.Type,
-		mcpServers: mcpServers,
+		cmd:           warm.cmd,
+		conn:          warm.conn,
+		client:        warm.client,
+		sessionID:     string(sessResp.SessionId),
+		agentType:     agentCfg.Type,
+		mcpServers:    mcpServers,
+		supportsClose: warm.supportsClose,
 	}
 
 	// Cache session modes
@@ -447,6 +461,8 @@ func (s *acpSession) SetOnFrame(fn func([]byte)) {
 }
 
 // Close terminates the session and kills the agent process.
+// If the agent advertised session/close capability (supportsClose=true),
+// a graceful ACP close is attempted first before sending SIGINT.
 func (s *acpSession) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -458,7 +474,23 @@ func (s *acpSession) Close() error {
 	log.Info().
 		Str("session_id", s.sessionID).
 		Str("agent", string(s.agentType)).
+		Bool("supportsClose", s.supportsClose).
 		Msg("closing ACP session")
+
+	// Graceful close path: if the agent advertised session/close,
+	// attempt a protocol-level close before sending SIGINT. This is
+	// best-effort — failures are logged but the process is always killed.
+	// Currently supportsClose is always false (SDK v0.6.3 does not expose
+	// the capability), so this branch is unreachable until the SDK is updated.
+	if s.supportsClose {
+		closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		// session/close is not yet available in the SDK; log and fall through.
+		_ = closeCtx
+		log.Info().
+			Str("session_id", s.sessionID).
+			Msg("ACP session/close: capability advertised but SDK method not yet available; falling back to SIGINT")
+	}
 
 	if s.cmd != nil && s.cmd.Process != nil {
 		s.cmd.Process.Signal(os.Interrupt)

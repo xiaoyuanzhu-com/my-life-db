@@ -52,6 +52,16 @@ export interface AgentContextValue {
   resultCount?: number
   /** Restart the current session (kill process + reconnect) */
   onRestart?: () => void
+  /** Unix ms timestamp set when the session was interrupted mid-prompt (null if not interrupted) */
+  interruptedAt?: number | null
+  /** The last prompt text that was in-flight when the session was interrupted */
+  lastPromptText?: string | null
+  /** Source of the session: "user" or "auto" */
+  sessionSource?: string | null
+  /** Re-send the last prompt to resume an interrupted session */
+  onResume?: () => void
+  /** Clear the interrupted state (dismiss banner without resuming) */
+  onDismissInterrupted?: () => void
 }
 
 const AgentContext = createContext<AgentContextValue | null>(null)

@@ -289,9 +289,10 @@ func (h *Handlers) UpdateAgentSession(c *gin.Context) {
 	// Use json.RawMessage / pointer fields so we can distinguish "absent" from
 	// "explicit null" — needed for groupId where null = move to ungrouped.
 	var req struct {
-		Title   *string `json:"title"`
-		GroupID *string `json:"groupId"`
-		Pinned  *bool   `json:"pinned"`
+		Title            *string `json:"title"`
+		GroupID          *string `json:"groupId"`
+		Pinned           *bool   `json:"pinned"`
+		ClearInterrupted *bool   `json:"clearInterrupted"`
 	}
 	// Capture which keys were present so a `"groupId": null` clears the group
 	// while an absent `groupId` is a no-op. ShouldBindJSON alone can't tell
@@ -340,6 +341,14 @@ func (h *Handlers) UpdateAgentSession(c *gin.Context) {
 	if req.Pinned != nil {
 		if err := h.server.AppDB().SetAgentSessionPinned(c.Request.Context(), sessionID, *req.Pinned); err != nil {
 			log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to set session pinned")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update session"})
+			return
+		}
+	}
+
+	if req.ClearInterrupted != nil && *req.ClearInterrupted {
+		if err := h.server.AppDB().ClearInterrupted(c.Request.Context(), sessionID); err != nil {
+			log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to clear interrupted state")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update session"})
 			return
 		}

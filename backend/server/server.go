@@ -39,8 +39,9 @@ type Server struct {
 	fsService    *fs.Service
 	textIndexer  *textindex.Indexer
 	notifService *notifications.Service
-	agentClient     *agentsdk.Client
-	explore         *explore.Service
+	agentClient  *agentsdk.Client
+	frameStore   *agentsdk.FrameStore // persists ACP frames to disk JSONL
+	explore      *explore.Service
 	hookRegistry    *hooks.Registry
 	cronHook        *hooks.CronHook
 	fsHook          *hooks.FSHook
@@ -157,6 +158,18 @@ func New(cfg *Config) (*Server, error) {
 		appDB.Close()
 		indexDB.Close()
 		return nil, fmt.Errorf("start index writer: %w", err)
+	}
+
+	// 1.4. Startup recovery: mark any sessions that were still is_processing=1
+	// (i.e. the server was killed mid-prompt) as interrupted so the frontend
+	// can show the "Resume" banner on reconnect.
+	{
+		now := db.NowMs()
+		if n, err := appDB.MarkAllInProgressInterrupted(ctx, now); err != nil {
+			log.Warn().Err(err).Msg("failed to mark in-progress sessions as interrupted")
+		} else if n > 0 {
+			log.Info().Int64("count", n).Msg("marked interrupted sessions at startup")
+		}
 	}
 
 	// Install bundled skills for agent discovery
@@ -409,6 +422,11 @@ http_headers = { "x-litellm-customer-id" = %q }
 		// built per-session in agent_manager.CreateSession so the X-MLD-Storage-Id
 		// header and HTML-render path can carry the storage id.
 		s.agentClient = agentsdk.NewClient(agentsdk.SessionConfig{}, ccAgent, codexAgent, qwenAgent, geminiAgent, opencodeAgent)
+
+		// Frame store: persists raw ACP frames to APP_DATA_DIR/agent_frames/*.jsonl
+		// for cross-restart session resume. Created here so it can be passed to
+		// the AgentManager (wired later in main.go via handlers).
+		s.frameStore = agentsdk.NewFrameStore(cfg.AppDataDir)
 
 		// Configure each agent CLI to keep session transcripts forever.
 		// Must run after the settings.json overwrites above, since some agents
@@ -728,6 +746,11 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		}
 	}
 
+	// 5.5. Close the frame store (drains all writer goroutines).
+	if s.frameStore != nil {
+		s.frameStore.Close()
+	}
+
 	// 6. Stop background services (in reverse order of startup)
 	s.fsService.Stop()
 
@@ -793,6 +816,7 @@ func (s *Server) FS() *fs.Service                             { return s.fsServi
 func (s *Server) TextIndexer() *textindex.Indexer            { return s.textIndexer }
 func (s *Server) Notifications() *notifications.Service       { return s.notifService }
 func (s *Server) AgentClient() *agentsdk.Client                { return s.agentClient }
+func (s *Server) FrameStore() *agentsdk.FrameStore             { return s.frameStore }
 func (s *Server) Explore() *explore.Service                      { return s.explore }
 func (s *Server) HookRegistry() *hooks.Registry                  { return s.hookRegistry }
 func (s *Server) FSHook() *hooks.FSHook                          { return s.fsHook }
