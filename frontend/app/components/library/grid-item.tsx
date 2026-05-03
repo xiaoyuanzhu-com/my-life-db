@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FolderClosed, Pencil, Trash2, Copy, Loader2, CircleAlert, Download, Upload, FolderUp, FolderPlus, PackageOpen } from 'lucide-react';
+import { Pencil, Trash2, Copy, Loader2, CircleAlert, Download, Upload, FolderUp, FolderPlus, PackageOpen } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import { api } from '~/lib/api';
 import { downloadFile, downloadFolder, getSqlarUrl } from '~/components/FileCard/utils';
+import { FOLDER_GENERIC_ICON, getSystemDir } from './system-dirs';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -77,6 +78,12 @@ export function GridItem({
 
   const isUploading = node.uploadStatus === 'pending' || node.uploadStatus === 'uploading';
   const hasError = node.uploadStatus === 'error';
+
+  const systemDir = getSystemDir(fullPath, isFolder);
+  const systemDirDescription = systemDir
+    ? t(`data:library.systemDirs.${systemDir.descriptionKey}`)
+    : null;
+  const folderIconSrc = systemDir ? systemDir.icon : FOLDER_GENERIC_ICON;
 
   useEffect(() => {
     if (isRenaming && renameInputRef.current) {
@@ -204,7 +211,12 @@ export function GridItem({
       )}
     >
       {isFolder ? (
-        <FolderClosed className={cn(isList ? 'w-7 h-7' : 'w-10 h-10', 'text-muted-foreground')} />
+        <img
+          src={folderIconSrc}
+          alt=""
+          loading="lazy"
+          className={cn(isList ? 'w-8 h-8' : 'w-12 h-12', 'object-contain')}
+        />
       ) : node.previewSqlar ? (
         <img
           src={getSqlarUrl(node.previewSqlar)}
@@ -267,15 +279,22 @@ export function GridItem({
                   className="h-6 py-0 px-1 text-xs flex-1"
                 />
               ) : (
-                <span
-                  className={cn(
-                    'text-sm truncate flex-1 min-w-0',
-                    hasError && !isFolder && 'text-destructive',
+                <div className="flex flex-col flex-1 min-w-0">
+                  <span
+                    className={cn(
+                      'text-sm truncate',
+                      hasError && !isFolder && 'text-destructive',
+                    )}
+                    title={name}
+                  >
+                    {name}
+                  </span>
+                  {systemDirDescription && (
+                    <span className="text-xs text-muted-foreground truncate" title={systemDirDescription}>
+                      {systemDirDescription}
+                    </span>
                   )}
-                  title={name}
-                >
-                  {name}
-                </span>
+                </div>
               )}
 
               {/* Metadata columns: hidden on small screens to keep rows scannable */}

@@ -64,7 +64,12 @@
     "detailsTooltip": "View file information",
     "cancelUpload": "Cancel upload",
     "unpin": "Unpin",
-    "foldersAppearHere": "Library folders will appear here"
+    "foldersAppearHere": "Library folders will appear here",
+    "systemDirs": {
+      "agents": "Agent definitions watched by MyLifeDB",
+      "sessions": "Files from your conversations (uploads and generated)",
+      "explore": "Media for posts on the Explore page"
+    }
   },
   "file": {
     "metadata": {

@@ -91,7 +91,12 @@
     "detailsTooltip": "查看文件信息",
     "cancelUpload": "取消上传",
     "unpin": "取消置顶",
-    "foldersAppearHere": "文件夹将显示在这里"
+    "foldersAppearHere": "文件夹将显示在这里",
+    "systemDirs": {
+      "agents": "MyLifeDB 监听的 Agent 定义",
+      "sessions": "对话中的文件（上传和生成的）",
+      "explore": "Explore 页面帖子的媒体文件"
+    }
   },
   "file": {
     "metadata": {
