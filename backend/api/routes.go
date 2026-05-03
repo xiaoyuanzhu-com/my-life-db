@@ -18,11 +18,11 @@ import (
 //   protocol  | /api/connect/, /api/mcp/
 //   admin     | /api/system/
 //
-// Old paths (`/api/library/*`, `/api/auth/*`, `/api/oauth/*`, `/api/settings`,
-// `/api/stats`, `/api/notifications/stream`, `/api/upload/*`, `/api/search`,
-// `/api/directories`, `/api/apps*`, `/api/collectors*`, `/api/share/*`) stay
-// registered as aliases so iOS keeps working until Phase C ships, then they
-// are deleted in Phase D.
+// Phase D removed all legacy `/api/library/*`, `/api/auth/*`, `/api/oauth/*`,
+// `/api/settings`, `/api/stats`, `/api/notifications/stream`, `/api/upload/*`,
+// `/api/search`, `/api/directories`, `/api/apps*`, `/api/collectors*`, and
+// `/api/share/*` aliases now that all first-party clients (web + iOS) speak
+// the new namespace.
 func SetupRoutes(r *gin.Engine, h *Handlers) {
 	auth := h.AuthMiddleware()
 
@@ -87,17 +87,6 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 			c.Status(http.StatusMethodNotAllowed)
 		})
 
-		// --- alias: legacy /api/auth/*, /api/oauth/*, /api/share/* ---
-		// Removed in Phase D once iOS has migrated.
-		public.POST("/auth/login", h.Login)
-		public.POST("/auth/logout", h.Logout)
-		public.GET("/oauth/authorize", h.OAuthAuthorize)
-		public.GET("/oauth/callback", h.OAuthCallback)
-		public.POST("/oauth/refresh", h.OAuthRefresh)
-		public.GET("/oauth/token", h.OAuthToken)
-		public.POST("/oauth/logout", h.OAuthLogout)
-		public.GET("/share/:token", h.GetSharedSession)
-		public.GET("/share/:token/messages", h.GetSharedSessionMessages)
 	}
 
 	// =========================================================================
@@ -188,35 +177,6 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 			system.GET("/stats", h.GetStats)
 		}
 
-		// ---------------------------------------------------------------------
-		// Aliases — legacy `/api/library/*` and friends.
-		// Removed in Phase D once iOS has migrated to the new paths.
-		// ---------------------------------------------------------------------
-		api.DELETE("/library/file", h.DeleteLibraryFile)
-		api.GET("/library/file-info", h.GetLibraryFileInfo)
-		api.POST("/library/pin", h.PinFile)
-		api.DELETE("/library/pin", h.UnpinFile)
-		api.GET("/library/tree", h.GetLibraryTree)
-		api.POST("/library/rename", h.RenameLibraryFile)
-		api.POST("/library/move", h.MoveLibraryFile)
-		api.POST("/library/folder", h.CreateLibraryFolder)
-		api.GET("/library/download", h.DownloadLibraryPath)
-		api.GET("/library/root", h.GetLibraryRoot)
-		api.POST("/library/extract", h.ExtractArchive)
-		api.GET("/notifications/stream", h.NotificationStream)
-		api.GET("/search", h.Search)
-		api.GET("/settings", h.GetSettings)
-		api.PUT("/settings", h.UpdateSettings)
-		api.POST("/settings", h.ResetSettings)
-		api.GET("/stats", h.GetStats)
-		api.PUT("/upload/simple/*path", h.SimpleUpload)
-		api.POST("/upload/finalize", h.FinalizeUpload)
-		api.Any("/upload/tus/*path", h.TUSHandler)
-		api.GET("/directories", h.GetDirectories)
-		api.GET("/apps", h.GetApps)
-		api.GET("/apps/:id", h.GetApp)
-		api.GET("/collectors", h.GetCollectors)
-		api.PUT("/collectors/:id", h.UpsertCollector)
 	}
 
 	// =========================================================================
@@ -276,6 +236,4 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 	// middleware doesn't compose cleanly with route-level middleware here.
 	r.GET("/api/agent/sessions/:id/subscribe", auth, h.AgentSessionWebSocket)
 	r.GET("/api/agent/share/:token/subscribe", h.SharedSessionSubscribeWebSocket)
-	// alias: legacy /api/share/:token/subscribe
-	r.GET("/api/share/:token/subscribe", h.SharedSessionSubscribeWebSocket)
 }
