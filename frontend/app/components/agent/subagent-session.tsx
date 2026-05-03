@@ -23,19 +23,31 @@ interface SubagentSessionProps {
   childrenMap: Map<string, ThreadMessageLike[]>
 }
 
-/** Extract the response text from the Agent tool result */
+/**
+ * Extract the response text from the Agent tool result.
+ *
+ * The result arrives in several shapes depending on which runtime branch
+ * delivered it (flat `rawOutput` array, wrapped `toolResponse.content`
+ * blocks, etc.). Walk recursively and collect any `{type:"text", text}`
+ * leaves regardless of nesting.
+ */
 function extractResponseText(result: unknown): string | null {
-  if (!result || typeof result !== "object") return null
-  const r = result as Record<string, unknown>
-  // toolResponse shape: { content: [{ text: "...", type: "text" }], ... }
-  if (Array.isArray(r.content)) {
-    const texts = (r.content as Array<Record<string, unknown>>)
-      .filter((c) => c.type === "text" && typeof c.text === "string")
-      .map((c) => c.text as string)
-    if (texts.length > 0) return texts.join("\n\n")
+  const texts: string[] = []
+  const walk = (v: unknown): void => {
+    if (!v || typeof v !== "object") return
+    if (Array.isArray(v)) {
+      v.forEach(walk)
+      return
+    }
+    const o = v as Record<string, unknown>
+    if (o.type === "text" && typeof o.text === "string") {
+      texts.push(o.text)
+      return
+    }
+    if (o.content !== undefined) walk(o.content)
   }
-  if (typeof r.text === "string") return r.text
-  return null
+  walk(result)
+  return texts.length > 0 ? texts.join("\n\n") : null
 }
 
 /** Count all tool-call parts across child messages */
