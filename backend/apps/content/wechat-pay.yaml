@@ -1,5 +1,5 @@
 id: wechat-pay
-name: "WeChat Pay (微信支付)"
+name: "WeChat Pay"
 category: finance
 website: https://pay.weixin.qq.com
 description: "Tencent's mobile payment system built into WeChat."

@@ -73,20 +73,23 @@ export default function DataAppsPage() {
                   {t(`apps.sections.${section.key}`, section.key)}
                 </h2>
                 <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-4 sm:gap-6">
-                  {section.apps.map((app) => (
-                    <button
-                      key={`${section.key}-${app.id}`}
-                      type="button"
-                      onClick={() => setSelected(app)}
-                      className="flex flex-col items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-2xl"
-                      title={app.description}
-                    >
-                      <AppIconTile app={app} />
-                      <span className="text-xs font-medium text-foreground truncate max-w-full">
-                        {app.name}
-                      </span>
-                    </button>
-                  ))}
+                  {section.apps.map((app) => {
+                    const name = t(`apps.names.${app.id}`, app.name);
+                    return (
+                      <button
+                        key={`${section.key}-${app.id}`}
+                        type="button"
+                        onClick={() => setSelected(app)}
+                        className="flex flex-col items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-2xl"
+                        title={app.description}
+                      >
+                        <AppIconTile app={app} name={name} />
+                        <span className="text-xs font-medium text-foreground truncate max-w-full">
+                          {name}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </section>
             ))}

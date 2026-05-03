@@ -181,8 +181,9 @@ function scopeSvgIds(svg: string, scope: string): string {
     .replace(/\b(xlink:href|href)="#([^"]+)"/g, `$1="#${scope}-$2"`);
 }
 
-export function AppIconTile({ app }: { app: App }) {
+export function AppIconTile({ app, name }: { app: App; name?: string }) {
   const svg = SVG_BY_ID[app.id];
+  const label = name ?? app.name;
   return (
     <div className="h-20 w-20 rounded-[1.4rem] bg-white flex items-center justify-center overflow-hidden shadow-sm shrink-0 text-black">
       {svg ? (
@@ -192,7 +193,7 @@ export function AppIconTile({ app }: { app: App }) {
         />
       ) : (
         <span className="text-sm font-semibold text-gray-400">
-          {app.name[0]}
+          {label[0]}
         </span>
       )}
     </div>

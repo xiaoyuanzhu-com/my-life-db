@@ -46,6 +46,22 @@
       "cloud": "云盘",
       "finance": "财务",
       "productivity": "效率"
+    },
+    "names": {
+      "alipay": "支付宝",
+      "baidu-netdisk": "百度网盘",
+      "bilibili": "哔哩哔哩",
+      "douban": "豆瓣",
+      "doubao": "豆包",
+      "feishu": "飞书",
+      "netflix": "奈飞",
+      "ticktick": "滴答清单",
+      "wechat": "微信",
+      "wechat-pay": "微信支付",
+      "weibo": "微博",
+      "xiaohongshu": "小红书",
+      "youtube": "油管",
+      "zhihu": "知乎"
     }
   },
   "omni": {
