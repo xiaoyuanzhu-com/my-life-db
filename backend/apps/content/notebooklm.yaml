@@ -1,0 +1,7 @@
+id: notebooklm
+name: "NotebookLM"
+category: chat
+website: https://notebooklm.google.com
+description: "Google's AI-powered research and notetaking assistant."
+import_prompt: |
+  Help me archive my NotebookLM notebooks. No official export — walk me through copying generated notes, audio overviews, and source links per notebook into imports/notebooklm/.

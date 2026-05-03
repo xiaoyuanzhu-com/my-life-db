@@ -1,0 +1,7 @@
+id: siyuan
+name: "SiYuan"
+category: notes
+website: https://b3log.org/siyuan
+description: "Privacy-first block-based personal knowledge management."
+import_prompt: |
+  Help me export my SiYuan workspace. Settings → Export — workspace .zip, or per-doc Markdown export. Land into imports/siyuan/.

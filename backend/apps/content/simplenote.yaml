@@ -1,0 +1,7 @@
+id: simplenote
+name: "Simplenote"
+category: notes
+website: https://simplenote.com
+description: "Plain-text notes that sync across devices."
+import_prompt: |
+  Help me export Simplenote. Web app → Settings → Tools → Export Notes — get a ZIP of .txt files. Drop into imports/simplenote/.

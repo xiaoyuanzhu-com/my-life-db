@@ -1,0 +1,7 @@
+id: joplin
+name: "Joplin"
+category: notes
+website: https://joplinapp.org
+description: "Open-source notes and to-do app with end-to-end encryption."
+import_prompt: |
+  Help me export my Joplin notes. Desktop → File → Export → JEX (Joplin archive) or Markdown directory. Land into imports/joplin/.

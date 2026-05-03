@@ -1,7 +1,0 @@
-id: readwise
-name: "Readwise"
-category: notes
-website: https://readwise.io
-description: "Spaced-repetition highlights from Kindle, articles, Twitter, podcasts."
-import_prompt: |
-  Help me import my Readwise highlights. Walk me through the export options at readwise.io/export — pick the JSON or Markdown export, or use the API with my token, and land everything in imports/readwise/.

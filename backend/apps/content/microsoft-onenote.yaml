@@ -1,0 +1,7 @@
+id: microsoft-onenote
+name: "Microsoft OneNote"
+category: notes
+website: https://www.onenote.com
+description: "Microsoft's free-form digital notebook."
+import_prompt: |
+  Help me export OneNote notebooks. On Windows OneNote 2016: File → Export → Notebook (.onepkg). For other clients, walk me through page-by-page PDF export, then land everything in imports/onenote/.

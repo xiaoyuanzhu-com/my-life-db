@@ -1,0 +1,7 @@
+id: affine
+name: "AFFiNE"
+category: notes
+website: https://affine.pro
+description: "Open-source workspace combining docs, whiteboards, and databases."
+import_prompt: |
+  Help me export my AFFiNE workspace. Open the workspace → Settings → Workspace → Export → ZIP. Land into imports/affine/.

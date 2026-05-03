@@ -1,5 +1,11 @@
 // Raw SVG assets (bundled via Vite ?raw).
 import appleHealthSvg from "~/assets/apple-health.svg?raw";
+import appleNotesSvg from "~/assets/apple-notes.svg?raw";
+import yuqueSvg from "~/assets/yuque.svg?raw";
+
+// Raster image assets (bundled as URL by Vite).
+import bearImg from "~/assets/bear.png";
+import flomoImg from "~/assets/flomo.webp";
 
 // Existing icons.
 import notion from "thesvg/notion";
@@ -51,10 +57,16 @@ import grokXai from "thesvg/grok-xai";
 import deepseek from "thesvg/deepseek";
 import kimi from "thesvg/kimi";
 import doubao from "thesvg/doubao";
+import notebooklm from "thesvg/notebooklm";
 
 // Notes.
 import evernote from "thesvg/evernote";
 import logseq from "thesvg/logseq";
+import microsoftOnenote from "thesvg/microsoft-onenote";
+import simplenote from "thesvg/simplenote";
+import affine from "thesvg/affine";
+import joplin from "thesvg/joplin";
+import siyuan from "thesvg/siyuan";
 
 // Cloud.
 import dropbox from "thesvg/dropbox";
@@ -135,10 +147,18 @@ const SVG_BY_ID: Record<string, string> = {
   deepseek: deepseek.variants.default,
   kimi: kimi.variants.default,
   doubao: doubao.variants.default,
+  notebooklm: notebooklm.variants.default,
 
   // Notes.
   evernote: evernote.variants.default,
   logseq: logseq.variants.default,
+  "apple-notes": appleNotesSvg,
+  "microsoft-onenote": microsoftOnenote.variants.default,
+  simplenote: simplenote.variants.default,
+  affine: affine.variants.default,
+  joplin: joplin.variants.default,
+  siyuan: siyuan.variants.default,
+  yuque: yuqueSvg,
 
   // Cloud.
   dropbox: dropbox.variants.default,
@@ -168,6 +188,11 @@ const SVG_BY_ID: Record<string, string> = {
   "wechat-pay": wechat.variants.default,
 };
 
+const IMG_BY_ID: Record<string, string> = {
+  bear: bearImg,
+  flomo: flomoImg,
+};
+
 // Prefix `id="x"` / `url(#x)` / `href="#x"` / `xlink:href="#x"` so multiple
 // inlined SVGs with overlapping gradient ids don't collide (telegram and
 // obsidian both ship `id="a"`; google and netflix chain gradients via
@@ -183,6 +208,7 @@ function scopeSvgIds(svg: string, scope: string): string {
 
 export function AppIconTile({ app, name }: { app: App; name?: string }) {
   const svg = SVG_BY_ID[app.id];
+  const img = IMG_BY_ID[app.id];
   const label = name ?? app.name;
   return (
     <div className="h-20 w-20 rounded-[1.4rem] bg-white flex items-center justify-center overflow-hidden shadow-sm shrink-0 text-black">
@@ -190,6 +216,12 @@ export function AppIconTile({ app, name }: { app: App; name?: string }) {
         <div
           className="h-[65%] w-[65%] [&_svg]:w-full [&_svg]:h-full"
           dangerouslySetInnerHTML={{ __html: scopeSvgIds(svg, app.id) }}
+        />
+      ) : img ? (
+        <img
+          src={img}
+          alt=""
+          className="h-[65%] w-[65%] object-contain"
         />
       ) : (
         <span className="text-sm font-semibold text-gray-400">

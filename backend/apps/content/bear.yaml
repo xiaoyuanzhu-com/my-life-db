@@ -1,0 +1,7 @@
+id: bear
+name: "Bear"
+category: notes
+website: https://bear.app
+description: "Beautiful, flexible writing app for crafting notes and prose."
+import_prompt: |
+  Help me export my Bear notes. On Mac: File → Export Notes — pick Markdown (or .bearbook for full fidelity). Drop into imports/bear/.

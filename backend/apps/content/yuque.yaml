@@ -1,0 +1,7 @@
+id: yuque
+name: "Yuque"
+category: notes
+website: https://www.yuque.com
+description: "Ant Group's wiki and document collaboration platform."
+import_prompt: |
+  Help me export my Yuque docs. Web personal space → 知识库 → 导出 — Markdown ZIP per book. Unpack into imports/yuque/.

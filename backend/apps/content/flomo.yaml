@@ -1,0 +1,7 @@
+id: flomo
+name: "Flomo"
+category: notes
+website: https://flomoapp.com
+description: "Lightweight micro-note app inspired by Zettelkasten."
+import_prompt: |
+  Help me export my Flomo notes. Web → 账号设置 → 备份与恢复 → 导出 (Markdown / HTML). Land into imports/flomo/.
