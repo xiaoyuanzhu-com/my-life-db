@@ -50,6 +50,8 @@ export interface AgentContextValue {
   clearPendingComposerText?: () => void
   /** Counter that increments on each agent result, used as refreshKey for changed files */
   resultCount?: number
+  /** Restart the current session (kill process + reconnect) */
+  onRestart?: () => void
 }
 
 const AgentContext = createContext<AgentContextValue | null>(null)

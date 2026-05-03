@@ -944,7 +944,7 @@ export function useAgentRuntime(options: {
 
   // ── WebSocket Connection ──────────────────────────────────────────
 
-  const { connected, sendPrompt, sendCancel, sendPermissionResponse, sendSetMode, sendSetModel, sendSetConfigOption } =
+  const { connected, sendPrompt, sendCancel, sendPermissionResponse, sendSetMode, sendSetModel, sendSetConfigOption, reconnect } =
     useAgentWebSocket({
       sessionId,
       token,
@@ -1181,6 +1181,7 @@ export function useAgentRuntime(options: {
     subagentChildrenMap,
     pendingComposerText,
     clearPendingComposerText,
+    reconnect,
   }
 }
 

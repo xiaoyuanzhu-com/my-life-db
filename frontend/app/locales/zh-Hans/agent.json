@@ -43,7 +43,8 @@
     "loadingThreads": "加载会话中",
     "moreOptions": "更多选项",
     "addAttachment": "添加附件",
-    "expandPreview": "展开预览"
+    "expandPreview": "展开预览",
+    "restartSession": "重启会话"
   },
   "autoAgent": {
     "back": "返回助手列表",

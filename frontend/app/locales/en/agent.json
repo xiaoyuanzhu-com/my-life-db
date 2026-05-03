@@ -43,7 +43,8 @@
     "loadingThreads": "Loading threads",
     "moreOptions": "More options",
     "addAttachment": "Add Attachment",
-    "expandPreview": "Expand preview"
+    "expandPreview": "Expand preview",
+    "restartSession": "Restart session"
   },
   "autoAgent": {
     "back": "Back to agents",

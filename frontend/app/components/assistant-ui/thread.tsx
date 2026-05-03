@@ -27,6 +27,7 @@ import {
   ArrowUpIcon,
   AtSign,
   Plus,
+  RotateCcw,
   SquareIcon,
   SquareSlash,
 } from "lucide-react";
@@ -666,7 +667,8 @@ const ComposerOptionsMenu: FC<{
   onAddContext: () => void
   onShowCommands: () => void
   onUseSkill: (name: string) => void
-}> = ({ onAttachFiles, onAddContext, onShowCommands, onUseSkill }) => {
+  onRestart?: () => void
+}> = ({ onAttachFiles, onAddContext, onShowCommands, onUseSkill, onRestart }) => {
   const { t } = useTranslation('agent');
   const {
     agentType, onAgentTypeChange,
@@ -744,6 +746,18 @@ const ComposerOptionsMenu: FC<{
           <SquareSlash className="size-3.5 shrink-0" />
           <span>{t('thread.slashCommands')}</span>
         </DropdownMenuItem>
+        {hasActiveSession && onRestart && (
+          <>
+            <DropdownMenuSeparator className="mx-2" />
+            <DropdownMenuItem
+              onSelect={onRestart}
+              className="px-2 py-1.5 gap-2 text-xs text-muted-foreground focus:text-foreground"
+            >
+              <RotateCcw className="size-3.5 shrink-0" />
+              <span>{t('thread.restartSession')}</span>
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -768,6 +782,7 @@ const Composer: FC<ComposerProps> = ({ onAttachmentsStorageIdChange, existingSto
     hasActiveSession,
     pendingPermissions,
     resultCount,
+    onRestart,
   } = useAgentContext();
   const hasSession = useAuiState((s) => !s.thread.isEmpty);
   const composerRuntime = useComposerRuntime();
@@ -942,6 +957,7 @@ const Composer: FC<ComposerProps> = ({ onAttachmentsStorageIdChange, existingSto
                 onAddContext={handleAddContext}
                 onShowCommands={handleShowCommands}
                 onUseSkill={handleUseSkill}
+                onRestart={onRestart}
               />
               {workingDir !== undefined && (
                 <>

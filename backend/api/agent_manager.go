@@ -135,6 +135,36 @@ func (m *AgentManager) CleanupSession(sessionID string) {
 	m.statesMu.Unlock()
 }
 
+// RestartSession kills the existing ACP process and resets in-memory state
+// so the session can be lazily recreated on the next prompt. The DB record
+// is preserved — only the live process and runtime state are cleared.
+func (m *AgentManager) RestartSession(sessionID string) error {
+	// Wait for any in-flight prompt to finish before tearing down.
+	state := m.PeekState(sessionID)
+	if state != nil {
+		state.WaitForPrompt()
+	}
+
+	// Kill the ACP process.
+	m.sessionsMu.Lock()
+	if sess, ok := m.sessions[sessionID]; ok {
+		sess.CancelAllPermissions()
+		sess.Close()
+		delete(m.sessions, sessionID)
+	}
+	m.sessionsMu.Unlock()
+
+	// Remove all runtime state (messages, processing flags, clients).
+	// A fresh SessionState will be created by GetOrCreateState on the
+	// next WS connect or prompt.
+	m.statesMu.Lock()
+	delete(m.states, sessionID)
+	m.statesMu.Unlock()
+
+	log.Info().Str("sessionId", sessionID).Msg("agent session restarted")
+	return nil
+}
+
 // -------- Session state map --------
 
 // GetOrCreateState returns the SessionState for the given session ID,

@@ -126,6 +126,7 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		agentRoutes.GET("/sessions/:id/messages", h.GetAgentMessages)
 		agentRoutes.GET("/sessions/:id/changed-files", h.GetAgentChangedFiles)
 		agentRoutes.POST("/sessions/:id/deactivate", h.DeactivateAgentSession)
+		agentRoutes.POST("/sessions/:id/restart", h.RestartAgentSession)
 		agentRoutes.POST("/sessions/:id/archive", h.ArchiveAgentSession)
 		agentRoutes.POST("/sessions/:id/unarchive", h.UnarchiveAgentSession)
 		agentRoutes.POST("/sessions/:id/share", h.ShareAgentSession)

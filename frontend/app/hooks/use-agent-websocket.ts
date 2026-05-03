@@ -142,6 +142,8 @@ export function useAgentWebSocket({
 }: UseAgentWebSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null)
   const [connected, setConnected] = useState(false)
+  // Incremented to force a clean disconnect/reconnect cycle (e.g. after session restart)
+  const [reconnectKey, setReconnectKey] = useState(0)
 
   // Use a ref for onFrame to prevent WS reconnects when the callback changes
   const onFrameRef = useRef(onFrame)
@@ -283,7 +285,11 @@ export function useAgentWebSocket({
       wsRef.current = null
       setConnected(false)
     }
-  }, [sessionId, token, enabled])
+  }, [sessionId, token, enabled, reconnectKey])
 
-  return { connected, sendPrompt, sendCancel, sendKill, sendPermissionResponse, sendSetMode, sendSetModel, sendSetConfigOption, getReadyState, getBufferedAmount }
+  const reconnect = useCallback(() => {
+    setReconnectKey((k) => k + 1)
+  }, [])
+
+  return { connected, sendPrompt, sendCancel, sendKill, sendPermissionResponse, sendSetMode, sendSetModel, sendSetConfigOption, getReadyState, getBufferedAmount, reconnect }
 }

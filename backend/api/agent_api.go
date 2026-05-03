@@ -422,6 +422,27 @@ func (h *Handlers) DeactivateAgentSession(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// RestartAgentSession kills the live ACP process and resets runtime state
+// so the session can start fresh. The DB record is preserved.
+// POST /api/agent/sessions/:id/restart
+func (h *Handlers) RestartAgentSession(c *gin.Context) {
+	sessionID := c.Param("id")
+
+	// Verify session exists in DB
+	session, err := h.server.AppDB().GetAgentSession(sessionID)
+	if err != nil || session == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+		return
+	}
+
+	if err := h.agentMgr.RestartSession(sessionID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 // computeSessionState derives a unified session state string from archived flag,
 // DB read state, and in-memory runtime state.
 //
