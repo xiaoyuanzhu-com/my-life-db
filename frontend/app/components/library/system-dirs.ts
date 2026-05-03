@@ -1,7 +1,7 @@
-import folderGenericIcon from '~/assets/folder-generic.png';
-import folderAgentsIcon from '~/assets/folder-agents.png';
-import folderSessionsIcon from '~/assets/folder-sessions.png';
-import folderExploreIcon from '~/assets/folder-explore.png';
+import folderGenericIcon from '~/assets/folder-generic.svg';
+import folderAgentsIcon from '~/assets/folder-agents.svg';
+import folderSessionsIcon from '~/assets/folder-sessions.svg';
+import folderExploreIcon from '~/assets/folder-explore.svg';
 
 export const FOLDER_GENERIC_ICON = folderGenericIcon;
 
