@@ -3,5 +3,27 @@ name: "Joplin"
 category: notes
 website: https://joplinapp.org
 description: "Open-source notes and to-do app with end-to-end encryption."
-import_prompt: |
-  Help me export my Joplin notes. Desktop → File → Export → JEX (Joplin archive) or Markdown directory. Land into imports/joplin/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: jex-export
+        name: Official
+        official: true
+        description: |
+          Joplin's first-party export from the desktop app: File → Export → JEX (Joplin archive) for full fidelity, or Markdown + attachments for a directly-readable folder tree.
+        seed_prompt: |
+          Help me export my Joplin notes via Desktop → File → Export. Walk me through choosing JEX (full fidelity) or Markdown directory, and landing the output under imports/joplin/.
+
+  continuous_sync:
+    feasible: true
+    options:
+      - id: filesystem-sync
+        name: Filesystem sync target
+        official: true
+        url: https://joplinapp.org/help/apps/sync/
+        description: |
+          Joplin supports "File system" as a sync target — set it to a local folder and Joplin will continuously write its raw note files (Markdown + metadata JSON + resources) there. MyLifeDB can watch that folder.
+        seed_prompt: |
+          Help me set up Joplin's File System sync target so it continuously writes my notes into imports/joplin/. Walk me through Tools → Options → Synchronisation → File system, picking the path, and verifying files appear.
