@@ -3,5 +3,26 @@ name: "Logseq"
 category: notes
 website: https://logseq.com
 description: "Local-first outliner and knowledge base."
-import_prompt: |
-  Help me import my Logseq graph. The graph is already markdown on disk. Walk me through copying or symlinking the graph folder into imports/logseq/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: copy-graph
+        name: Official
+        official: true
+        description: |
+          Logseq is local-first — the graph is already a folder of Markdown files on disk (pages/, journals/, assets/). A one-off "import" is just copying that folder into imports/logseq/.
+        seed_prompt: |
+          Help me copy my Logseq graph folder into imports/logseq/. Walk me through locating the graph (Logseq's settings show its path), then copying pages/, journals/, and assets/ over.
+
+  continuous_sync:
+    feasible: true
+    options:
+      - id: shared-folder
+        name: Graph folder as MyLifeDB import path
+        official: true
+        description: |
+          Because the Logseq graph IS the source of truth on disk, pointing imports/logseq/ at the same folder (or symlinking to it) gives continuous sync for free — every save lands in the watched path.
+        seed_prompt: |
+          Help me wire my Logseq graph folder directly to imports/logseq/ (via symlink, or by moving the graph and reopening it from there) so MyLifeDB sees every change. Walk me through verifying both Logseq and MyLifeDB are happy with the path.
