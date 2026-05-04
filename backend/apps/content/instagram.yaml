@@ -3,5 +3,29 @@ name: "Instagram"
 category: social
 website: https://instagram.com
 description: "Photo and video social network owned by Meta."
-import_prompt: |
-  Help me import my Instagram archive. Walk me through requesting a data export at https://accountscenter.instagram.com/info_and_permissions/dyi/ (choose JSON format for easiest parsing), wait for the email, then unpack the zip into imports/instagram/ preserving Meta's folder layout.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: builtin
+        name: Official
+        official: true
+        url: https://accountscenter.instagram.com/info_and_permissions/dyi/
+        description: |
+          Meta's "Download Your Information" tool for Instagram, in Accounts Center. Exports posts, stories, reels (media + captions), DMs, likes, saves, comments, followers/following, and profile/activity metadata as JSON or HTML, delivered as a zip when ready.
+        seed_prompt: |
+          Help me import my Instagram archive. Walk me through requesting a data export at https://accountscenter.instagram.com/info_and_permissions/dyi/ (choose JSON for easiest parsing), waiting for the email, then unpacking the zip into imports/instagram/ preserving Meta's folder layout.
+      - id: transfer-your-information
+        name: Transfer Your Information
+        official: true
+        url: https://accountscenter.instagram.com/info_and_permissions/transfer/
+        description: |
+          Meta's data-portability tool that transfers specific categories (posts, reels, photos, videos) directly to a third-party destination such as Google Photos, Dropbox, or Koofr. Useful when you only need media and want it landing in cloud storage.
+        seed_prompt: |
+          Help me use Instagram's Transfer Your Information tool to send my photos/reels to a cloud destination, then bring the resulting files into imports/instagram/.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      Instagram does not provide a sanctioned continuous-sync API for personal account data. The Instagram Basic Display API was deprecated in late 2024, and the Graph API only covers Business/Creator accounts via a connected Facebook Page. "Download Your Information" is one-off only.
