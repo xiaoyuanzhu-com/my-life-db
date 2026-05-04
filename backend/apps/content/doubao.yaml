@@ -3,5 +3,14 @@ name: "Doubao"
 category: chat
 website: https://www.doubao.com
 description: "ByteDance's conversational AI assistant."
-import_prompt: |
-  Help me export my Doubao chat history. No official export — scrape doubao.com with my login cookies, saving conversations into imports/doubao/.
+
+import:
+  one_off:
+    feasible: false
+    reason: |
+      Doubao does not provide a documented user-facing export for conversation history. Capturing chats currently requires manual copy-paste or a custom scraper against the logged-in web UI, neither of which we recommend as a sanctioned import path.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      No public continuous-sync or conversation-streaming API exists for Doubao chat history.
