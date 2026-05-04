@@ -3,5 +3,33 @@ name: "SiYuan"
 category: notes
 website: https://b3log.org/siyuan
 description: "Privacy-first block-based personal knowledge management."
-import_prompt: |
-  Help me export my SiYuan workspace. Settings → Export — workspace .zip, or per-doc Markdown export. Land into imports/siyuan/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: workspace-export
+        name: Official
+        official: true
+        description: |
+          SiYuan's workspace export from Settings → Export bundles the whole workspace as a .zip (SiYuan's .sy.zip format, full fidelity). Restorable into another SiYuan install.
+        seed_prompt: |
+          Help me export my SiYuan workspace via Settings → Export → workspace .zip. Walk me through running the export and unpacking the archive under imports/siyuan/.
+      - id: markdown-export
+        name: Per-doc Markdown export
+        official: true
+        description: |
+          SiYuan can also export individual documents (or notebooks) as Markdown with attachments. Lower fidelity than .sy.zip but directly readable.
+        seed_prompt: |
+          Help me export SiYuan documents as Markdown. Walk me through the per-doc/notebook export flow and landing the output under imports/siyuan/.
+
+  continuous_sync:
+    feasible: true
+    options:
+      - id: workspace-folder
+        name: SiYuan workspace folder
+        official: true
+        description: |
+          A SiYuan workspace is a local folder on disk (data/, assets/, etc.). Pointing imports/siyuan/ at that folder (or symlinking) gives MyLifeDB a live view, though the data is SiYuan's internal block format (JSON), not Markdown.
+        seed_prompt: |
+          Help me wire my SiYuan workspace folder to imports/siyuan/ (via symlink or by relocating the workspace) so MyLifeDB sees changes live. Warn me that the on-disk format is SiYuan's block JSON, not portable Markdown.
