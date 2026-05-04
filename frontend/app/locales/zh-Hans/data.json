@@ -64,6 +64,13 @@
       "youtube": "油管",
       "yuque": "语雀",
       "zhihu": "知乎"
+    },
+    "import": {
+      "oneOff": "一次性导出",
+      "continuousSync": "持续同步",
+      "supported": "支持",
+      "notSupported": "不支持",
+      "startImport": "开始导入"
     }
   },
   "omni": {

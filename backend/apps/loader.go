@@ -36,8 +36,9 @@ func LoadAll(fsys fs.FS, dir string) ([]App, error) {
 	return apps, nil
 }
 
-// LoadOne returns the AppDetail for id: the registry entry plus co-located doc
-// markdown when present. Returns an error if the yaml file does not exist.
+// LoadOne returns the AppDetail for id: registry entry plus structured Import
+// (if defined) and/or co-located markdown doc (legacy path). Returns an error
+// if the yaml file does not exist.
 func LoadOne(fsys fs.FS, dir, id string) (*AppDetail, error) {
 	yamlPath := path.Join(dir, id+".yaml")
 	data, err := fs.ReadFile(fsys, yamlPath)
@@ -48,7 +49,13 @@ func LoadOne(fsys fs.FS, dir, id string) (*AppDetail, error) {
 	if err := yaml.Unmarshal(data, &a); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", yamlPath, err)
 	}
-	detail := &AppDetail{App: a}
+	var iw struct {
+		Import *ImportSpec `yaml:"import,omitempty"`
+	}
+	if err := yaml.Unmarshal(data, &iw); err != nil {
+		return nil, fmt.Errorf("parse import in %s: %w", yamlPath, err)
+	}
+	detail := &AppDetail{App: a, Import: iw.Import}
 	doc, err := fs.ReadFile(fsys, path.Join(dir, id+".md"))
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("read %s: %w", id+".md", err)

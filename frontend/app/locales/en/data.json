@@ -37,6 +37,13 @@
       "cloud": "Cloud",
       "finance": "Finance",
       "productivity": "Productivity"
+    },
+    "import": {
+      "oneOff": "One-off export",
+      "continuousSync": "Continuous sync",
+      "supported": "Supported",
+      "notSupported": "Not supported",
+      "startImport": "Start import"
     }
   },
   "omni": {

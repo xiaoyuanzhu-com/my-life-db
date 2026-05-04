@@ -1,8 +1,8 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { marked, Renderer } from "marked";
-import { ArrowRight, ExternalLink } from "lucide-react";
+import { ArrowRight, Check, ExternalLink, X } from "lucide-react";
 
 import {
   Dialog,
@@ -11,7 +11,12 @@ import {
 } from "~/components/ui/dialog";
 import { Button } from "~/components/ui/button";
 import { useApp } from "~/hooks/use-apps";
-import type { App } from "~/types/apps";
+import type {
+  App,
+  AppDetail,
+  ImportOption,
+  ImportSection,
+} from "~/types/apps";
 
 import { AppIconTile } from "./app-icon-tile";
 
@@ -20,7 +25,6 @@ interface Props {
   onOpenChange: (open: boolean) => void;
 }
 
-// Escape for safe interpolation into HTML attribute or text content.
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -30,53 +34,90 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
+// Custom marked renderer: turn `mld:` links into internal /agent?seed=...
+// routes and force external links to open in a new tab.
+function buildRenderer(): Renderer {
+  const renderer = new Renderer();
+  renderer.link = ({ href, title, text }) => {
+    let finalHref = href;
+    const mldMatch = href.match(/^mld:(?:\/\/)?(.*)$/);
+    if (mldMatch) {
+      finalHref = `/agent?seed=${encodeURIComponent(mldMatch[1])}`;
+    } else if (!/^(https?:|mailto:|\/|#)/i.test(finalHref)) {
+      finalHref = "#";
+    }
+    const safeHref = escapeHtml(finalHref);
+    const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
+    const isInternal = finalHref.startsWith("/");
+    const externalAttrs = isInternal
+      ? ""
+      : ' target="_blank" rel="noopener noreferrer"';
+    return `<a href="${safeHref}"${titleAttr}${externalAttrs} class="underline text-primary hover:text-primary/80">${text}</a>`;
+  };
+  return renderer;
+}
+
+function renderMarkdown(md: string | undefined): string {
+  if (!md) return "";
+  return marked.parse(md, {
+    renderer: buildRenderer(),
+    gfm: true,
+    breaks: true,
+    async: false,
+  }) as string;
+}
+
 export function AppImportDialog({ app, onOpenChange }: Props) {
   const navigate = useNavigate();
   const { t } = useTranslation("data");
   const { data: detail, isLoading, error } = useApp(app?.id ?? null);
   const localizedName = app ? t(`apps.names.${app.id}`, app.name) : "";
 
-  const html = useMemo(() => {
-    if (!detail?.doc) return "";
-    const renderer = new Renderer();
-    renderer.link = ({ href, title, text }) => {
-      let finalHref = href;
-      // `mld:` and `mld://` both strip to the prompt body.
-      const mldMatch = href.match(/^mld:(?:\/\/)?(.*)$/);
-      if (mldMatch) {
-        finalHref = `/agent?seed=${encodeURIComponent(mldMatch[1])}`;
-      } else if (!/^(https?:|mailto:|\/|#)/i.test(finalHref)) {
-        // Defense-in-depth: drop `javascript:` / `data:` URLs.
-        finalHref = "#";
-      }
-      const safeHref = escapeHtml(finalHref);
-      const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
-      const isInternal = finalHref.startsWith("/");
-      const externalAttrs = isInternal
-        ? ""
-        : ' target="_blank" rel="noopener noreferrer"';
-      return `<a href="${safeHref}"${titleAttr}${externalAttrs} class="underline text-primary hover:text-primary/80">${text}</a>`;
-    };
-    return marked.parse(detail.doc, {
-      renderer,
-      gfm: true,
-      breaks: true,
-      async: false,
-    }) as string;
-  }, [detail?.doc]);
+  const startSession = useCallback(
+    (seed: string) => {
+      onOpenChange(false);
+      navigate(`/agent?seed=${encodeURIComponent(seed)}`);
+    },
+    [navigate, onOpenChange],
+  );
 
-  const handleStartImport = () => {
-    if (!detail?.importPrompt) return;
-    onOpenChange(false);
-    navigate(`/agent?seed=${encodeURIComponent(detail.importPrompt)}`);
-  };
+  const handleBodyClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      // Let modifier-clicks fall through to the browser.
+      if (
+        e.button !== 0 ||
+        e.metaKey ||
+        e.ctrlKey ||
+        e.shiftKey ||
+        e.altKey
+      )
+        return;
+      const target = e.target as HTMLElement;
+      const a = target.closest("a");
+      if (!a) return;
+      const href = a.getAttribute("href") ?? "";
+      if (href.startsWith("/")) {
+        e.preventDefault();
+        onOpenChange(false);
+        navigate(href);
+      }
+    },
+    [navigate, onOpenChange],
+  );
+
+  const useStructured = !!detail?.import;
+  const legacyHtml = useMemo(
+    () => (useStructured ? "" : renderMarkdown(detail?.doc)),
+    [useStructured, detail?.doc],
+  );
 
   return (
     <Dialog open={!!app} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl p-0 gap-0 max-h-[85vh] flex flex-col">
         {app && (
           <>
-            {/* Header: icon + name + category + optional CTA */}
+            {/* Header: icon + name + category. Legacy header CTA only when
+                using the markdown path; structured path puts CTAs per-option. */}
             <div className="flex items-center gap-4 px-6 pt-6 pb-4 shrink-0">
               <AppIconTile app={app} name={localizedName} />
               <div className="min-w-0 flex-1">
@@ -87,58 +128,28 @@ export function AppImportDialog({ app, onOpenChange }: Props) {
                   {app.category}
                 </div>
               </div>
-              {detail?.importPrompt && (
+              {!useStructured && detail?.importPrompt && (
                 <Button
-                  onClick={handleStartImport}
+                  onClick={() => startSession(detail.importPrompt!)}
                   className="shrink-0"
                   size="sm"
                 >
-                  Start import
+                  {t("apps.import.startImport", "Start import")}
                   <ArrowRight className="h-4 w-4 ml-1" />
                 </Button>
               )}
             </div>
 
-            {/* Body: description + doc */}
             <div
               className="flex-1 overflow-y-auto px-6 pb-6"
-              onClick={(e) => {
-                // Let the browser handle modifier-clicks.
-                if (
-                  e.button !== 0 ||
-                  e.metaKey ||
-                  e.ctrlKey ||
-                  e.shiftKey ||
-                  e.altKey
-                )
-                  return;
-                const t = e.target as HTMLElement;
-                const a = t.closest("a");
-                if (!a) return;
-                const href = a.getAttribute("href") ?? "";
-                if (href.startsWith("/")) {
-                  e.preventDefault();
-                  onOpenChange(false);
-                  navigate(href);
-                }
-              }}
+              onClick={handleBodyClick}
             >
               {app.description && (
                 <p className="text-sm text-muted-foreground mb-4">
                   {app.description}
                 </p>
               )}
-              {app.website && (
-                <a
-                  href={app.website}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-4"
-                >
-                  {app.website}
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              )}
+
               {isLoading && (
                 <div className="text-sm text-muted-foreground">Loading…</div>
               )}
@@ -147,24 +158,153 @@ export function AppImportDialog({ app, onOpenChange }: Props) {
                   Failed to load {app.id}
                 </div>
               )}
-              {detail?.doc ? (
+
+              {detail && useStructured && (
+                <StructuredImport detail={detail} onStart={startSession} />
+              )}
+
+              {detail && !useStructured && legacyHtml && (
                 <div
                   className="prose dark:prose-invert max-w-none text-sm"
-                  dangerouslySetInnerHTML={{ __html: html }}
+                  dangerouslySetInnerHTML={{ __html: legacyHtml }}
                 />
-              ) : (
-                !isLoading &&
-                !error && (
-                  <div className="text-sm text-muted-foreground">
-                    No instructions yet. Open a chat and describe what you want
-                    to import — the agent can help.
-                  </div>
-                )
+              )}
+
+              {detail && !useStructured && !legacyHtml && !isLoading && !error && (
+                <div className="text-sm text-muted-foreground">
+                  No instructions yet. Open a chat and describe what you want
+                  to import — the agent can help.
+                </div>
               )}
             </div>
           </>
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function StructuredImport({
+  detail,
+  onStart,
+}: {
+  detail: AppDetail;
+  onStart: (seed: string) => void;
+}) {
+  const { t } = useTranslation("data");
+  const spec = detail.import!;
+  return (
+    <div className="flex flex-col gap-6">
+      {spec.oneOff && (
+        <ImportSectionView
+          title={t("apps.import.oneOff", "One-off export")}
+          section={spec.oneOff}
+          onStart={onStart}
+        />
+      )}
+      {spec.continuousSync && (
+        <ImportSectionView
+          title={t("apps.import.continuousSync", "Continuous sync")}
+          section={spec.continuousSync}
+          onStart={onStart}
+        />
+      )}
+    </div>
+  );
+}
+
+function ImportSectionView({
+  title,
+  section,
+  onStart,
+}: {
+  title: string;
+  section: ImportSection;
+  onStart: (seed: string) => void;
+}) {
+  const { t } = useTranslation("data");
+  return (
+    <section className="flex flex-col gap-3">
+      {/* Banner bar: section title (left) + feasibility verdict (right) */}
+      <div className="flex items-center justify-between rounded-md bg-muted px-4 py-2.5">
+        <h3 className="text-sm font-semibold">{title}</h3>
+        {section.feasible ? (
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+            <Check className="h-3.5 w-3.5" />
+            {t("apps.import.supported", "Supported")}
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+            <X className="h-3.5 w-3.5" />
+            {t("apps.import.notSupported", "Not supported")}
+          </span>
+        )}
+      </div>
+
+      {!section.feasible && section.reason && (
+        <p className="px-1 text-sm text-muted-foreground">{section.reason}</p>
+      )}
+
+      {section.feasible && section.options && section.options.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {section.options.map((opt) => (
+            <ImportOptionCard key={opt.id} option={opt} onStart={onStart} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+function ImportOptionCard({
+  option,
+  onStart,
+}: {
+  option: ImportOption;
+  onStart: (seed: string) => void;
+}) {
+  const { t } = useTranslation("data");
+  const descHtml = useMemo(
+    () => renderMarkdown(option.description),
+    [option.description],
+  );
+  return (
+    <div className="rounded-lg bg-muted/40 p-4 flex flex-col gap-3 min-w-0">
+      <div className="font-medium text-sm">{option.name}</div>
+      {descHtml && (
+        <div
+          className="prose dark:prose-invert max-w-none text-xs text-muted-foreground flex-1"
+          dangerouslySetInnerHTML={{ __html: descHtml }}
+        />
+      )}
+      <div className="flex items-center justify-between gap-2">
+        <Button
+          onClick={() => onStart(option.seedPrompt)}
+          size="sm"
+        >
+          {t("apps.import.startImport", "Start import")}
+          <ArrowRight className="h-4 w-4 ml-1" />
+        </Button>
+        {option.url && (
+          <a
+            href={option.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground truncate"
+          >
+            {hostnameOf(option.url)}
+            <ExternalLink className="h-3 w-3 shrink-0" />
+          </a>
+        )}
+      </div>
+    </div>
   );
 }

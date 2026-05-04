@@ -4,3 +4,40 @@ category: health
 website: https://www.apple.com/ios/health/
 description: Apple's personal health and fitness tracking app.
 icon: apple
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: builtin
+        name: Built-in (Health app)
+        url: https://support.apple.com/zh-cn/guide/iphone/iph5ede58c3d/ios
+        description: |
+          Apple's first-party export. Produces one big `export.xml` plus GPX workout routes, all zipped. Mobile-only — no desktop or web equivalent.
+        seed_prompt: |
+          Help me import my Apple Health export.zip from the built-in Health app export. Walk me through the on-iPhone steps (Health → profile → Export All Health Data → AirDrop/Files), then unpack the zip under imports/apple-health/ and run the apple-health skill's discovery script.
+      - id: health-export-app
+        name: Health Export
+        url: https://healthexport.app/
+        description: |
+          Third-party iOS app with selective export (date ranges, specific metrics) and CSV/JSON output. Useful when the full Apple export is too big or you only need a subset.
+        seed_prompt: |
+          Help me import my Apple Health data exported via the Health Export app. Walk me through choosing metrics + date range, where the file should land under imports/apple-health/, and how to interpret the format.
+
+  continuous_sync:
+    feasible: true
+    options:
+      - id: health-auto-export
+        name: Health Auto Export
+        url: https://www.healthyapps.dev/
+        description: |
+          Scheduled JSON/CSV exports of any Apple Health metric to iCloud Drive, Dropbox, or a custom webhook. The most common choice for ongoing sync.
+        seed_prompt: |
+          Help me set up Health Auto Export to push daily Apple Health data into imports/apple-health/. Walk me through installing the app, picking metrics, configuring the destination (iCloud Drive folder or webhook), and wiring its output into MyLifeDB.
+      - id: healthfit
+        name: HealthFit
+        url: https://apps.apple.com/app/healthfit/id1202650514
+        description: |
+          Workout-focused — syncs Apple Watch workouts and GPS routes to Dropbox, Strava, TrainingPeaks, and others. Use this if your priority is workouts/routes rather than every metric.
+        seed_prompt: |
+          Help me set up HealthFit to continuously sync my Apple Watch workouts into imports/apple-health/. Walk me through connecting a destination (Dropbox is simplest for MyLifeDB) and enabling auto-sync.
