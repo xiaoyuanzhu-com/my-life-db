@@ -10,7 +10,8 @@ import:
     feasible: true
     options:
       - id: builtin
-        name: Built-in (Health app)
+        name: Official
+        official: true
         url: https://support.apple.com/zh-cn/guide/iphone/iph5ede58c3d/ios
         description: |
           Apple's first-party export. Produces one big `export.xml` plus GPX workout routes, all zipped. Mobile-only — no desktop or web equivalent.

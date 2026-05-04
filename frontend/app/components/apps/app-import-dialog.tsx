@@ -2,7 +2,7 @@ import { useCallback, useMemo } from "react";
 import { useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { marked, Renderer } from "marked";
-import { ArrowRight, Check, ExternalLink, X } from "lucide-react";
+import { ArrowRight, BadgeCheck, Check, ExternalLink, X } from "lucide-react";
 
 import {
   Dialog,
@@ -225,16 +225,21 @@ function ImportSectionView({
   const { t } = useTranslation("data");
   return (
     <section className="flex flex-col gap-3">
-      {/* Banner bar: section title (left) + feasibility verdict (right) */}
-      <div className="flex items-center justify-between rounded-md bg-muted px-4 py-2.5">
-        <h3 className="text-sm font-semibold">{title}</h3>
+      {/* Banner bar: section title (left) + feasibility verdict (right).
+          Soft blue tint — the project's design tokens are monochromatic, so
+          a subtle hue is needed here to distinguish the section break from
+          the grey card headers below. */}
+      <div className="flex items-center justify-between rounded-md bg-blue-50 dark:bg-blue-950/40 px-4 py-2.5">
+        <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-200">
+          {title}
+        </h3>
         {section.feasible ? (
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
             <Check className="h-3.5 w-3.5" />
             {t("apps.import.supported", "Supported")}
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-700/70 dark:text-blue-300/70">
             <X className="h-3.5 w-3.5" />
             {t("apps.import.notSupported", "Not supported")}
           </span>
@@ -246,7 +251,7 @@ function ImportSectionView({
       )}
 
       {section.feasible && section.options && section.options.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="flex flex-col gap-3">
           {section.options.map((opt) => (
             <ImportOptionCard key={opt.id} option={opt} onStart={onStart} />
           ))}
@@ -277,28 +282,42 @@ function ImportOptionCard({
     [option.description],
   );
   return (
-    <div className="rounded-lg bg-muted/40 p-4 flex flex-col gap-3 min-w-0">
-      <div className="font-medium text-sm">{option.name}</div>
-      {descHtml && (
-        <div
-          className="prose dark:prose-invert max-w-none text-xs text-muted-foreground flex-1"
-          dangerouslySetInnerHTML={{ __html: descHtml }}
-        />
-      )}
-      <div className="flex items-center justify-between gap-2">
+    <div className="rounded-lg bg-muted/50 overflow-hidden flex flex-col min-w-0">
+      {/* Header bar: title (left) + Start import button (right). Official
+          options get a small badge icon to flag the first-party path. */}
+      <div className="flex items-center justify-between gap-3 bg-muted px-4 py-2.5">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <div className="font-medium text-sm truncate">{option.name}</div>
+          {option.official && (
+            <BadgeCheck
+              className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400"
+              aria-label={t("apps.import.official", "Official")}
+            />
+          )}
+        </div>
         <Button
           onClick={() => onStart(option.seedPrompt)}
           size="sm"
+          className="shrink-0"
         >
           {t("apps.import.startImport", "Start import")}
           <ArrowRight className="h-4 w-4 ml-1" />
         </Button>
+      </div>
+      {/* Body: description + optional source link */}
+      <div className="px-4 py-3 flex flex-col gap-2">
+        {descHtml && (
+          <div
+            className="prose dark:prose-invert max-w-none text-xs text-muted-foreground"
+            dangerouslySetInnerHTML={{ __html: descHtml }}
+          />
+        )}
         {option.url && (
           <a
             href={option.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground truncate"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground self-start"
           >
             {hostnameOf(option.url)}
             <ExternalLink className="h-3 w-3 shrink-0" />

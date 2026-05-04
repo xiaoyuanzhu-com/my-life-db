@@ -31,6 +31,9 @@ export interface ImportSection {
 export interface ImportOption {
   id: string;
   name: string;
+  // Marks the vendor's first-party path (e.g. built-in export). The UI shows
+  // a small badge so users can quickly tell official vs third-party tools.
+  official?: boolean;
   url?: string;
   description: string;
   seedPrompt: string;

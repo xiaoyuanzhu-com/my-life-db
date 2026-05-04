@@ -42,9 +42,13 @@ type ImportSection struct {
 
 // ImportOption is one selectable path within a section. Each option has its
 // own Start-Import seed prompt that opens an agent session.
+//
+// Official marks the first-party path (e.g. the vendor's built-in export);
+// the UI renders a small badge to distinguish it from third-party tools.
 type ImportOption struct {
 	ID          string `yaml:"id" json:"id"`
 	Name        string `yaml:"name" json:"name"`
+	Official    bool   `yaml:"official,omitempty" json:"official,omitempty"`
 	URL         string `yaml:"url,omitempty" json:"url,omitempty"`
 	Description string `yaml:"description" json:"description"`
 	SeedPrompt  string `yaml:"seed_prompt" json:"seedPrompt"`

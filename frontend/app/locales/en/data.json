@@ -39,11 +39,12 @@
       "productivity": "Productivity"
     },
     "import": {
-      "oneOff": "One-off export",
+      "oneOff": "One-time export",
       "continuousSync": "Continuous sync",
       "supported": "Supported",
       "notSupported": "Not supported",
-      "startImport": "Start import"
+      "startImport": "Start import",
+      "official": "Official"
     }
   },
   "omni": {

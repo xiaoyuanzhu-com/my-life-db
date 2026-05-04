@@ -70,7 +70,8 @@
       "continuousSync": "持续同步",
       "supported": "支持",
       "notSupported": "不支持",
-      "startImport": "开始导入"
+      "startImport": "开始导入",
+      "official": "官方"
     }
   },
   "omni": {
