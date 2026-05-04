@@ -3,5 +3,21 @@ name: "Goodreads"
 category: media
 website: https://goodreads.com
 description: "Social reading and book-tracking platform."
-import_prompt: |
-  Help me export my Goodreads library. Walk me through goodreads.com/review/import → Export Library (CSV). Place the CSV in imports/goodreads/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: library-export
+        name: Official
+        official: true
+        url: https://www.goodreads.com/review/import
+        description: |
+          Goodreads' built-in CSV export of your full library — shelves, ratings, reviews, dates read, and book metadata. Generated on demand from the Import/Export page.
+        seed_prompt: |
+          Help me import my Goodreads library. Walk me through goodreads.com/review/import → Export Library to generate the CSV, then place it under imports/goodreads/ and orient me to the columns.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      Goodreads retired its public developer API in 2020 and offers no official sync mechanism. The CSV export must be re-run manually each time you want fresh data.
