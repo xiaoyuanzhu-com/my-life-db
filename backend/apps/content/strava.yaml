@@ -3,5 +3,28 @@ name: "Strava"
 category: health
 website: https://www.strava.com
 description: "Social running/cycling platform with GPS activity tracking."
-import_prompt: |
-  Help me import my Strava archive. Walk me through requesting a bulk export at https://www.strava.com/athlete/delete_your_account (click 'Get Started' under 'Download Request') — the export arrives by email as a zip. Once downloaded, unpack activities (GPX/FIT/TCX) and the activities.csv index into imports/strava/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: bulk-export
+        name: Official
+        official: true
+        url: https://www.strava.com/athlete/delete_your_account
+        description: |
+          Strava's first-party bulk export (reached via the account-deletion page; no deletion is performed unless you confirm). Produces a zip with GPX/FIT/TCX activity files, an activities.csv index, plus kudos, comments, routes, segments, gear, and profile metadata. Email-delivered.
+        seed_prompt: |
+          Help me import my Strava archive. Walk me through requesting a bulk export at https://www.strava.com/athlete/delete_your_account (click 'Get Started' under 'Download Request'), waiting for the email, then unpacking activities (GPX/FIT/TCX) and the activities.csv index into imports/strava/.
+      - id: api
+        name: Strava API
+        url: https://developers.strava.com/
+        description: |
+          Strava's official v3 REST API. Lets you pull activities, streams, and athlete data on demand via OAuth 2.0. Useful for date-ranged pulls without waiting for the full bulk export.
+        seed_prompt: |
+          Help me import my Strava data via the Strava API. Walk me through creating an API application at developers.strava.com, completing the OAuth flow, and writing a small script that pulls activities and streams into imports/strava/ for a given date range.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      Strava has a public API and webhooks for developer integrations, but no turnkey continuous-sync product that drops files into a local folder. Ongoing sync would require a custom integration that polls the API or subscribes to webhooks and writes results into imports/strava/.
