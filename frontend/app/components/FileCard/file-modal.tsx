@@ -18,11 +18,11 @@ import type { TextContentHandle } from './modal-contents/text-content';
 // Direct imports for small content viewers (bundle in main)
 import { AudioContent } from './modal-contents/audio-content';
 import { VideoContent } from './modal-contents/video-content';
-import { ImageContent } from './modal-contents/image-content';
 import { TextContent } from './modal-contents/text-content';
 import { MarkdownContent } from './modal-contents/markdown-content';
 import { HtmlContent } from './modal-contents/html-content';
 import { FallbackContent } from './modal-contents/fallback-content';
+import { ImageLightbox } from '~/components/ui/image-lightbox';
 
 // Lazy load large libraries only
 const PdfContent = lazy(() => import('./modal-contents/pdf-content').then(m => ({ default: m.PdfContent })));
@@ -99,6 +99,21 @@ export function FileModal() {
   // Determine content type for the current file
   const contentType = currentFile ? getFileContentType(currentFile) : null;
 
+  // For images: render ImageLightbox directly (no Dialog chrome).
+  // One click on an image goes straight to the fullscreen lightbox — no
+  // intermediate "preview view" wrapping it. Sibling navigation still works
+  // through the lightbox close → open-next-via-context flow if needed in
+  // future, but for now we treat each image as a single-image lightbox.
+  if (isOpen && currentFile && contentType === 'image') {
+    return (
+      <ImageLightbox
+        images={[{ src: getFileContentUrl(currentFile), alt: currentFile.name }]}
+        initialIndex={0}
+        onClose={handleCloseRequest}
+      />
+    );
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent
@@ -133,7 +148,6 @@ export function FileModal() {
                   <ModalContentRenderer
                     contentType={contentType}
                     file={currentFile}
-                    onClose={handleCloseRequest}
                     onDirtyStateChange={setIsDirty}
                     onTextCloseConfirmed={handleTextCloseConfirmed}
                     textContentRef={textContentRef}
@@ -155,26 +169,18 @@ export function FileModal() {
 function ModalContentRenderer({
   contentType,
   file,
-  onClose,
   onDirtyStateChange,
   onTextCloseConfirmed,
   textContentRef,
 }: {
   contentType: string | null;
   file: NonNullable<ReturnType<typeof useModalNavigation>['currentFile']>;
-  onClose: () => void;
   onDirtyStateChange: (isDirty: boolean) => void;
   onTextCloseConfirmed: () => void;
   textContentRef: React.RefObject<TextContentHandle | null>;
 }) {
   switch (contentType) {
-    case 'image':
-      return (
-        <ImageContent
-          file={file}
-          onClose={onClose}
-        />
-      );
+    // 'image' is handled before the Dialog renders — see FileModal early return.
 
     case 'video':
       return <VideoContent file={file} />;
