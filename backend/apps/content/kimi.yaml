@@ -3,5 +3,14 @@ name: "Kimi"
 category: chat
 website: https://kimi.moonshot.cn
 description: "Moonshot AI's long-context conversational assistant."
-import_prompt: |
-  Help me export my Kimi chat history. No official export — scrape kimi.moonshot.cn with my login cookies, saving conversations into imports/kimi/.
+
+import:
+  one_off:
+    feasible: false
+    reason: |
+      Kimi does not provide a documented user-facing export for chat history. Capturing chats currently requires manual copy-paste or a custom scraper against the logged-in web UI, neither of which we recommend as a sanctioned import path.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      No public continuous-sync or conversation-streaming API exists for Kimi chat history.
