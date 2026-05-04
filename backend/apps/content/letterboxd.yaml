@@ -3,5 +3,21 @@ name: "Letterboxd"
 category: media
 website: https://letterboxd.com
 description: "Social movie-tracking platform."
-import_prompt: |
-  Help me export my Letterboxd diary. Walk me through Settings → Data → Export your data (CSV), then drop the zip into imports/letterboxd/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: data-export
+        name: Official
+        official: true
+        url: https://letterboxd.com/settings/data/
+        description: |
+          Letterboxd's built-in account export. Produces a zip of CSVs covering diary, watched, ratings, reviews, lists, and watchlist.
+        seed_prompt: |
+          Help me import my Letterboxd export. Walk me through Settings → Data → Export your data, then unpack the zip into imports/letterboxd/ and orient me to the CSV layout.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      Letterboxd has no official sync API for personal data. The data export is a manual on-demand zip, so keeping data fresh means re-running the export periodically.
