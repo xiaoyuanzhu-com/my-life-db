@@ -3,5 +3,35 @@ name: "YouTube"
 category: media
 website: https://youtube.com
 description: "Google's video platform."
-import_prompt: |
-  Help me import my YouTube data (watch history, subscriptions, liked videos, playlists, uploaded videos). Walk me through Google Takeout at takeout.google.com → select YouTube → choose JSON + media options. Unpack into imports/youtube/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: google-takeout
+        name: Official
+        official: true
+        url: https://takeout.google.com/
+        description: |
+          Google Takeout exports a YouTube archive containing watch history, search history, subscriptions, liked videos, comments, playlists, and uploaded media. JSON is the most parseable format option for history data.
+        seed_prompt: |
+          Help me import my YouTube data via Google Takeout. Walk me through takeout.google.com → select YouTube → choose JSON for history and the format I want for media, then unpack the resulting archive into imports/youtube/ and orient me to the layout.
+
+  continuous_sync:
+    feasible: true
+    options:
+      - id: takeout-scheduled
+        name: Official
+        official: true
+        url: https://takeout.google.com/
+        description: |
+          Google Takeout supports scheduled exports — every 2 months for one year. Useful for hands-off periodic snapshots, though the cadence is fixed and not real-time.
+        seed_prompt: |
+          Help me set up a scheduled Google Takeout export of YouTube data into imports/youtube/. Walk me through choosing the YouTube products, picking the every-2-months schedule, and wiring the delivered archives into MyLifeDB.
+      - id: youtube-data-api
+        name: YouTube Data API
+        url: https://developers.google.com/youtube/v3
+        description: |
+          Google's YouTube Data API exposes per-user playlists, subscriptions, liked videos (via the LL playlist), and uploads. Watch and search history are NOT available through the API — those are Takeout-only.
+        seed_prompt: |
+          Help me set up an incremental YouTube sync via the Data API into imports/youtube/. Walk me through creating an OAuth client, listing my playlists/subscriptions/likes, and scheduling regular pulls — and remind me which signals (watch history) require Takeout instead.
