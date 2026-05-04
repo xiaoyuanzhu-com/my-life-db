@@ -16,13 +16,6 @@ import:
           Fitbit's first-party account data export. Produces a zip of per-day JSON files covering activity, sleep, heart rate, and body metrics. Email-delivered after a request.
         seed_prompt: |
           Help me import my Fitbit data export. Walk me through requesting an export at https://www.fitbit.com/settings/data/export, waiting for the email, then unpacking the zip (per-day JSON files) into imports/fitbit/.
-      - id: web-api
-        name: Fitbit Web API
-        url: https://dev.fitbit.com/build/reference/web-api/
-        description: |
-          Fitbit's official Web API. Lets you pull activity, sleep, heart rate, and other metrics on demand via OAuth 2.0. Useful when you want a specific date range without waiting for the full account export.
-        seed_prompt: |
-          Help me import my Fitbit data via the Fitbit Web API. Walk me through registering an app at dev.fitbit.com, completing the OAuth flow, and writing a small script that pulls activity, sleep, and heart-rate JSON into imports/fitbit/ for a given date range.
 
   continuous_sync:
     feasible: false
