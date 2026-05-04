@@ -3,5 +3,28 @@ name: "Yuque"
 category: notes
 website: https://www.yuque.com
 description: "Ant Group's wiki and document collaboration platform."
-import_prompt: |
-  Help me export my Yuque docs. Web personal space → 知识库 → 导出 — Markdown ZIP per book. Unpack into imports/yuque/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: book-export
+        name: Official
+        official: true
+        url: https://www.yuque.com/yuque/help
+        description: |
+          Yuque's first-party knowledge-base export. From a 知识库 (book) on the web, open the settings menu and choose 导出 to download a Markdown ZIP of all documents. Run per book; Chinese-language interface.
+        seed_prompt: |
+          Help me import my Yuque docs. Walk me through exporting each 知识库 to a Markdown ZIP, then unpack the archives into imports/yuque/ organized by book.
+
+  continuous_sync:
+    feasible: true
+    options:
+      - id: open-api
+        name: Yuque Open API
+        official: true
+        url: https://www.yuque.com/yuque/developer
+        description: |
+          Yuque exposes an official Open API for users, groups, repos (books), and documents. Authenticate with a personal access token from account settings; suitable for scripted pulls of doc Markdown.
+        seed_prompt: |
+          Help me set up continuous sync from Yuque via the Open API. Walk me through generating a personal access token, listing my repos, and writing a periodic pull of doc Markdown into imports/yuque/.
