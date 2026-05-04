@@ -3,5 +3,29 @@ name: "WhatsApp"
 category: chat
 website: https://whatsapp.com
 description: "End-to-end encrypted messaging app."
-import_prompt: |
-  Help me import a WhatsApp chat. WhatsApp has no bulk export — you export one chat at a time from the chat's menu → More → Export chat (with or without media). Walk me through doing this on iOS/Android and landing the zip in imports/whatsapp/<contact>/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: export-chat
+        name: Official
+        official: true
+        url: https://faq.whatsapp.com/1180414079177245
+        description: |
+          WhatsApp's per-chat export, available from the chat menu on iOS and Android (More → Export chat). Produces a .txt transcript optionally bundled with media as a .zip. There is no bulk all-chats export — each conversation is exported individually.
+        seed_prompt: |
+          Help me export a WhatsApp chat. Walk me through opening the chat on iOS or Android, picking More → Export chat (with or without media), AirDrop/email/share the resulting zip to my computer, and landing it under imports/whatsapp/<contact>/.
+      - id: request-account-info
+        name: Request account info
+        official: true
+        url: https://faq.whatsapp.com/1417859770720775
+        description: |
+          WhatsApp's "Request account info" feature in Settings → Account exports account-level metadata (profile, settings, group memberships) — not chat content. Useful as a complement to per-chat exports.
+        seed_prompt: |
+          Help me request my WhatsApp account info. Walk me through Settings → Account → Request account info, waiting ~3 days for the report to be ready, downloading the zip, and landing it under imports/whatsapp/account-info/.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      WhatsApp is end-to-end encrypted and offers no consumer API or webhook for personal chat sync. The WhatsApp Business API exists but is for business accounts messaging customers, not for a user to mirror their own message history.
