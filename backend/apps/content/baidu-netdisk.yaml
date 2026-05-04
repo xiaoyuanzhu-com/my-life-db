@@ -3,5 +3,29 @@ name: "Baidu Netdisk"
 category: cloud
 website: https://pan.baidu.com
 description: "Chinese cloud storage service."
-import_prompt: |
-  Help me import my Baidu Netdisk files. Baidu throttles free downloads heavily — walk me through using the desktop client for selective sync into imports/baidu-netdisk/, or discuss whether to pay for premium for a faster bulk pull.
+icon: baidu-netdisk
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: desktop-client
+        name: Official
+        official: true
+        url: https://pan.baidu.com/download
+        description: |
+          Baidu Netdisk's official desktop client syncs selected cloud folders to a local directory. Free accounts have heavy download throttling; premium (SVIP) lifts the speed cap.
+        seed_prompt: |
+          Help me import my Baidu Netdisk files via the official desktop client. Walk me through installing the client, picking which cloud folders to sync to local disk, dealing with the free-tier speed throttle (or paying for SVIP), and then copying the synced folder into imports/baidu-netdisk/.
+
+  continuous_sync:
+    feasible: true
+    options:
+      - id: desktop-client
+        name: Official
+        official: true
+        url: https://pan.baidu.com/download
+        description: |
+          The official desktop client supports keeping a local folder mirrored with a chosen cloud folder. Once configured, that local folder can serve as a continuous-sync source for MyLifeDB.
+        seed_prompt: |
+          Help me set up the Baidu Netdisk desktop client to continuously mirror a cloud folder to local disk, then point MyLifeDB at the resulting folder under imports/baidu-netdisk/. Walk me through configuring sync, handling throttling, and verifying new files show up.
