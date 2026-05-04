@@ -3,5 +3,26 @@ name: "Evernote"
 category: notes
 website: https://evernote.com
 description: "Long-running notebook/notes application."
-import_prompt: |
-  Help me import my Evernote notebooks. Walk me through exporting each notebook as .enex via Evernote's desktop app (File → Export), then drop the .enex files into imports/evernote/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: enex-export
+        name: Official
+        official: true
+        description: |
+          Evernote's first-party export. In the desktop app, right-click a notebook → Export → ENEX. .enex is Evernote's XML format and preserves notes, tags, and attachments.
+        seed_prompt: |
+          Help me export my Evernote notebooks as .enex via the desktop app (right-click notebook → Export → ENEX). Walk me through doing it for each notebook and landing the files under imports/evernote/.
+      - id: html-export
+        name: HTML export
+        description: |
+          Evernote's desktop app can also export notebooks as HTML (one folder per notebook, attachments alongside). Useful when you want directly-readable files instead of the .enex XML format.
+        seed_prompt: |
+          Help me export my Evernote notebooks as HTML from the desktop app. Walk me through the export dialog and landing the resulting folders under imports/evernote/.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      Evernote's API is gated and there is no scheduled export to a local folder. Continuous sync to MyLifeDB would require a custom integration.
