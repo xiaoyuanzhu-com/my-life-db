@@ -3,5 +3,21 @@ name: "Claude"
 category: chat
 website: https://claude.ai
 description: "Anthropic's conversational AI assistant."
-import_prompt: |
-  Help me import my Claude.ai conversation history. Walk me through Settings → Privacy → Export Data at claude.ai — you'll get an email with JSON. Unpack into imports/claude/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: builtin
+        name: Official
+        official: true
+        url: https://privacy.anthropic.com/en/articles/10023548-how-can-i-export-my-claude-ai-data
+        description: |
+          Anthropic's first-party data export. Settings → Privacy → Export Data emails a download link with a zip of all conversations, projects, and account metadata as JSON.
+        seed_prompt: |
+          Help me import my Claude.ai export. Walk me through Settings → Privacy → Export Data at claude.ai, wait for the email, then unpack the zip under imports/claude/ and summarize the conversations.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      Anthropic does not offer a continuous export or conversation-streaming API for claude.ai history. Ongoing sync would require a custom poller against the (separate) developer API and would not capture claude.ai conversations.
