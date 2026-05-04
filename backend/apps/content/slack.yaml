@@ -3,5 +3,28 @@ name: "Slack"
 category: chat
 website: https://slack.com
 description: "Workplace team chat."
-import_prompt: |
-  Help me import a Slack workspace export. Walk me through Workspace Admin → Import/Export Data → Export (admin-only), then unpack the zip into imports/slack/<workspace-name>/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: workspace-export
+        name: Official
+        official: true
+        url: https://slack.com/help/articles/201658943-Export-your-workspace-data
+        description: |
+          Slack's first-party workspace export. Workspace Admin → Settings & administration → Workspace settings → Import/Export Data → Export. On the Free and Pro plans this only includes public channels; DMs and private channels require Business+/Enterprise and an approved data-export request. Admin permissions required.
+        seed_prompt: |
+          Help me import a Slack workspace export. Walk me through requesting the export from Workspace settings (noting what your plan tier covers — public channels vs DMs/private), then unpacking the resulting zip into imports/slack/<workspace-name>/.
+
+  continuous_sync:
+    feasible: true
+    options:
+      - id: web-api
+        name: Slack Web API
+        official: true
+        url: https://api.slack.com/web
+        description: |
+          Slack's official Web API can pull messages, channels, and files for workspaces where you have a token with the right scopes. Practical for personal continuous sync only when an admin grants the necessary scopes; otherwise restricted to public channels you belong to.
+        seed_prompt: |
+          Help me set up continuous sync from Slack via the Web API. Walk me through creating an app, obtaining a token with the right scopes (conversations.history, files, etc.), and writing a periodic pull into imports/slack/.
