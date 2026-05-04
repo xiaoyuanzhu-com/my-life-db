@@ -3,5 +3,26 @@ name: "iMessage"
 category: chat
 website: https://support.apple.com/messages
 description: "Apple's native messaging platform."
-import_prompt: |
-  Help me import my iMessage history from macOS. On Mac, messages live at ~/Library/Messages/chat.db (SQLite). Walk me through copying this file (and Attachments/) into imports/imessage/ and explain what the schema looks like.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: macos-chatdb
+        name: macOS chat.db
+        description: |
+          On macOS, iMessage history is stored in a local SQLite database at ~/Library/Messages/chat.db with attachments under ~/Library/Messages/Attachments/. Copying these into the import folder gives a complete one-off snapshot of all messages signed in to iMessage on that Mac.
+        seed_prompt: |
+          Help me import my iMessage history from this Mac. Walk me through copying ~/Library/Messages/chat.db and the Attachments/ directory into imports/imessage/, granting Full Disk Access if needed, and explain the chat.db schema (handle, chat, message, attachment tables) so I can query it.
+      - id: imazing
+        name: iMazing
+        url: https://imazing.com/
+        description: |
+          Third-party iOS/macOS utility that reads device backups and exports Messages threads to PDF, CSV, or text. Useful when you don't have a Mac with iMessage signed in but you do have an iPhone backup.
+        seed_prompt: |
+          Help me import my iMessage history via iMazing. Walk me through pointing it at an iPhone backup or connected device, exporting Messages (PDF/CSV/text plus attachments), and where the output should land under imports/imessage/.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      iMessage is end-to-end encrypted and Apple offers no API or webhook for live message sync. The only "live" source is the local chat.db on a Mac that has iMessage signed in; periodically re-copying that file is the closest approximation, not a real continuous-sync path.
