@@ -3,5 +3,28 @@ name: "Reddit"
 category: social
 website: https://reddit.com
 description: "Topic-based community discussion platform."
-import_prompt: |
-  Help me import my Reddit archive. Walk me through requesting a data export at https://www.reddit.com/settings/data-request, wait for the email, then unpack the CSVs (posts, comments, saved, upvoted) into imports/reddit/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: builtin
+        name: Official
+        official: true
+        url: https://www.reddit.com/settings/data-request
+        description: |
+          Reddit's first-party data export. Delivers a zip of CSVs covering posts, comments, saved, upvoted/downvoted, messages, subscribed subreddits, and account history. Notified by email when ready.
+        seed_prompt: |
+          Help me import my Reddit archive. Walk me through requesting a data export at https://www.reddit.com/settings/data-request, waiting for the email, then unpacking the CSVs into imports/reddit/.
+
+  continuous_sync:
+    feasible: true
+    options:
+      - id: rest-api
+        name: Reddit API
+        official: true
+        url: https://www.reddit.com/dev/api/
+        description: |
+          Reddit's official REST API exposes per-user listings (/user/<name>/submitted, /comments, /saved, /upvoted) with OAuth. Useful for incremental polling of your own activity, subject to Reddit's rate limits and current API access policies.
+        seed_prompt: |
+          Help me set up continuous sync of my Reddit activity using the official API. Walk me through registering an OAuth app, getting a refresh token for my account, and periodically pulling /user/<me>/submitted, /comments, and /saved into imports/reddit/.
