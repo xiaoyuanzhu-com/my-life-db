@@ -3,5 +3,14 @@ name: "Perplexity"
 category: chat
 website: https://perplexity.ai
 description: "AI-powered search engine with conversational answers."
-import_prompt: |
-  Help me export my Perplexity history. Perplexity has no official bulk export — walk me through scraping my Library (perplexity.ai/library) with an agent using my login cookies, saving threads as JSON into imports/perplexity/.
+
+import:
+  one_off:
+    feasible: false
+    reason: |
+      Perplexity does not provide a documented bulk export for your Library threads. Capturing history currently requires manual copy or a custom scraper against the logged-in web UI, neither of which we recommend as a sanctioned import path.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      No public continuous-sync or conversation-streaming API exists for Perplexity Library threads.
