@@ -3,5 +3,28 @@ name: "Bluesky"
 category: social
 website: https://bsky.app
 description: "Decentralized social network (AT Protocol)."
-import_prompt: |
-  Help me import my Bluesky data. Walk me through exporting my repo CAR file from bsky.app Settings → Advanced → Export my data, then drop the .car file in imports/bluesky/ and explain how to parse it.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: builtin
+        name: Official
+        official: true
+        url: https://bsky.app/settings/account
+        description: |
+          Bluesky's first-party export produces a CAR (Content Addressable aRchive) file containing your full repository (posts, likes, follows, etc.) via the AT Protocol. Available in Settings on web and mobile.
+        seed_prompt: |
+          Help me import my Bluesky data. Walk me through exporting my repo CAR file from bsky.app Settings, then drop the .car file in imports/bluesky/ and explain how to parse it.
+
+  continuous_sync:
+    feasible: true
+    options:
+      - id: at-protocol
+        name: AT Protocol
+        official: true
+        url: https://atproto.com/
+        description: |
+          Bluesky is built on the open AT Protocol. You can poll your repo via the public XRPC endpoint (com.atproto.sync.getRepo) or subscribe to the firehose for real-time updates of your own account.
+        seed_prompt: |
+          Help me set up continuous sync of my Bluesky data using the AT Protocol. Walk me through periodically fetching my repo CAR (or subscribing to the firehose for my DID) and storing the output under imports/bluesky/.
