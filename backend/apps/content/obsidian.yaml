@@ -3,3 +3,26 @@ name: Obsidian
 category: notes
 website: https://obsidian.md
 description: Local-first markdown knowledge base with linked notes.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: copy-vault
+        name: Official
+        official: true
+        description: |
+          The Obsidian vault is already a folder of plain Markdown plus attachments — no export needed. Copy the vault folder into imports/obsidian/. The .obsidian/ config folder is optional.
+        seed_prompt: |
+          Help me import my Obsidian vault. Walk me through closing Obsidian, locating the vault folder, copying it into imports/obsidian/, and deciding whether to keep .obsidian/ and .trash/.
+
+  continuous_sync:
+    feasible: true
+    options:
+      - id: symlink-vault
+        name: Symlink vault into imports
+        official: true
+        description: |
+          Symlink (or directly point) imports/obsidian/ at the live vault folder. MyLifeDB's filesystem watcher then re-indexes every save. Caveat: deletions in Obsidian propagate to MyLifeDB's view.
+        seed_prompt: |
+          Help me symlink my Obsidian vault into imports/obsidian/ for live sync. Walk me through ln -s, backing up first, and verifying MyLifeDB re-indexes when I edit a note.
