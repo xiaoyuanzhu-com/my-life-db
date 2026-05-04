@@ -18,13 +18,6 @@ import:
           Help me import my Mastodon archive. Walk me through Settings → Import and export → Request your archive on my home instance, waiting for it to generate, then unpacking the tarball into imports/mastodon/.
 
   continuous_sync:
-    feasible: true
-    options:
-      - id: rest-api
-        name: Mastodon API
-        official: true
-        url: https://docs.joinmastodon.org/api/
-        description: |
-          Mastodon exposes a documented REST API on every instance. With a personal access token from Settings → Development, you can paginate your own statuses, favourites, bookmarks, and follows, or stream new events via the streaming API.
-        seed_prompt: |
-          Help me set up continuous sync of my Mastodon account using the API. Walk me through generating a personal access token on my home instance, then periodically pulling my statuses/favourites/bookmarks (or subscribing to the streaming API) into imports/mastodon/.
+    feasible: false
+    reason: |
+      Mastodon exposes a documented REST and streaming API on every instance, but there is no turnkey end-user app that continuously syncs your own account to a local folder. Re-running the official archive request periodically is the closest sanctioned path.
