@@ -3,5 +3,14 @@ name: "Keep"
 category: health
 website: https://keep.com
 description: "Chinese fitness and workout-tracking app."
-import_prompt: |
-  Help me import my Keep (keep.com) workout history. Keep has no official export — walk me through scraping my profile with an agent script (e.g. via the app's internal API or mobile web), and save runs, workouts, and body data as JSON under imports/keep-fitness/.
+
+import:
+  one_off:
+    feasible: false
+    reason: |
+      Keep has no publicly documented account-level data export. Pulling history would require scraping the mobile app's internal API or the mobile web profile, which is unofficial and may break at any time.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      Keep has no public API and no turnkey continuous-sync product. Ongoing sync would require a custom unofficial integration against the mobile app's private API.
