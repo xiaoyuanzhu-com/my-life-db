@@ -3,5 +3,26 @@ name: "Claude Code"
 category: chat
 website: https://claude.ai/code
 description: "Anthropic's agentic CLI for coding — sessions live on your local filesystem."
-import_prompt: |
-  Help me import my Claude Code session history. Sessions are already on disk at ~/.claude/projects/. Walk me through symlinking or copying that folder into imports/claude-code/ so MyLifeDB can index it, and explain the JSONL format.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: local-sessions
+        name: Official
+        official: true
+        url: https://claude.ai/code
+        description: |
+          Claude Code stores every session as JSONL files under `~/.claude/projects/<project-slug>/` on your local machine. No export step is needed — copy or symlink the folder.
+        seed_prompt: |
+          Help me import my Claude Code session history. Sessions are already on disk at ~/.claude/projects/. Walk me through copying that folder into imports/claude-code/ and explain the JSONL message/tool-call format.
+
+  continuous_sync:
+    feasible: true
+    options:
+      - id: symlink
+        name: Symlink ~/.claude/projects
+        description: |
+          Because Claude Code writes JSONL files locally as sessions run, a symlink from `imports/claude-code/` to `~/.claude/projects/` lets MyLifeDB's file watcher pick up new sessions in real time without any external service.
+        seed_prompt: |
+          Help me symlink ~/.claude/projects/ into imports/claude-code/ for live indexing. Walk me through the ln -s command and confirm the file watcher picks up new sessions.
