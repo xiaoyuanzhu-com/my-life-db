@@ -3,5 +3,35 @@ name: Notion
 category: notes
 website: https://www.notion.so
 description: All-in-one workspace for notes, docs, and databases.
-import_prompt: |
-  Help me import my Notion workspace into MyLifeDB using the Notion API. First walk me through creating an internal integration and getting the API token, then sharing the pages I want to import with the integration. Once that's done, fetch the pages and convert them to markdown into a sensible folder layout under my data root.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: workspace-export
+        name: Official
+        official: true
+        url: https://www.notion.so/help/export-your-content
+        description: |
+          Notion's first-party workspace export from the web app: Settings & members → Settings → Export all workspace content. Markdown & CSV is the most useful format; preserves nested page hierarchy as nested folders. Inter-page links become file paths and comments are stripped.
+        seed_prompt: |
+          Help me import my Notion workspace export. Walk me through running the export from Settings → Export all workspace content (Markdown & CSV, include subpages, create folders for subpages), unpacking it under imports/notion/, and suggesting a plan if the folder depth is excessive.
+      - id: per-page-export
+        name: Per-page export
+        official: true
+        description: |
+          Open a page → ··· menu → Export → Markdown & CSV. Same format as workspace export but scoped to one page subtree. Useful when you only want a slice.
+        seed_prompt: |
+          Help me export a single Notion page (and its subpages) via the page's ··· → Export → Markdown & CSV. Walk me through landing the resulting folder under imports/notion/.
+
+  continuous_sync:
+    feasible: true
+    options:
+      - id: notion-api
+        name: Notion API integration
+        official: true
+        url: https://developers.notion.com/
+        description: |
+          Notion's official API exposes pages and databases. With an internal integration token and the pages shared to it, a script using @notionhq/client (or notion-client in Python) can pull content as Markdown on a schedule. Requires custom scripting — there is no official "sync to folder" tool.
+        seed_prompt: |
+          Help me set up a Notion API sync. Walk me through creating an internal integration at notion.so/my-integrations, sharing the pages I want, then scaffolding a script that pulls them as Markdown into imports/notion/ and can re-run incrementally.
