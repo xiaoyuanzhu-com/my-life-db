@@ -3,5 +3,19 @@ name: "Douban"
 category: social
 website: https://douban.com
 description: "Chinese film, book, music, and social reviewing community."
-import_prompt: |
-  Help me scrape my Douban profile for movies watched, books read, and music liked (as well as my reviews). Douban has no export button, so use a scraper (with my login cookies) against book.douban.com, movie.douban.com, and music.douban.com, saving entries as JSON under imports/douban/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: profile-scrape
+        name: Profile scrape
+        description: |
+          Douban has no official export. The only path is to scrape your own profile pages on book.douban.com, movie.douban.com, and music.douban.com using your logged-in cookies, paginating through each tab.
+        seed_prompt: |
+          Help me scrape my Douban profile. Walk me through grabbing my login cookies, then crawl book/movie/music.douban.com/people/<my-id>/ for watched movies, read books, listened music, ratings, and reviews. Save entries as JSON under imports/douban/, rate-limiting politely.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      Douban exposes no personal-data API and no third-party sync tool. Ongoing collection would mean re-running an authenticated scrape on a schedule, which is brittle and at the mercy of Douban's anti-scrape measures, not a real continuous-sync path.
