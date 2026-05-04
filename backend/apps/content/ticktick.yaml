@@ -3,5 +3,28 @@ name: "TickTick"
 category: other
 website: https://ticktick.com
 description: "Task and habit manager."
-import_prompt: |
-  Help me export my TickTick data. Walk me through Settings → Import & Export → Export (CSV of tasks), and land it in imports/ticktick/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: settings-export
+        name: Official
+        official: true
+        url: https://help.ticktick.com/
+        description: |
+          TickTick's first-party data export. Settings → Import & Export → Backup/Export — produces a CSV of tasks. Available on the web and desktop apps.
+        seed_prompt: |
+          Help me import my TickTick data. Walk me through Settings → Import & Export → Backup/Export, then land the CSV in imports/ticktick/ and orient me to its columns.
+
+  continuous_sync:
+    feasible: true
+    options:
+      - id: open-api
+        name: TickTick Open API
+        official: true
+        url: https://developer.ticktick.com/
+        description: |
+          TickTick offers an OAuth-based Open API for tasks and projects. Suitable for scripted continuous sync once you register a developer app and complete the OAuth flow.
+        seed_prompt: |
+          Help me set up continuous sync from TickTick via the Open API. Walk me through registering a developer app, completing the OAuth flow, and writing a periodic pull of tasks/projects into imports/ticktick/.
