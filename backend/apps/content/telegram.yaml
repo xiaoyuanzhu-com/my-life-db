@@ -16,21 +16,8 @@ import:
           Telegram Desktop's built-in export (Settings → Advanced → Export Telegram data). Dumps personal chats, groups, channels, media, contacts, and settings as JSON or HTML. Desktop-only — the mobile apps don't expose export.
         seed_prompt: |
           Help me import my Telegram Desktop export. Walk me through launching the export (Settings → Advanced → Export Telegram data), choosing JSON vs HTML and media size limits, then dropping the result into imports/telegram/.
-      - id: telethon
-        name: Telethon
-        url: https://docs.telethon.dev/
-        description: |
-          Open-source Python client for Telegram's MTProto API. Useful for selective exports (specific chats, date ranges) or custom filtering. Requires creating a free API app at my.telegram.org for an api_id/api_hash.
-        seed_prompt: |
-          Help me set up Telethon to export specific Telegram chats. I have API credentials from my.telegram.org. Scaffold a Python script that authenticates once via SMS code and dumps selected chats as JSON into imports/telegram/.
 
   continuous_sync:
-    feasible: true
-    options:
-      - id: telethon-sync
-        name: Telethon
-        url: https://docs.telethon.dev/
-        description: |
-          The same Telethon client supports incremental polling and event handlers, so you can keep a long-running script that captures new messages from your account or specific chats over time.
-        seed_prompt: |
-          Help me set up a long-running Telethon script that continuously syncs new Telegram messages from my account into imports/telegram/. Walk me through using update handlers (or periodic polling with last-message-id state) and how to run it as a background service.
+    feasible: false
+    reason: |
+      Telegram has no turnkey end-user app for continuous personal-account sync to a local folder. Re-running Telegram Desktop's export periodically is the closest sanctioned path.
