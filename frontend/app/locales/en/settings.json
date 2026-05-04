@@ -55,7 +55,10 @@
       "webhookUrl": "Webhook URL",
       "webhookHint": "Replace `{filename}` with the destination path under your scope folder.",
       "webdavMountUrl": "Mount URL",
-      "webdavHint": "Mount this URL with your username and password in any WebDAV client (Finder, Files, Cyberduck, Obsidian Remotely Save)."
+      "webdavHint": "Mount this URL with your username and password in any WebDAV client (Finder, Files, Cyberduck, Obsidian Remotely Save).",
+      "s3Endpoint": "Endpoint URL",
+      "s3Bucket": "Bucket name",
+      "s3Hint": "Configure your S3 client (rclone, restic, Duplicati) with this endpoint, bucket, access key id, and secret. Use path-style addressing and any region (the server ignores it)."
     }
   },
   "toast": {

@@ -480,6 +480,32 @@ function SecretRevealDialog({
               </p>
             </>
           )}
+          {issued.protocol === "s3" && (
+            <>
+              <SecretField
+                label={t("integrations.reveal.s3Endpoint", "Endpoint URL")}
+                value={`${typeof window !== "undefined" ? window.location.origin : ""}/s3`}
+                copyKey="s3Endpoint"
+                copied={copied}
+                onCopy={copy}
+                mono
+              />
+              <SecretField
+                label={t("integrations.reveal.s3Bucket", "Bucket name")}
+                value={s3BucketNameForScope(issued.scope)}
+                copyKey="s3Bucket"
+                copied={copied}
+                onCopy={copy}
+                mono
+              />
+              <p className="text-xs text-muted-foreground -mt-1">
+                {t(
+                  "integrations.reveal.s3Hint",
+                  "Configure your S3 client (rclone, restic, Duplicati) with this endpoint, bucket, access key id, and secret. Use path-style addressing and any region (the server ignores it).",
+                )}
+              </p>
+            </>
+          )}
           {issued.publicId && (
             <SecretField
               label={
@@ -557,4 +583,17 @@ function SecretField({
       </div>
     </div>
   );
+}
+
+// s3BucketNameForScope mirrors the backend helper of the same name in
+// backend/api/s3.go. Turns a scope path like "files.write:/health/apple/raw"
+// into the decorative bucket name "health-apple-raw" the server will
+// expose via ListBuckets. Kept simple — split on the colon, strip
+// slashes, replace inner slashes with dashes; "/" maps to "root".
+function s3BucketNameForScope(scope: string): string {
+  const colonIdx = scope.indexOf(":");
+  const path = colonIdx >= 0 ? scope.slice(colonIdx + 1) : scope;
+  const trimmed = path.replace(/^\/+|\/+$/g, "");
+  if (trimmed === "") return "root";
+  return trimmed.replace(/\//g, "-");
 }

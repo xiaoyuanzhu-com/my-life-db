@@ -139,7 +139,7 @@ func (h *Handlers) WebhookIngest(c *gin.Context) {
 	// credential. The webhook design pins the credential to ONE folder;
 	// we use that folder as the path prefix and reject anything that
 	// path-cleans outside it.
-	scopePath := pickScopePath(scopes)
+	scopePath := integrations.PickScopePath(scopes)
 	if scopePath == "" {
 		log.Error().Str("credentialId", cred.ID).Msg("webhook: credential has no path scope")
 		RespondInternalError(c, "credential is misconfigured")
@@ -363,18 +363,5 @@ func joinSubpath(a, b string) string {
 		return a
 	}
 	return a + "/" + b
-}
-
-// pickScopePath returns the path of the first scope in the set that has
-// one (i.e. files.read / files.write). Phase 0's Store.Create rejects
-// credentials with !=1 scope, so this is effectively "the path of the
-// credential's only scope".
-func pickScopePath(ss connect.ScopeSet) string {
-	for _, s := range ss {
-		if connect.PathFamily(s.Family) {
-			return s.Path
-		}
-	}
-	return ""
 }
 

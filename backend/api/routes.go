@@ -84,6 +84,16 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 				r.Handle(m, "/webdav/*path", h.WebDAVHandler)
 			}
 		}
+		if settings.Integrations.Surfaces.S3 {
+			log.Info().Msg("integrations: s3 surface enabled, mounting /s3/*")
+			// One catch-all dispatcher for every S3 op. Path-style
+			// addressing (/s3/<bucket>/<key>) means the bucket lives
+			// in the URL alongside the key — gin's `*path` covers
+			// both. The dispatcher in api/s3.go does the real routing
+			// based on method + query parameters.
+			r.Any("/s3", h.S3Handler)
+			r.Any("/s3/*path", h.S3Handler)
+		}
 	}
 
 	// =========================================================================

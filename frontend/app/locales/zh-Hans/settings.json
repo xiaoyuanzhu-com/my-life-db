@@ -55,7 +55,10 @@
       "webhookUrl": "Webhook 地址",
       "webhookHint": "将 `{filename}` 替换为范围文件夹下的目标路径。",
       "webdavMountUrl": "挂载地址",
-      "webdavHint": "在任意 WebDAV 客户端（Finder、文件、Cyberduck、Obsidian Remotely Save）中使用此地址、用户名和密码进行挂载。"
+      "webdavHint": "在任意 WebDAV 客户端（Finder、文件、Cyberduck、Obsidian Remotely Save）中使用此地址、用户名和密码进行挂载。",
+      "s3Endpoint": "Endpoint 地址",
+      "s3Bucket": "存储桶名称",
+      "s3Hint": "在你的 S3 客户端（rclone、restic、Duplicati）中配置此 endpoint、存储桶、访问密钥 ID 和密钥。使用路径风格寻址；区域可任意填写（服务器会忽略）。"
     }
   },
   "toast": {

@@ -111,7 +111,7 @@ func (h *Handlers) WebDAVHandler(c *gin.Context) {
 		return
 	}
 
-	scopePath := pickScopePath(scopes)
+	scopePath := integrations.PickScopePath(scopes)
 	if scopePath == "" {
 		log.Error().Str("credentialId", cred.ID).Msg("webdav: credential has no path scope")
 		c.Status(http.StatusInternalServerError)
@@ -135,7 +135,7 @@ func (h *Handlers) WebDAVHandler(c *gin.Context) {
 	// Write-verb gate: a read-only credential cannot mutate.
 	credIDCopy := cred.ID
 	if scopeFamily == "files.write" {
-		if !scopesAllowFamily(scopes, "files.write") {
+		if !integrations.ScopesAllowFamily(scopes, "files.write") {
 			store.RecordAudit(credIDCopy, clientIP, method, suffix, http.StatusForbidden, "")
 			c.Status(http.StatusForbidden)
 			return
@@ -259,15 +259,3 @@ func webdavRequiredFamily(method string) string {
 	return "files.write"
 }
 
-// scopesAllowFamily reports whether any scope in the set has the given
-// family. Path containment is unnecessary here because the credential
-// is already chrooted into its scope folder via webdav.Dir; we only
-// need to check that the credential is allowed to mutate at all.
-func scopesAllowFamily(ss connect.ScopeSet, family string) bool {
-	for _, s := range ss {
-		if s.Family == family {
-			return true
-		}
-	}
-	return false
-}
