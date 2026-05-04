@@ -18,13 +18,6 @@ import:
           Help me import my Reddit archive. Walk me through requesting a data export at https://www.reddit.com/settings/data-request, waiting for the email, then unpacking the CSVs into imports/reddit/.
 
   continuous_sync:
-    feasible: true
-    options:
-      - id: rest-api
-        name: Reddit API
-        official: true
-        url: https://www.reddit.com/dev/api/
-        description: |
-          Reddit's official REST API exposes per-user listings (/user/<name>/submitted, /comments, /saved, /upvoted) with OAuth. Useful for incremental polling of your own activity, subject to Reddit's rate limits and current API access policies.
-        seed_prompt: |
-          Help me set up continuous sync of my Reddit activity using the official API. Walk me through registering an OAuth app, getting a refresh token for my account, and periodically pulling /user/<me>/submitted, /comments, and /saved into imports/reddit/.
+    feasible: false
+    reason: |
+      Reddit's official API exposes per-user listings but there is no turnkey end-user app that continuously syncs your own activity to a local folder. Re-running the official data export periodically is the closest sanctioned path.
