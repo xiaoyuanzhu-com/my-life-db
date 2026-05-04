@@ -9,6 +9,7 @@
   "tabs": {
     "general": "通用",
     "connectedApps": "连接的应用",
+    "integrations": "集成",
     "stats": "统计"
   },
   "actions": {
@@ -16,7 +17,41 @@
     "saving": "保存中…",
     "close": "关闭",
     "retry": "重试",
-    "cancel": "取消"
+    "cancel": "取消",
+    "done": "完成"
+  },
+  "integrations": {
+    "title": "集成",
+    "subtitle": "用于通过 webhook、WebDAV 或 S3 向 MyLifeDB 推送数据的长期凭据。每个凭据绑定到一个文件夹。",
+    "new": "新建",
+    "empty": "暂无凭据。点击「新建」来生成一个。",
+    "created": "创建于",
+    "lastUsed": "最后使用",
+    "revoke": "撤销",
+    "confirmRevoke": "撤销凭据「{{name}}」？任何使用它的应用将立即停止工作。",
+    "errors": {
+      "nameRequired": "需要填写名称。",
+      "scopeRequired": "需要填写文件夹路径。"
+    },
+    "create": {
+      "title": "新建凭据",
+      "description": "生成一个绑定到指定文件夹的凭据。原始密钥仅显示一次——请立即复制。",
+      "nameLabel": "名称",
+      "namePlaceholder": "Apple Health 快捷指令",
+      "protocolLabel": "协议",
+      "scopeLabel": "范围",
+      "scopeHint": "数据根目录下的文件夹。该凭据只能看到这棵子树。",
+      "submit": "创建"
+    },
+    "reveal": {
+      "title": "保存你的凭据",
+      "description": "这些值仅显示一次。请立即复制到你的应用——之后无法再获取。",
+      "username": "用户名",
+      "password": "密码",
+      "bearerToken": "Bearer 令牌",
+      "accessKeyId": "访问密钥 ID",
+      "secretAccessKey": "密钥访问密钥"
+    }
   },
   "toast": {
     "saveSuccess": "设置已保存！",

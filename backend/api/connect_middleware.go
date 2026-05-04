@@ -79,6 +79,24 @@ func (h *Handlers) ConnectAuthMiddleware() gin.HandlerFunc {
 			return
 		}
 		c.Set(connectTokenContextKey, row)
+		// Set the auth-source-agnostic principal so RequireConnectScope /
+		// CheckConnectScope can gate the request without knowing it came
+		// from Connect specifically.
+		clientID := row.ClientID
+		setRequestPrincipal(c, &RequestPrincipal{
+			Scopes:      row.Scopes,
+			PrincipalID: clientID,
+			AuditFn: func(method, urlPath string, status int, scopeFamily string) {
+				_ = h.server.Connect().AppendAudit(connect.AuditEntry{
+					ClientID: clientID,
+					Ts:       time.Now(),
+					Method:   method,
+					Path:     urlPath,
+					Status:   status,
+					Scope:    scopeFamily,
+				})
+			},
+		})
 		// Non-blocking touch + grant-touch.
 		store.TouchToken(row.Hash)
 		_ = store.TouchGrant(row.ClientID)
@@ -110,35 +128,39 @@ func (h *Handlers) RequireConnectScopeRoot(family string) gin.HandlerFunc {
 }
 
 // CheckConnectScope is the inline equivalent of RequireConnectScope*: it
-// verifies the request's Connect token (if any) has `family` scope for
-// `path`. Owner-session / no-Connect requests pass through (returns true).
+// verifies the request's principal (if any) has `family` scope for `path`.
+// Owner-session / unauthenticated requests pass through (returns true).
 //
 // On denial, it writes a 403 response and returns false; the handler should
-// return immediately. Audit row is appended either way.
+// return immediately. The principal's audit hook is invoked either way.
 //
 // Use this from handlers whose effective path can only be known after
 // parsing the request body (e.g. POST /folders body.parent, PATCH /files
 // move-variant body.parent, POST /extract body.path, POST /uploads/finalize
 // body.path).
+//
+// Despite the historical "Connect" name, this gate now applies to any
+// scoped request — both Connect bearer tokens and integration credentials
+// produce a principal that this check honors.
 func (h *Handlers) CheckConnectScope(c *gin.Context, family, path string) bool {
-	tok, ok := connectTokenFromContext(c)
+	p, ok := RequestPrincipalFromContext(c)
 	if !ok {
 		return true
 	}
-	return h.enforceScope(c, tok, family, path)
+	return h.enforceScope(c, p, family, path)
 }
 
-// requireConnectScopeFn is the shared core: extracts the token from context,
-// pulls the path via `pathFn`, and enforces.
+// requireConnectScopeFn is the shared core: extracts the principal from
+// context, pulls the path via `pathFn`, and enforces.
 func (h *Handlers) requireConnectScopeFn(family string, pathFn func(*gin.Context) string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		tok, ok := connectTokenFromContext(c)
+		p, ok := RequestPrincipalFromContext(c)
 		if !ok {
-			// No connect token in play — defer to other auth.
+			// No scoped principal in play — defer to other auth.
 			c.Next()
 			return
 		}
-		if !h.enforceScope(c, tok, family, pathFn(c)) {
+		if !h.enforceScope(c, p, family, pathFn(c)) {
 			c.Abort()
 			return
 		}
@@ -146,39 +168,34 @@ func (h *Handlers) requireConnectScopeFn(family string, pathFn func(*gin.Context
 	}
 }
 
-// enforceScope is the audit-emitting scope check. Returns true if the token's
-// scopes cover (family, path); false (and writes 403) otherwise.
-func (h *Handlers) enforceScope(c *gin.Context, tok *connect.Token, family, path string) bool {
+// enforceScope is the audit-emitting scope check. Returns true if the
+// principal's scopes cover (family, path); false (and writes 403) otherwise.
+func (h *Handlers) enforceScope(c *gin.Context, p *RequestPrincipal, family, path string) bool {
 	if path == "" {
 		path = "/"
 	} else if !strings.HasPrefix(path, "/") {
 		path = "/" + path
 	}
-	matched := tok.Scopes.Allows(family, path)
+	matched := p.Scopes.Allows(family, path)
 
-	// Audit every gated request, regardless of outcome.
-	go func(clientID, method, urlPath, scopeFamily string, allowed bool) {
+	// Audit every gated request, regardless of outcome — if the principal
+	// supplied a hook. Connect tokens supply one (writes connect_audit);
+	// integration credentials may or may not.
+	if p.AuditFn != nil {
 		status := http.StatusOK
-		if !allowed {
+		if !matched {
 			status = http.StatusForbidden
 		}
 		scopeLabel := ""
-		if allowed {
-			scopeLabel = scopeFamily
+		if matched {
+			scopeLabel = family
 		}
-		_ = h.server.Connect().AppendAudit(connect.AuditEntry{
-			ClientID: clientID,
-			Ts:       time.Now(),
-			Method:   method,
-			Path:     urlPath,
-			Status:   status,
-			Scope:    scopeLabel,
-		})
-	}(tok.ClientID, c.Request.Method, c.Request.URL.Path, family, matched)
+		go p.AuditFn(c.Request.Method, c.Request.URL.Path, status, scopeLabel)
+	}
 
 	if !matched {
 		RespondCoded(c, http.StatusForbidden, "FORBIDDEN",
-			"connect token does not have "+family+" scope for this path")
+			"credential does not have "+family+" scope for this path")
 		return false
 	}
 	return true
@@ -207,14 +224,15 @@ func IsConnectAuthenticated(c *gin.Context) bool {
 }
 
 // ConnectScopesFromContext returns the granted scopes of the current request's
-// Connect token, or nil for owner-session traffic. Useful for handlers that
-// want to filter their output by scope (e.g. SSE event filtering).
+// principal (Connect token or integration credential), or nil for
+// owner-session traffic. Useful for handlers that want to filter their
+// output by scope (e.g. SSE event filtering).
 func ConnectScopesFromContext(c *gin.Context) connect.ScopeSet {
-	tok, ok := connectTokenFromContext(c)
+	p, ok := RequestPrincipalFromContext(c)
 	if !ok {
 		return nil
 	}
-	return tok.Scopes
+	return p.Scopes
 }
 
 // pathFromParam reads the gin catch-all `path` route parameter. Used by

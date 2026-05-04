@@ -17,6 +17,7 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/agentrunner"
 	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/connect"
+	"github.com/xiaoyuanzhu-com/my-life-db/integrations"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/explore"
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
@@ -48,6 +49,7 @@ type Server struct {
 	agentRunner     *agentrunner.Runner
 	mcpTools        *mcptools.Cache
 	connectStore    *connect.Store
+	integrations    *integrations.Store
 
 	// Central MCP server. Backed by a single Registry into which every
 	// feature package (agentrunner, explore, ...) registers its tools at
@@ -518,6 +520,11 @@ http_headers = { "x-litellm-customer-id" = %q }
 	// + PKCE). Schema is owned by db/migration_026_connect.go (app DB).
 	s.connectStore = connect.NewStore(s.appDB.Conn())
 
+	// 7.6. Integration credentials — webhook/WebDAV/S3 long-lived secrets
+	// for non-OAuth ingestion surfaces. Schema is owned by
+	// db/migration_031_integration_credentials.go (app DB).
+	s.integrations = integrations.NewStore(s.appDB.Conn())
+
 	// 8. Wire service connections
 	s.connectServices()
 
@@ -825,6 +832,7 @@ func (s *Server) MCP() *mcppkg.Server                            { return s.mcpS
 func (s *Server) MCPTools() *mcptools.Cache                      { return s.mcpTools }
 func (s *Server) MCPToken() string                            { return s.mcpToken }
 func (s *Server) Connect() *connect.Store                        { return s.connectStore }
+func (s *Server) Integrations() *integrations.Store              { return s.integrations }
 func (s *Server) Cfg() *Config                               { return s.cfg }
 func (s *Server) Router() *gin.Engine                         { return s.router }
 func (s *Server) ShutdownContext() context.Context            { return s.shutdownCtx }

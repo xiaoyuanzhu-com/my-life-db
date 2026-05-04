@@ -200,7 +200,7 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		}
 
 		// ---------------------------------------------------------------------
-		// /api/connect/* — owner-side OAuth admin
+		// /api/connect/* — owner-side OAuth admin + non-OAuth credentials
 		// ---------------------------------------------------------------------
 		connect := api.Group("/connect")
 		{
@@ -208,6 +208,15 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 			connect.GET("/clients", h.ConnectListClients)
 			connect.DELETE("/clients/:id", h.ConnectRevokeClient)
 			connect.GET("/clients/:id/audit", h.ConnectClientAudit)
+
+			// Long-lived credentials for non-OAuth ingestion surfaces
+			// (HTTP webhook / WebDAV / S3-compatible). Lives in the
+			// /api/connect/* namespace because it is the same
+			// conceptual category — third-party access management —
+			// just with a different auth model.
+			connect.GET("/credentials", h.IntegrationListCredentials)
+			connect.POST("/credentials", h.IntegrationCreateCredential)
+			connect.DELETE("/credentials/:id", h.IntegrationRevokeCredential)
 		}
 
 		// ---------------------------------------------------------------------

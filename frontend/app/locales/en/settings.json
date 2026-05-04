@@ -9,6 +9,7 @@
   "tabs": {
     "general": "General",
     "connectedApps": "Connected Apps",
+    "integrations": "Integrations",
     "stats": "Stats"
   },
   "actions": {
@@ -16,7 +17,41 @@
     "saving": "Saving...",
     "close": "Close",
     "retry": "Retry",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "done": "Done"
+  },
+  "integrations": {
+    "title": "Integrations",
+    "subtitle": "Long-lived credentials for apps that push data to MyLifeDB over webhook, WebDAV, or S3. Each credential is bound to one folder.",
+    "new": "New",
+    "empty": "No credentials yet. Click \u201CNew\u201D to mint one.",
+    "created": "Created",
+    "lastUsed": "Last used",
+    "revoke": "Revoke",
+    "confirmRevoke": "Revoke credential \"{{name}}\"? Any apps using it will stop working immediately.",
+    "errors": {
+      "nameRequired": "Name is required.",
+      "scopeRequired": "Folder path is required."
+    },
+    "create": {
+      "title": "New credential",
+      "description": "Mint a credential bound to one folder. The raw secret is shown once \u2014 capture it now.",
+      "nameLabel": "Name",
+      "namePlaceholder": "Apple Health Shortcut",
+      "protocolLabel": "Protocol",
+      "scopeLabel": "Scope",
+      "scopeHint": "Folder under your data root. The credential will only see this subtree.",
+      "submit": "Create"
+    },
+    "reveal": {
+      "title": "Save your credentials",
+      "description": "These values are shown once. Copy them into your app now \u2014 you cannot retrieve them later.",
+      "username": "Username",
+      "password": "Password",
+      "bearerToken": "Bearer token",
+      "accessKeyId": "Access key id",
+      "secretAccessKey": "Secret access key"
+    }
   },
   "toast": {
     "saveSuccess": "Settings saved successfully!",
