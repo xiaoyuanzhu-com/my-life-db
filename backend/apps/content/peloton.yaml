@@ -3,5 +3,21 @@ name: "Peloton"
 category: health
 website: https://www.onepeloton.com
 description: "Connected bike / tread workout platform."
-import_prompt: |
-  Help me import my Peloton workout history. Walk me through downloading the CSV from members.onepeloton.com/preferences/workouts (if available) or using the API via a personal script, then place files under imports/peloton/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: workout-csv
+        name: Official
+        official: true
+        url: https://members.onepeloton.com/preferences/workouts
+        description: |
+          Peloton's first-party workout history download. Produces a CSV of all your past workouts (date, type, duration, instructor, output) from the member preferences page.
+        seed_prompt: |
+          Help me import my Peloton workout history. Walk me through downloading the workouts CSV from members.onepeloton.com/preferences/workouts and dropping it under imports/peloton/.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      Peloton has no documented public API and no turnkey continuous-sync product. Ongoing sync would require a custom unofficial integration against the member-site API.
