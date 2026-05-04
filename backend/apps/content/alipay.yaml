@@ -3,5 +3,20 @@ name: "Alipay"
 category: finance
 website: https://alipay.com
 description: "Dominant mobile payment + finance app in China."
-import_prompt: |
-  Help me export my Alipay yearly bill. On the Alipay mobile app: 我的 → 账单 → right menu → 开具交易流水证明 → CSV/Excel for a chosen range (yearly is typical). Email the CSV to myself and land it in imports/alipay/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: builtin
+        name: Official
+        official: true
+        description: |
+          Alipay's first-party transaction statement export. On the mobile app: 我的 → 账单 → top-right menu → 开具交易流水证明 → pick a date range (yearly is typical) and request a CSV/Excel sent to your email. Chinese-language interface.
+        seed_prompt: |
+          Help me import my Alipay yearly bill. Walk me through the on-phone steps (我的 → 账单 → 右上角 → 开具交易流水证明), pick a date range, get the CSV by email, then land the file in imports/alipay/ and run the alipay skill.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      Alipay does not offer a public personal-data API or scheduled-export feature for individual users. Continuous sync would require re-running the manual on-phone export each time.
