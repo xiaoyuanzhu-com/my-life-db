@@ -3,5 +3,29 @@ name: "Facebook"
 category: social
 website: https://facebook.com
 description: "Social network owned by Meta."
-import_prompt: |
-  Help me import my Facebook archive. Walk me through requesting a data export at https://accountscenter.facebook.com/info_and_permissions/dyi/ (JSON format), then unpack the zip into imports/facebook/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: builtin
+        name: Official
+        official: true
+        url: https://accountscenter.facebook.com/info_and_permissions/dyi/
+        description: |
+          Meta's "Download Your Information" tool in Accounts Center. Lets you export posts, messages, photos, profile info, and activity logs as JSON or HTML, delivered as a zip when ready.
+        seed_prompt: |
+          Help me import my Facebook archive. Walk me through requesting a data export at https://accountscenter.facebook.com/info_and_permissions/dyi/ (JSON format preferred), then unpacking the zip into imports/facebook/.
+      - id: transfer-your-information
+        name: Transfer Your Information
+        official: true
+        url: https://accountscenter.facebook.com/info_and_permissions/transfer/
+        description: |
+          Meta's data-portability tool that transfers specific categories (posts, photos, videos, notes) directly to a third-party destination such as Google Photos, Dropbox, or Koofr. Useful when you only need a subset and want it landing in cloud storage.
+        seed_prompt: |
+          Help me use Facebook's Transfer Your Information tool to send a category of my data (e.g. photos) to a cloud destination, then bring the resulting files into imports/facebook/.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      Facebook does not provide a sanctioned continuous-sync API for personal account data. The Graph API's user endpoints have been heavily restricted post-2018; "Download Your Information" is the only supported path and is one-off only.
