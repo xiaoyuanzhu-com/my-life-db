@@ -3,5 +3,14 @@ name: "Mi Fitness"
 category: health
 website: https://www.mi.com/global/mifitness
 description: "Data hub for Xiaomi Mi Bands, Amazfit watches, and Mijia scales."
-import_prompt: |
-  Help me import my Mi Fitness / Zepp Life data. Walk me through requesting an export from Mi Account (account.xiaomi.com) or pulling the Zepp Life backup, then unpack activity, heart-rate, and sleep data into imports/mi-fitness/.
+
+import:
+  one_off:
+    feasible: false
+    reason: |
+      Xiaomi / Mi Fitness has no clearly documented end-user export for fitness and wearable data. Account-level data requests via Mi Account exist but the contents and availability of fitness/wearable history vary by region and are not a reliable export path.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      Mi Fitness has no public API and no turnkey continuous-sync product. Ongoing sync would require a custom unofficial integration against the app's private API.
