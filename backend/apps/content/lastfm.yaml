@@ -3,5 +3,28 @@ name: "Last.fm"
 category: media
 website: https://last.fm
 description: "Music-scrobbling and listening-history service."
-import_prompt: |
-  Help me export my Last.fm scrobbles. Walk me through using the Last.fm API with my username (or a third-party tool like lastfm-to-csv) to pull every scrobble as CSV/JSON into imports/lastfm/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: lastfm-api
+        name: Official
+        official: true
+        url: https://www.last.fm/api
+        description: |
+          Last.fm's public Web API exposes a user's complete scrobble history via `user.getRecentTracks` paginated to all time. Requires only a free API key and your username.
+        seed_prompt: |
+          Help me pull my full Last.fm scrobble history via the Web API. Walk me through getting an API key, paginating user.getRecentTracks for my account, and saving the JSON pages under imports/lastfm/.
+
+  continuous_sync:
+    feasible: true
+    options:
+      - id: lastfm-api-incremental
+        name: Official
+        official: true
+        url: https://www.last.fm/api/show/user.getRecentTracks
+        description: |
+          The same Web API supports a `from` timestamp, so incremental sync is just "fetch scrobbles since the last run". Last.fm itself is the canonical scrobble source for many other services, so polling it on a schedule is the standard pattern.
+        seed_prompt: |
+          Help me set up an incremental Last.fm sync into imports/lastfm/. Walk me through scheduling a job that calls user.getRecentTracks with a `from` timestamp tracking the last successful run.
