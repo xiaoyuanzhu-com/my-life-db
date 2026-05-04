@@ -3,5 +3,21 @@ name: "Venmo"
 category: finance
 website: https://venmo.com
 description: "US peer-to-peer payments app (PayPal-owned)."
-import_prompt: |
-  Help me export my Venmo history. Walk me through venmo.com/account/statement → download CSV per month/year, and land them in imports/venmo/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: account-statement
+        name: Official
+        official: true
+        url: https://venmo.com/account/statement
+        description: |
+          Venmo's first-party transaction statement download. venmo.com/account/statement → pick a month or year → download CSV. Web-based; the mobile app does not expose the same export.
+        seed_prompt: |
+          Help me import my Venmo transaction history. Walk me through venmo.com/account/statement, downloading the CSV per month or year, and landing the files in imports/venmo/.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      Venmo does not offer a public personal-account API or scheduled export. Continuous sync would mean re-running the manual statement download each period.
