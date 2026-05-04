@@ -3,5 +3,21 @@ name: "Apple Music"
 category: media
 website: https://music.apple.com
 description: "Apple's music + streaming service."
-import_prompt: |
-  Help me import my Apple Music data. Walk me through Apple's privacy request at privacy.apple.com — request 'Apple Media Services information' — wait up to 7 days, then unpack the zip into imports/apple-music/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: privacy-request
+        name: Official
+        official: true
+        url: https://privacy.apple.com/
+        description: |
+          Apple's "Request a Copy of Your Data" flow. Request the "Apple Media Services information" dataset to receive listening history, library, and playlist data. Delivery typically takes up to 7 days.
+        seed_prompt: |
+          Help me import my Apple Music data via Apple's privacy portal. Walk me through requesting "Apple Media Services information" at privacy.apple.com, waiting for the email, then unpacking the zip into imports/apple-music/ and orienting me to the file layout.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      Apple does not provide a documented continuous-export mechanism for Apple Music listening history or library state. The privacy data request is a manual one-off flow, and the public MusicKit API requires per-user authorization and exposes only library/catalog state rather than a streaming-history feed.
