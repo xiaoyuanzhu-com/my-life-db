@@ -3,5 +3,21 @@ name: "TikTok"
 category: social
 website: https://tiktok.com
 description: "Short-form video platform."
-import_prompt: |
-  Help me import my TikTok archive. Walk me through requesting my data at https://www.tiktok.com/setting/download-your-data (pick JSON), wait for it to be ready, then unpack the zip into imports/tiktok/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: download-your-data
+        name: Official
+        official: true
+        url: https://www.tiktok.com/setting/download-your-data
+        description: |
+          TikTok's first-party data export. Request via Settings → Privacy → Download your data, choose JSON or TXT format, and download the zip when it's ready (usually within a few days). Includes profile, activity, video uploads, comments, likes, and DMs.
+        seed_prompt: |
+          Help me import my TikTok archive. Walk me through requesting my data at https://www.tiktok.com/setting/download-your-data (pick JSON), waiting for the email, downloading the zip, and unpacking it under imports/tiktok/.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      TikTok offers no consumer API for syncing personal activity. The data-download portal must be requested manually each time and has a multi-day fulfillment delay, so it cannot serve as a continuous-sync source.
