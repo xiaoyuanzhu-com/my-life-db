@@ -3,5 +3,26 @@ name: "AFFiNE"
 category: notes
 website: https://affine.pro
 description: "Open-source workspace combining docs, whiteboards, and databases."
-import_prompt: |
-  Help me export my AFFiNE workspace. Open the workspace → Settings → Workspace → Export → ZIP. Land into imports/affine/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: workspace-export
+        name: Official
+        official: true
+        description: |
+          AFFiNE's built-in workspace export bundles docs, whiteboards, and databases into a zip. Available from Workspace Settings.
+        seed_prompt: |
+          Help me export my AFFiNE workspace. Walk me through Workspace Settings → Export → ZIP, then unpack the archive under imports/affine/ and review what was exported.
+      - id: per-doc-markdown
+        name: Per-doc Markdown/HTML export
+        description: |
+          AFFiNE lets you export individual docs to Markdown, HTML, or PDF from the doc menu. Useful when you only want a subset rather than the whole workspace.
+        seed_prompt: |
+          Help me export selected AFFiNE docs as Markdown (or HTML). Walk me through the per-doc export menu and how to land the files into imports/affine/.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      AFFiNE has no built-in scheduled export to a local folder, and there is no widely-used third-party tool that pushes its content into a filesystem path. Continuous sync would require a custom integration.
