@@ -43,6 +43,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('native-recheck-auth', handler);
   }, []);
 
+  // Re-check auth when the tab becomes visible again. Without this, a
+  // long-lived tab whose access token expired stays stuck on the welcome
+  // screen until a hard reload — even though /api/system/oauth/refresh
+  // would succeed. The fetch goes through fetchWithRefresh, so a 401
+  // triggers a refresh-and-retry transparently.
+  useEffect(() => {
+    const handler = () => {
+      if (document.visibilityState === 'visible') checkAuth();
+    };
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, []);
+
   const login = () => {
     window.location.href = '/api/system/oauth/authorize';
   };
