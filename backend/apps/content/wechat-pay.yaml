@@ -3,5 +3,20 @@ name: "WeChat Pay"
 category: finance
 website: https://pay.weixin.qq.com
 description: "Tencent's mobile payment system built into WeChat."
-import_prompt: |
-  Help me export my WeChat Pay transaction history. On WeChat mobile: Me → Services → Wallet → Bill → top-right → 下载账单 → pick range, get the CSV by email. Land it in imports/wechat-pay/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: builtin
+        name: Official
+        official: true
+        description: |
+          WeChat Pay's first-party transaction history export. In the WeChat mobile app: 我 → 服务 → 钱包 → 账单 → top-right menu → 下载账单 → pick a date range; the CSV is sent to your email. Mobile-only, Chinese-language interface.
+        seed_prompt: |
+          Help me import my WeChat Pay transaction history. Walk me through the on-phone steps (我 → 服务 → 钱包 → 账单 → 右上角 → 下载账单), pick a date range, get the CSV by email, and land the file in imports/wechat-pay/.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      WeChat Pay's developer APIs are merchant-facing only. There is no public personal-account data API or scheduled-export feature, so continuous sync requires re-running the manual on-phone export.
