@@ -3,5 +3,43 @@ name: "OneDrive"
 category: cloud
 website: https://onedrive.live.com
 description: "Microsoft's cloud file storage."
-import_prompt: |
-  Help me import my OneDrive files. The simplest path is to install the OneDrive desktop app and symlink the local folder into imports/onedrive/; otherwise walk me through bulk selective download.
+icon: onedrive
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: web-download
+        name: Official
+        official: true
+        url: https://support.microsoft.com/office/download-files-and-folders-from-onedrive-or-sharepoint-5c7397b7-19c7-4893-84fe-d02e8fa5df05
+        description: |
+          OneDrive's web UI lets you select files/folders and download them as a zip. Fine for moderate accounts; large drives hit zip size limits and require chunking.
+        seed_prompt: |
+          Help me do a one-off import of my OneDrive via the web. Walk me through selecting folders on onedrive.live.com, downloading as zips (in chunks if needed), and unpacking under imports/onedrive/.
+      - id: rclone
+        name: rclone
+        url: https://rclone.org/onedrive/
+        description: |
+          Open-source CLI that talks to the Microsoft Graph API and can copy a whole OneDrive (personal or business) to local disk. Better than the web UI for large accounts because it streams files and resumes on failure.
+        seed_prompt: |
+          Help me do a one-off import of my OneDrive using rclone. Walk me through `rclone config` to authorize OneDrive (personal vs business), then `rclone copy onedrive: imports/onedrive/` with sensible flags for resuming.
+
+  continuous_sync:
+    feasible: true
+    options:
+      - id: desktop-client
+        name: Official
+        official: true
+        url: https://www.microsoft.com/microsoft-365/onedrive/download
+        description: |
+          The OneDrive desktop client (built into Windows, available for macOS) keeps a local folder in sync with the cloud. With Files On-Demand, you can choose which folders are always materialized locally.
+        seed_prompt: |
+          Help me set up continuous OneDrive sync for MyLifeDB. Walk me through installing the desktop app, signing in, choosing which folders to keep always-local (Files On-Demand), and either pointing imports/onedrive/ at the OneDrive folder or symlinking it.
+      - id: rclone
+        name: rclone
+        url: https://rclone.org/onedrive/
+        description: |
+          rclone can be scheduled to sync OneDrive to a local folder on a recurring basis. Useful when you don't want the desktop client running, or for headless Linux setups where Microsoft has no native client.
+        seed_prompt: |
+          Help me set up rclone to continuously sync OneDrive to imports/onedrive/. Walk me through `rclone config`, choosing between `rclone sync` and `rclone copy`, and scheduling it via cron or launchd.
