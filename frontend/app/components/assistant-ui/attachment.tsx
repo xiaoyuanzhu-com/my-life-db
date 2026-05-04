@@ -1,6 +1,6 @@
 "use client";
 
-import { PropsWithChildren, useEffect, useState, type FC } from "react";
+import { useEffect, useState, type FC } from "react";
 import { useTranslation } from "react-i18next";
 import { XIcon, PlusIcon, FileText } from "lucide-react";
 import {
@@ -16,13 +16,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "~/components/ui/tooltip";
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogTrigger,
-} from "~/components/ui/dialog";
 import { Avatar, AvatarImage, AvatarFallback } from "~/components/ui/avatar";
+import { ImageLightbox } from "~/components/ui/image-lightbox";
 import { TooltipIconButton } from "~/components/assistant-ui/tooltip-icon-button";
 import { cn } from "~/lib/utils";
 
@@ -59,52 +54,6 @@ const useAttachmentSrc = () => {
   );
 
   return useFileSrc(file) ?? src;
-};
-
-type AttachmentPreviewProps = {
-  src: string;
-};
-
-const AttachmentPreview: FC<AttachmentPreviewProps> = ({ src }) => {
-  const [isLoaded, setIsLoaded] = useState(false);
-  return (
-    <img
-      src={src}
-      alt="Image Preview"
-      className={cn(
-        "block h-auto max-h-[80vh] w-auto max-w-full object-contain",
-        isLoaded
-          ? "aui-attachment-preview-image-loaded"
-          : "aui-attachment-preview-image-loading invisible",
-      )}
-      onLoad={() => setIsLoaded(true)}
-    />
-  );
-};
-
-const AttachmentPreviewDialog: FC<PropsWithChildren> = ({ children }) => {
-  const src = useAttachmentSrc();
-
-  if (!src) return children;
-
-  return (
-    <Dialog>
-      <DialogTrigger
-        className="aui-attachment-preview-trigger cursor-pointer transition-colors hover:bg-accent/50"
-        asChild
-      >
-        {children}
-      </DialogTrigger>
-      <DialogContent className="aui-attachment-preview-dialog-content p-2 sm:max-w-3xl [&>button]:rounded-full [&>button]:bg-foreground/60 [&>button]:p-1 [&>button]:opacity-100 [&>button]:ring-0! [&_svg]:text-background [&>button]:hover:[&_svg]:text-destructive">
-        <DialogTitle className="aui-sr-only sr-only">
-          Image Attachment Preview
-        </DialogTitle>
-        <div className="aui-attachment-preview relative mx-auto flex max-h-[80dvh] w-full items-center justify-center overflow-hidden bg-background">
-          <AttachmentPreview src={src} />
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
 };
 
 const AttachmentThumb: FC = () => {
@@ -144,6 +93,10 @@ const AttachmentUI: FC = () => {
     }
   });
 
+  const src = useAttachmentSrc();
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const canPreview = isImage && !!src;
+
   return (
     <Tooltip>
       <AttachmentPrimitive.Root
@@ -152,22 +105,31 @@ const AttachmentUI: FC = () => {
           isImage && "aui-attachment-root-composer only:*:first:size-24",
         )}
       >
-        <AttachmentPreviewDialog>
-          <TooltipTrigger asChild>
-            <div
-              className="aui-attachment-tile size-14 cursor-pointer overflow-hidden rounded-[calc(var(--composer-radius)-var(--composer-padding))] border bg-muted transition-opacity hover:opacity-75"
-              role="button"
-              aria-label={`${typeLabel} attachment`}
-            >
-              <AttachmentThumb />
-            </div>
-          </TooltipTrigger>
-        </AttachmentPreviewDialog>
+        <TooltipTrigger asChild>
+          <div
+            className={cn(
+              "aui-attachment-tile size-14 overflow-hidden rounded-[calc(var(--composer-radius)-var(--composer-padding))] border bg-muted transition-opacity",
+              canPreview && "cursor-pointer hover:opacity-75",
+            )}
+            role={canPreview ? "button" : undefined}
+            aria-label={`${typeLabel} attachment`}
+            onClick={canPreview ? () => setLightboxOpen(true) : undefined}
+          >
+            <AttachmentThumb />
+          </div>
+        </TooltipTrigger>
         {isComposer && <AttachmentRemove />}
       </AttachmentPrimitive.Root>
       <TooltipContent side="top">
         <AttachmentPrimitive.Name />
       </TooltipContent>
+      {lightboxOpen && src && (
+        <ImageLightbox
+          images={[{ src, alt: "Image Attachment Preview" }]}
+          initialIndex={0}
+          onClose={() => setLightboxOpen(false)}
+        />
+      )}
     </Tooltip>
   );
 };
