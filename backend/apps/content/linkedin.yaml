@@ -3,5 +3,21 @@ name: "LinkedIn"
 category: social
 website: https://linkedin.com
 description: "Professional network."
-import_prompt: |
-  Help me import my LinkedIn archive. Walk me through requesting a data download at https://linkedin.com/mypreferences/d/download-my-data, wait for both parts to arrive by email, then unpack the CSVs into imports/linkedin/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: builtin
+        name: Official
+        official: true
+        url: https://linkedin.com/mypreferences/d/download-my-data
+        description: |
+          LinkedIn's first-party data export, in Settings → Data Privacy → Get a copy of your data. Delivered as CSV files (often in two batches: a fast one with profile/connections, and a slower complete archive with messages and activity).
+        seed_prompt: |
+          Help me import my LinkedIn archive. Walk me through requesting a data download at https://linkedin.com/mypreferences/d/download-my-data, waiting for both parts to arrive by email, then unpacking the CSVs into imports/linkedin/.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      LinkedIn does not offer a sanctioned continuous-sync path for personal account data. Their public APIs are limited to specific partner integrations and don't expose a member's full profile, connections, messages, or activity for ongoing personal export. Automated scraping of linkedin.com is forbidden by their Terms of Service.
