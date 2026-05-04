@@ -25,13 +25,6 @@ import:
           Help me export a single Notion page (and its subpages) via the page's ··· → Export → Markdown & CSV. Walk me through landing the resulting folder under imports/notion/.
 
   continuous_sync:
-    feasible: true
-    options:
-      - id: notion-api
-        name: Notion API integration
-        official: true
-        url: https://developers.notion.com/
-        description: |
-          Notion's official API exposes pages and databases. With an internal integration token and the pages shared to it, a script using @notionhq/client (or notion-client in Python) can pull content as Markdown on a schedule. Requires custom scripting — there is no official "sync to folder" tool.
-        seed_prompt: |
-          Help me set up a Notion API sync. Walk me through creating an internal integration at notion.so/my-integrations, sharing the pages I want, then scaffolding a script that pulls them as Markdown into imports/notion/ and can re-run incrementally.
+    feasible: false
+    reason: |
+      Notion's API exposes pages and databases but there is no off-the-shelf tool that mirrors a workspace into a local folder. Continuous sync would require a custom API integration.
