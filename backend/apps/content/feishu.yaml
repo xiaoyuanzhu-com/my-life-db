@@ -3,5 +3,34 @@ name: "Lark"
 category: chat
 website: https://feishu.cn
 description: "ByteDance's workplace collaboration suite (Feishu in China, Lark outside)."
-import_prompt: |
-  Help me export my Feishu/Lark data. Workspace admins can use the Admin Console → Data export; for personal use, walk me through per-chat export and docs download, landing everything in imports/feishu/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: admin-export
+        name: Official
+        official: true
+        url: https://www.feishu.cn/hc/zh-CN
+        description: |
+          Workspace admin-level data export via the Admin Console (管理后台). Produces archives of messages, docs, and other tenant data. Requires admin permissions on the tenant — not available to regular members.
+        seed_prompt: |
+          Help me import a Feishu/Lark admin-console data export. Walk me through where the archive lands, how to unpack it under imports/feishu/, and how to map the contained files into MyLifeDB.
+      - id: per-chat-and-docs
+        name: Per-chat / per-doc download
+        description: |
+          Manual personal-account fallback when admin export is not available. Save individual chat histories and download documents from Feishu Docs one by one via the web UI.
+        seed_prompt: |
+          Help me manually back up my Feishu/Lark data without admin access. Walk me through saving chat histories and downloading my documents from Feishu Docs into imports/feishu/.
+
+  continuous_sync:
+    feasible: true
+    options:
+      - id: open-api
+        name: Feishu Open Platform API
+        official: true
+        url: https://open.feishu.cn/document/home/index
+        description: |
+          Feishu's official OpenAPI exposes messaging, docs, calendar, contacts, and more. Requires creating a self-built or marketplace app with appropriate scopes. Suitable for scripted continuous sync.
+        seed_prompt: |
+          Help me set up continuous sync of my Feishu/Lark data via the Open Platform API. Walk me through creating a self-built app, granting the right scopes (messages, docs, calendar), and writing a job that pulls updates into imports/feishu/.
