@@ -3,5 +3,26 @@ name: "Microsoft OneNote"
 category: notes
 website: https://www.onenote.com
 description: "Microsoft's free-form digital notebook."
-import_prompt: |
-  Help me export OneNote notebooks. On Windows OneNote 2016: File → Export → Notebook (.onepkg). For other clients, walk me through page-by-page PDF export, then land everything in imports/onenote/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: onepkg-export
+        name: Official
+        official: true
+        description: |
+          OneNote 2016 on Windows can export an entire notebook as .onepkg (File → Export → Notebook). The file is OneNote's archive format — restorable into another OneNote install.
+        seed_prompt: |
+          Help me export my OneNote notebooks as .onepkg from OneNote 2016 on Windows (File → Export → Notebook). Walk me through doing it for each notebook and landing the files under imports/onenote/.
+      - id: pdf-export
+        name: Per-page PDF export
+        description: |
+          Most OneNote clients (Windows 10/11, Mac, web) only support exporting one page at a time as PDF. Tedious but works across all platforms when .onepkg isn't available.
+        seed_prompt: |
+          Help me export OneNote pages as PDF from whichever client I have. Walk me through the per-page File → Export → PDF flow and landing the PDFs under imports/onenote/, organized by section/notebook.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      OneNote has no scheduled local export. The Microsoft Graph API can read notebooks but no off-the-shelf tool currently mirrors a OneNote notebook into a local folder; continuous sync would require a custom integration.
