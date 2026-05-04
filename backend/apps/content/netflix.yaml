@@ -3,5 +3,28 @@ name: "Netflix"
 category: media
 website: https://netflix.com
 description: "Streaming video platform."
-import_prompt: |
-  Help me import my Netflix history. Walk me through netflix.com/account/getmyinfo → 'Download your personal information', wait a few days for the email, then unpack the zip into imports/netflix/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: get-my-info
+        name: Official
+        official: true
+        url: https://www.netflix.com/account/getmyinfo
+        description: |
+          Netflix's "Download your personal information" request. Delivers a zip with viewing activity, ratings, search history, profile data, and billing — typically arrives by email within a few days.
+        seed_prompt: |
+          Help me import my Netflix data export. Walk me through netflix.com/account/getmyinfo to request the archive, waiting for the email, then unpacking the zip into imports/netflix/ and orienting me to the files.
+      - id: viewing-activity
+        name: Viewing Activity
+        url: https://www.netflix.com/viewingactivity
+        description: |
+          Per-profile viewing history with a "Download all" link at the bottom that returns a CSV. Faster than the full account export when you only need watch history.
+        seed_prompt: |
+          Help me import my Netflix viewing history CSV. Walk me through netflix.com/viewingactivity → "Download all" for each profile, then placing the CSVs under imports/netflix/.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      Netflix offers no public API or scheduled export for personal account data. Both the full data request and the viewing-activity CSV must be triggered manually.
