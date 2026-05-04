@@ -230,10 +230,22 @@ func (d *DB) LoadUserSettings() (*models.UserSettings, error) {
 		storage.BackupPath = backupPath
 	}
 
+	// Build integrations — per-surface toggles for non-OAuth ingestion
+	// (HTTP webhook, WebDAV, S3-compatible). All default false; when off
+	// the corresponding surface route is not mounted at server startup.
+	integrations := models.Integrations{
+		Surfaces: models.IntegrationSurfaces{
+			Webhook: pickFromMap("integrations_surfaces_webhook", "", "false") == "true",
+			WebDAV:  pickFromMap("integrations_surfaces_webdav", "", "false") == "true",
+			S3:      pickFromMap("integrations_surfaces_s3", "", "false") == "true",
+		},
+	}
+
 	return &models.UserSettings{
-		Preferences: preferences,
-		Extraction:  extraction,
-		Storage:     storage,
+		Preferences:  preferences,
+		Extraction:   extraction,
+		Storage:      storage,
+		Integrations: integrations,
 	}, nil
 }
 
@@ -275,6 +287,12 @@ func (d *DB) SaveUserSettings(ctx context.Context, settings *models.UserSettings
 	}
 	updates["storage_auto_backup"] = strconv.FormatBool(settings.Storage.AutoBackup)
 	updates["storage_max_file_size"] = strconv.Itoa(settings.Storage.MaxFileSize)
+
+	// Integrations — per-surface toggles. Stored as flat string-encoded
+	// booleans like the rest of the settings table.
+	updates["integrations_surfaces_webhook"] = strconv.FormatBool(settings.Integrations.Surfaces.Webhook)
+	updates["integrations_surfaces_webdav"] = strconv.FormatBool(settings.Integrations.Surfaces.WebDAV)
+	updates["integrations_surfaces_s3"] = strconv.FormatBool(settings.Integrations.Surfaces.S3)
 
 	return d.UpdateSettings(ctx, updates)
 }

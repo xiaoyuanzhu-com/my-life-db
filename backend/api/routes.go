@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
 // SetupRoutes configures all API routes with handlers.
@@ -54,6 +56,22 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 	r.GET("/raw/*path", connectAuth, auth, h.RequireConnectScope("files.read"), h.ServeRawFile)
 	r.PUT("/raw/*path", connectAuth, auth, h.RequireConnectScope("files.write"), h.SaveRawFile)
 	r.GET("/sqlar/*path", auth, h.ServeSqlarFile)
+
+	// Integration surfaces — non-OAuth ingestion endpoints. Each is gated
+	// by its own settings toggle so users who don't need a surface don't
+	// expose it (off → no route registered → 404 by default).
+	//
+	// In v1 the toggle is read once at startup; flipping it requires a
+	// restart. Phase 4 will swap the router on toggle change for live
+	// reconfiguration.
+	settings, err := h.server.AppDB().LoadUserSettings()
+	if err != nil {
+		log.Error().Err(err).Msg("routes: failed to load user settings; integration surfaces stay off")
+	} else if settings.Integrations.Surfaces.Webhook {
+		log.Info().Msg("integrations: webhook surface enabled, mounting /webhook/*")
+		r.POST("/webhook/:credentialId/*subpath", h.WebhookIngest)
+		r.PUT("/webhook/:credentialId/*subpath", h.WebhookIngest)
+	}
 
 	// =========================================================================
 	// /api/* — public group (no auth required)

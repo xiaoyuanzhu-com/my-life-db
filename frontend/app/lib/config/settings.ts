@@ -63,6 +63,18 @@ export interface UserSettings {
     autoBackup: boolean;
     maxFileSize: number; // MB
   };
+
+  // Integration surfaces — per-protocol toggles for non-OAuth ingestion
+  // (HTTP webhook, WebDAV, S3-compatible). When a surface is off, the
+  // corresponding route is not registered. Toggling requires a server
+  // restart in v1.
+  integrations: {
+    surfaces: {
+      webhook: boolean;
+      webdav: boolean;
+      s3: boolean;
+    };
+  };
 }
 
 // Default settings
@@ -119,6 +131,13 @@ export const DEFAULT_SETTINGS: UserSettings = {
     dataPath: './data',
     autoBackup: false,
     maxFileSize: 50, // 50 MB
+  },
+  integrations: {
+    surfaces: {
+      webhook: false,
+      webdav: false,
+      s3: false,
+    },
   },
 };
 

@@ -50,6 +50,7 @@ import {
   Check,
 } from "lucide-react";
 import { api } from "~/lib/api";
+import { useSettingsContext } from "~/components/settings/settings-context";
 
 type Protocol = "webhook" | "webdav" | "s3";
 
@@ -236,12 +237,24 @@ function CreateCredentialDialog({
   onCreated: (c: IssuedCredential) => void;
 }) {
   const { t } = useTranslation("settings");
+  const { settings } = useSettingsContext();
   const [name, setName] = useState("");
   const [protocol, setProtocol] = useState<Protocol>("webhook");
   const [scopeFamily, setScopeFamily] = useState<"files.write" | "files.read">("files.write");
   const [scopePath, setScopePath] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // If the chosen protocol's surface is currently disabled in Settings →
+  // General, the credential will mint successfully but the surface route
+  // won't be mounted until the toggle is flipped + server restarted. Warn
+  // inline so the owner is not surprised by a 404 from the freshly-issued URL.
+  const surfaces = settings?.integrations?.surfaces;
+  const protocolDisabled =
+    !!surfaces &&
+    ((protocol === "webhook" && !surfaces.webhook) ||
+      (protocol === "webdav" && !surfaces.webdav) ||
+      (protocol === "s3" && !surfaces.s3));
 
   // Reset form when reopening.
   useEffect(() => {
@@ -318,6 +331,14 @@ function CreateCredentialDialog({
             <label className="text-sm font-medium">
               {t("integrations.create.protocolLabel", "Protocol")}
             </label>
+            {protocolDisabled && (
+              <div className="text-xs rounded-md bg-muted/60 text-muted-foreground p-2">
+                {t(
+                  "integrations.create.surfaceDisabled",
+                  "This protocol is currently disabled in Settings \u2192 General. The credential will mint, but the surface route is not mounted until you enable the toggle and restart the server.",
+                )}
+              </div>
+            )}
             <Select value={protocol} onValueChange={(v) => setProtocol(v as Protocol)}>
               <SelectTrigger>
                 <SelectValue />
@@ -423,6 +444,24 @@ function SecretRevealDialog({
         </DialogHeader>
 
         <div className="space-y-3 py-2">
+          {issued.protocol === "webhook" && (
+            <>
+              <SecretField
+                label={t("integrations.reveal.webhookUrl", "Webhook URL")}
+                value={`${typeof window !== "undefined" ? window.location.origin : ""}/webhook/${issued.id}/{filename}`}
+                copyKey="webhookUrl"
+                copied={copied}
+                onCopy={copy}
+                mono
+              />
+              <p className="text-xs text-muted-foreground -mt-1">
+                {t(
+                  "integrations.reveal.webhookHint",
+                  "Replace `{filename}` with the destination path under your scope folder.",
+                )}
+              </p>
+            </>
+          )}
           {issued.publicId && (
             <SecretField
               label={

@@ -182,6 +182,21 @@ func (s *Store) TouchLastUsed(id, ip string) {
 	)
 }
 
+// RecordAudit appends a row to integration_audit for one gated request.
+// Best-effort; failure logs nowhere and does not propagate — the goroutine
+// that calls this from RequestPrincipal.AuditFn already runs detached.
+//
+// `scopeFamily` is the family that satisfied the request on success (e.g.
+// "files.write") or "" on denial — same convention as connect_audit's scope
+// column.
+func (s *Store) RecordAudit(credentialID, ip, method, path string, status int, scopeFamily string) {
+	_, _ = s.db.Exec(
+		`INSERT INTO integration_audit (credential_id, timestamp, ip, method, path, status, scope_family)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		credentialID, time.Now().Unix(), nullIfEmpty(ip), method, path, status, scopeFamily,
+	)
+}
+
 // Revoke soft-deletes a credential by stamping revoked_at. After this, all
 // lookups for the credential return nil and incoming requests using its
 // secret are rejected.

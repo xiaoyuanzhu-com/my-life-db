@@ -4,6 +4,7 @@ import { useFormatter } from "~/lib/i18n/use-formatter";
 import { useParams, Link } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
+import { Switch } from "~/components/ui/switch";
 import { Sparkles, Save, Check, Loader2 } from "lucide-react";
 import { useSettingsContext } from "~/components/settings/settings-context";
 import { UiLanguageSelector } from "~/components/settings/ui-language-selector";
@@ -92,8 +93,26 @@ function SettingsContent() {
 
   const handleSave = () => {
     if (activeTab === "general") {
-      saveSettings({ preferences: settings.preferences });
+      saveSettings({
+        preferences: settings.preferences,
+        integrations: settings.integrations,
+      });
     }
+  };
+
+  // Default surfaces struct so toggling against partially-loaded settings
+  // doesn't crash when the field is missing on older instances.
+  const surfaces = settings.integrations?.surfaces ?? { webhook: false, webdav: false, s3: false };
+  const updateSurface = (key: "webhook" | "webdav" | "s3", value: boolean) => {
+    setSettings({
+      ...settings,
+      integrations: {
+        surfaces: {
+          ...surfaces,
+          [key]: value,
+        },
+      },
+    });
   };
 
   const tabs = [
@@ -180,6 +199,55 @@ function SettingsContent() {
                 </select>
                 <p className="text-xs text-muted-foreground">
                   {t('general.logLevel.hint', 'A browser refresh or server restart may be required to apply.')}
+                </p>
+              </div>
+
+              <div className="space-y-3 pt-2">
+                <div>
+                  <h3 className="text-sm font-medium">
+                    {t('general.surfaces.title', 'Integration surfaces')}
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {t(
+                      'general.surfaces.subtitle',
+                      'Enable the protocols apps can use to push data into MyLifeDB.',
+                    )}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <label className="flex items-center justify-between gap-4 py-1">
+                    <span className="text-sm">
+                      {t('general.surfaces.webhook', 'HTTP webhook')}
+                    </span>
+                    <Switch
+                      checked={surfaces.webhook}
+                      onCheckedChange={(v) => updateSurface('webhook', v)}
+                    />
+                  </label>
+                  <label className="flex items-center justify-between gap-4 py-1">
+                    <span className="text-sm">
+                      {t('general.surfaces.webdav', 'WebDAV')}
+                    </span>
+                    <Switch
+                      checked={surfaces.webdav}
+                      onCheckedChange={(v) => updateSurface('webdav', v)}
+                    />
+                  </label>
+                  <label className="flex items-center justify-between gap-4 py-1">
+                    <span className="text-sm">
+                      {t('general.surfaces.s3', 'S3-compatible')}
+                    </span>
+                    <Switch
+                      checked={surfaces.s3}
+                      onCheckedChange={(v) => updateSurface('s3', v)}
+                    />
+                  </label>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {t(
+                    'general.surfaces.restartHint',
+                    'Toggling a surface requires a server restart to take effect.',
+                  )}
                 </p>
               </div>
             </CardContent>

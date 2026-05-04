@@ -41,6 +41,7 @@
       "protocolLabel": "协议",
       "scopeLabel": "范围",
       "scopeHint": "数据根目录下的文件夹。该凭据只能看到这棵子树。",
+      "surfaceDisabled": "此协议当前在「设置 → 通用」中已禁用。凭据可以生成，但只有在打开开关并重启服务后，对应的接入路由才会挂载。",
       "submit": "创建"
     },
     "reveal": {
@@ -50,7 +51,9 @@
       "password": "密码",
       "bearerToken": "Bearer 令牌",
       "accessKeyId": "访问密钥 ID",
-      "secretAccessKey": "密钥访问密钥"
+      "secretAccessKey": "密钥访问密钥",
+      "webhookUrl": "Webhook 地址",
+      "webhookHint": "将 `{filename}` 替换为范围文件夹下的目标路径。"
     }
   },
   "toast": {
@@ -68,6 +71,14 @@
       "label": "界面语言",
       "hint": "MyLifeDB 界面使用的语言。留空则跟随浏览器/系统。",
       "systemDefault": "跟随系统"
+    },
+    "surfaces": {
+      "title": "集成接入方式",
+      "subtitle": "启用可供应用向 MyLifeDB 推送数据的协议。",
+      "webhook": "HTTP Webhook",
+      "webdav": "WebDAV",
+      "s3": "兼容 S3",
+      "restartHint": "切换接入方式需要重启服务才能生效。"
     }
   },
   "stats": {

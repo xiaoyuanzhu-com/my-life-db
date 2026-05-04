@@ -41,6 +41,7 @@
       "protocolLabel": "Protocol",
       "scopeLabel": "Scope",
       "scopeHint": "Folder under your data root. The credential will only see this subtree.",
+      "surfaceDisabled": "This protocol is currently disabled in Settings \u2192 General. The credential will mint, but the surface route is not mounted until you enable the toggle and restart the server.",
       "submit": "Create"
     },
     "reveal": {
@@ -50,7 +51,9 @@
       "password": "Password",
       "bearerToken": "Bearer token",
       "accessKeyId": "Access key id",
-      "secretAccessKey": "Secret access key"
+      "secretAccessKey": "Secret access key",
+      "webhookUrl": "Webhook URL",
+      "webhookHint": "Replace `{filename}` with the destination path under your scope folder."
     }
   },
   "toast": {
@@ -68,6 +71,14 @@
       "label": "Display language",
       "hint": "The language used for MyLifeDB's interface. Empty follows your browser/system.",
       "systemDefault": "System default"
+    },
+    "surfaces": {
+      "title": "Integration surfaces",
+      "subtitle": "Enable the protocols apps can use to push data into MyLifeDB.",
+      "webhook": "HTTP webhook",
+      "webdav": "WebDAV",
+      "s3": "S3-compatible",
+      "restartHint": "Toggling a surface requires a server restart to take effect."
     }
   },
   "stats": {
