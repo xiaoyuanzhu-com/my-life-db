@@ -94,24 +94,19 @@ export const nativeBridge = {
  *
  * Returns an empty array on cancel or when not running in the native iOS shell.
  *
- * NOTE: Uses fetch('nativebridge://...') directly instead of postNative() so
- * we can read the JSON response body. postNative is fire-and-forget.
+ * Uses WKScriptMessageHandlerWithReply (window.webkit.messageHandlers.native.postMessage)
+ * because custom URL schemes like nativebridge:// are blocked as mixed content
+ * when the page is served over HTTPS.
  */
 export async function nativePickAndUploadFiles(
   storageId?: string | null,
 ): Promise<Attachment[]> {
   if (!isNativeApp() || nativePlatform() !== "ios") return [];
   try {
-    const res = await fetch("nativebridge://message", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "pickAndUploadFiles",
-        storageId: storageId ?? null,
-      }),
-    });
-    if (!res.ok) return [];
-    const data = (await res.json()) as { attachments?: Attachment[] };
+    const data = (await (window as any).webkit?.messageHandlers?.native?.postMessage({
+      action: "pickAndUploadFiles",
+      storageId: storageId ?? null,
+    })) as { attachments?: Attachment[] } | undefined;
     return Array.isArray(data?.attachments) ? data.attachments : [];
   } catch (e) {
     console.warn("[native-bridge] pickAndUploadFiles failed:", e);

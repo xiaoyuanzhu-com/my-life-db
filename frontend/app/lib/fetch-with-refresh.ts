@@ -58,28 +58,24 @@ export async function refreshAccessToken(): Promise<boolean> {
 }
 
 /**
- * Delegate token refresh to the native app via the bridge URL scheme.
- * The native side awaits AuthManager.refreshAccessToken(), pushes fresh
- * cookies into the WebView, and returns { success: true/false }.
+ * Delegate token refresh to the native app via the WKScriptMessageHandlerWithReply
+ * named "native". The native side awaits AuthManager.refreshAccessToken(),
+ * pushes fresh cookies into the WebView, and resolves the Promise with
+ * { success: true/false, accessToken?: string }.
  */
 async function refreshViaNativeBridge(): Promise<boolean> {
   try {
-    const response = await fetch('nativebridge://message', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'requestTokenRefresh' }),
+    const result = await (window as any).webkit?.messageHandlers?.native?.postMessage({
+      action: 'requestTokenRefresh',
     });
 
-    if (response.ok) {
-      const result = await response.json();
-      if (result.success) {
-        // Update the access token for subsequent Authorization header injection
-        if (result.accessToken) {
-          (window as any).__nativeAccessToken = result.accessToken;
-        }
-        console.log('✅ Token refreshed via native bridge');
-        return true;
+    if (result?.success) {
+      // Update the access token for subsequent Authorization header injection
+      if (result.accessToken) {
+        (window as any).__nativeAccessToken = result.accessToken;
       }
+      console.log('✅ Token refreshed via native bridge');
+      return true;
     }
 
     console.error('❌ Native bridge token refresh failed');
