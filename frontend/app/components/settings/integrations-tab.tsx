@@ -462,6 +462,24 @@ function SecretRevealDialog({
               </p>
             </>
           )}
+          {issued.protocol === "webdav" && (
+            <>
+              <SecretField
+                label={t("integrations.reveal.webdavMountUrl", "Mount URL")}
+                value={`${typeof window !== "undefined" ? window.location.origin : ""}/webdav/`}
+                copyKey="webdavMountUrl"
+                copied={copied}
+                onCopy={copy}
+                mono
+              />
+              <p className="text-xs text-muted-foreground -mt-1">
+                {t(
+                  "integrations.reveal.webdavHint",
+                  "Mount this URL with your username and password in any WebDAV client (Finder, Files, Cyberduck, Obsidian Remotely Save).",
+                )}
+              </p>
+            </>
+          )}
           {issued.publicId && (
             <SecretField
               label={

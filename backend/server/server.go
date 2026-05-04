@@ -14,6 +14,8 @@ import (
 
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
+	"golang.org/x/net/webdav"
+
 	"github.com/xiaoyuanzhu-com/my-life-db/agentrunner"
 	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/connect"
@@ -50,6 +52,12 @@ type Server struct {
 	mcpTools        *mcptools.Cache
 	connectStore    *connect.Store
 	integrations    *integrations.Store
+
+	// WebDAV lock system. Process-wide, in-memory; locks are URL-keyed
+	// (not credential-keyed), so a single shared instance is correct
+	// across all WebDAV credentials. Initialized lazily on first
+	// LockSystem() access so non-WebDAV deployments don't pay for it.
+	webdavLocks     webdav.LockSystem
 
 	// Central MCP server. Backed by a single Registry into which every
 	// feature package (agentrunner, explore, ...) registers its tools at
@@ -833,6 +841,16 @@ func (s *Server) MCPTools() *mcptools.Cache                      { return s.mcpT
 func (s *Server) MCPToken() string                            { return s.mcpToken }
 func (s *Server) Connect() *connect.Store                        { return s.connectStore }
 func (s *Server) Integrations() *integrations.Store              { return s.integrations }
+
+// WebDAVLocks returns the process-wide WebDAV lock system, lazily creating
+// the in-memory store on first call. Locks are URL-keyed and not durable
+// across restarts — acceptable for personal-server use, per design doc.
+func (s *Server) WebDAVLocks() webdav.LockSystem {
+	if s.webdavLocks == nil {
+		s.webdavLocks = webdav.NewMemLS()
+	}
+	return s.webdavLocks
+}
 func (s *Server) Cfg() *Config                               { return s.cfg }
 func (s *Server) Router() *gin.Engine                         { return s.router }
 func (s *Server) ShutdownContext() context.Context            { return s.shutdownCtx }

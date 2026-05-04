@@ -67,10 +67,23 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 	settings, err := h.server.AppDB().LoadUserSettings()
 	if err != nil {
 		log.Error().Err(err).Msg("routes: failed to load user settings; integration surfaces stay off")
-	} else if settings.Integrations.Surfaces.Webhook {
-		log.Info().Msg("integrations: webhook surface enabled, mounting /webhook/*")
-		r.POST("/webhook/:credentialId/*subpath", h.WebhookIngest)
-		r.PUT("/webhook/:credentialId/*subpath", h.WebhookIngest)
+	} else {
+		if settings.Integrations.Surfaces.Webhook {
+			log.Info().Msg("integrations: webhook surface enabled, mounting /webhook/*")
+			r.POST("/webhook/:credentialId/*subpath", h.WebhookIngest)
+			r.PUT("/webhook/:credentialId/*subpath", h.WebhookIngest)
+		}
+		if settings.Integrations.Surfaces.WebDAV {
+			log.Info().Msg("integrations: webdav surface enabled, mounting /webdav/*")
+			// One handler for every WebDAV verb. gin's Any() covers
+			// the standard methods; the WebDAV-specific verbs
+			// (PROPFIND, PROPPATCH, MKCOL, COPY, MOVE, LOCK, UNLOCK)
+			// must be registered explicitly via Handle().
+			r.Any("/webdav/*path", h.WebDAVHandler)
+			for _, m := range []string{"PROPFIND", "PROPPATCH", "MKCOL", "COPY", "MOVE", "LOCK", "UNLOCK"} {
+				r.Handle(m, "/webdav/*path", h.WebDAVHandler)
+			}
+		}
 	}
 
 	// =========================================================================

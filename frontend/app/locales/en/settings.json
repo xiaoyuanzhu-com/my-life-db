@@ -53,7 +53,9 @@
       "accessKeyId": "Access key id",
       "secretAccessKey": "Secret access key",
       "webhookUrl": "Webhook URL",
-      "webhookHint": "Replace `{filename}` with the destination path under your scope folder."
+      "webhookHint": "Replace `{filename}` with the destination path under your scope folder.",
+      "webdavMountUrl": "Mount URL",
+      "webdavHint": "Mount this URL with your username and password in any WebDAV client (Finder, Files, Cyberduck, Obsidian Remotely Save)."
     }
   },
   "toast": {

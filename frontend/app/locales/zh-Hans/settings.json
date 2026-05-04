@@ -53,7 +53,9 @@
       "accessKeyId": "访问密钥 ID",
       "secretAccessKey": "密钥访问密钥",
       "webhookUrl": "Webhook 地址",
-      "webhookHint": "将 `{filename}` 替换为范围文件夹下的目标路径。"
+      "webhookHint": "将 `{filename}` 替换为范围文件夹下的目标路径。",
+      "webdavMountUrl": "挂载地址",
+      "webdavHint": "在任意 WebDAV 客户端（Finder、文件、Cyberduck、Obsidian Remotely Save）中使用此地址、用户名和密码进行挂载。"
     }
   },
   "toast": {
