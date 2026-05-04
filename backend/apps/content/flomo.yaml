@@ -3,5 +3,20 @@ name: "Flomo"
 category: notes
 website: https://flomoapp.com
 description: "Lightweight micro-note app inspired by Zettelkasten."
-import_prompt: |
-  Help me export my Flomo notes. Web → 账号设置 → 备份与恢复 → 导出 (Markdown / HTML). Land into imports/flomo/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: backup-export
+        name: Official
+        official: true
+        description: |
+          Flomo's first-party export from the web app: 账号设置 → 备份与恢复 → 导出. Produces a zip with notes as Markdown or HTML plus attached images.
+        seed_prompt: |
+          Help me export my Flomo notes via the web app (账号设置 → 备份与恢复 → 导出). Walk me through choosing Markdown vs HTML and unpacking the archive under imports/flomo/.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      Flomo has no scheduled export to a local folder and no public API for pulling notes. Continuous sync to MyLifeDB would require a custom integration.
