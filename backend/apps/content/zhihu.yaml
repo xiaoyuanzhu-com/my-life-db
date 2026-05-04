@@ -3,5 +3,19 @@ name: "Zhihu"
 category: social
 website: https://zhihu.com
 description: "Chinese Q&A community (like Quora)."
-import_prompt: |
-  Help me export my Zhihu answers, articles, and saved collections. Zhihu has limited export; walk me through using the mobile API or scraping my profile with my login cookies, saving posts and metadata into imports/zhihu/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: profile-scrape
+        name: Profile scrape
+        description: |
+          Zhihu does not provide a general personal-data export. The realistic path is to scrape your own profile (answers, articles, and saved collections) on zhihu.com using your logged-in cookies, paginating through each tab and saving the content as JSON.
+        seed_prompt: |
+          Help me scrape my own Zhihu profile. Walk me through grabbing my login cookies, paginating my answers, articles, and saved collections (收藏夹), and saving each entry as JSON (with body text and any images) under imports/zhihu/.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      Zhihu has no public personal-data API and no third-party sync tool with stable access. Re-running an authenticated scrape on a schedule is brittle and at the mercy of Zhihu's anti-scrape measures, not a real continuous-sync path.
