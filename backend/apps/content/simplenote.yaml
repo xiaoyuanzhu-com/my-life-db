@@ -3,5 +3,20 @@ name: "Simplenote"
 category: notes
 website: https://simplenote.com
 description: "Plain-text notes that sync across devices."
-import_prompt: |
-  Help me export Simplenote. Web app → Settings → Tools → Export Notes — get a ZIP of .txt files. Drop into imports/simplenote/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: export-notes
+        name: Official
+        official: true
+        description: |
+          Simplenote's first-party export from the web app: Settings → Tools → Export Notes. Produces a ZIP of plain .txt files (one per note) plus a JSON file with metadata.
+        seed_prompt: |
+          Help me export my Simplenote notes via the web app (Settings → Tools → Export Notes). Walk me through unpacking the ZIP under imports/simplenote/ and reviewing the JSON metadata.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      Simplenote has no scheduled local export and the public Simperium API is sparsely documented. Continuous sync to MyLifeDB would require a custom integration.
