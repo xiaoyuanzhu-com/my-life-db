@@ -3,5 +3,21 @@ name: "Grok"
 category: chat
 website: https://grok.com
 description: "xAI's conversational AI, integrated with X."
-import_prompt: |
-  Help me export my Grok conversations. Walk me through X's data export (Settings → Your account → Download an archive) which now includes Grok chats, and unpack into imports/grok/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: x-archive
+        name: Official
+        official: true
+        url: https://x.com/settings/download_your_data
+        description: |
+          xAI ties Grok to your X account. The X data archive (Settings → Your account → Download an archive of your data) is the documented path for retrieving account data; users have reported Grok-related content in recent archives, but coverage of full Grok chat history is not formally guaranteed by xAI.
+        seed_prompt: |
+          Help me export my Grok conversations. Walk me through X's data export at x.com/settings/download_your_data, wait for the archive, then unpack it under imports/grok/ and check what Grok-related data is included.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      xAI does not offer a continuous export or conversation-streaming API for Grok chat history. Ongoing sync would require a custom integration that does not currently exist.
