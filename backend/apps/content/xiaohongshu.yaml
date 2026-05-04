@@ -3,5 +3,19 @@ name: "Xiaohongshu"
 category: social
 website: https://www.xiaohongshu.com
 description: "Chinese lifestyle content + social shopping network (a.k.a. RED / REDnote)."
-import_prompt: |
-  Help me import my Xiaohongshu (小红书) posts and saves. Xiaohongshu has no official data export — walk me through scraping my own profile with an agent script (Playwright or the mobile API), and save notes, images, and liked/saved posts into imports/xiaohongshu/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: profile-scrape
+        name: Profile scrape
+        description: |
+          Xiaohongshu has no first-party data export. The realistic path is to scrape your own profile (own notes, liked, and collected/saved tabs) using your logged-in session — typically via a Playwright-driven browser, since the mobile API is heavily anti-bot.
+        seed_prompt: |
+          Help me scrape my own Xiaohongshu (小红书) profile. Walk me through driving Playwright with my login session, paginating through my own notes, liked, and collected tabs, and saving each entry as JSON plus its images under imports/xiaohongshu/.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      Xiaohongshu has no public personal-data API and aggressively blocks automation. Re-running an authenticated scrape on a schedule is brittle and at the mercy of the app's anti-scrape measures, not a real continuous-sync path.
