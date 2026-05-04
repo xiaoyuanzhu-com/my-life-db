@@ -3,5 +3,44 @@ name: Google
 category: cloud
 website: https://takeout.google.com
 description: "All Google services — Drive, Gmail, Photos, Calendar, YouTube, Maps, Keep, and more — exported via Google Takeout."
-import_prompt: |
-  Help me export my Google account via Takeout at takeout.google.com. Walk me through selecting which services to include (Drive, Gmail, Photos, Calendar, YouTube, Maps, Keep, etc.), then placing the resulting zips under imports/google/ (I can split into per-service folders later).
+icon: google
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: takeout
+        name: Official
+        official: true
+        url: https://takeout.google.com
+        description: |
+          Google Takeout is the account-wide export tool. You pick which services to include (Drive, Gmail, Photos, Calendar, YouTube, Maps, Keep, etc.) and Google produces a set of downloadable zips, optionally delivered to Drive/Dropbox/OneDrive/Box.
+        seed_prompt: |
+          Help me do a one-off export of my Google account via Takeout. Walk me through choosing services at takeout.google.com, picking the file format and delivery method, downloading the resulting zips, and unpacking them under imports/google/ (I can split into per-service folders later).
+
+  continuous_sync:
+    feasible: true
+    options:
+      - id: takeout-scheduled
+        name: Official
+        official: true
+        url: https://takeout.google.com
+        description: |
+          Takeout offers a "Export every 2 months for 1 year" option that emails you a fresh archive on a schedule. Not real-time, but it's the only first-party recurring export across the whole account.
+        seed_prompt: |
+          Help me set up Google Takeout's scheduled export so I get a fresh account archive every two months. Walk me through enabling the recurring option, choosing services and delivery destination, and a routine for dropping each new archive into imports/google/.
+      - id: drive-desktop
+        name: Google Drive for desktop
+        official: true
+        url: https://www.google.com/drive/download/
+        description: |
+          Google's desktop client mirrors Drive contents to a local folder (My Drive + Shared drives). Covers Drive only — not Gmail, Photos, etc. — but gives true continuous sync for files.
+        seed_prompt: |
+          Help me set up Google Drive for desktop to continuously sync my Drive into imports/google/drive/. Walk me through installing it, picking stream-vs-mirror mode, and either pointing MyLifeDB at the Drive folder directly or symlinking it in.
+      - id: rclone
+        name: rclone
+        url: https://rclone.org/drive/
+        description: |
+          rclone supports Google Drive (and Google Photos via a separate backend) and can be scheduled to sync to a local folder. Useful when you want a headless setup or want to combine Drive + Photos in one cron job.
+        seed_prompt: |
+          Help me set up rclone to continuously sync Google Drive (and optionally Google Photos) to imports/google/. Walk me through `rclone config` for the Google Drive backend, choosing between `sync` and `copy`, and scheduling it via cron or launchd.
