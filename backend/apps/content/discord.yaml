@@ -3,5 +3,21 @@ name: "Discord"
 category: chat
 website: https://discord.com
 description: "Chat platform for communities, gamers, and friend groups."
-import_prompt: |
-  Help me import my Discord archive. Walk me through requesting my data at User Settings → Privacy & Safety → Request all of my data, wait for the email (up to 30 days), then unpack the zip into imports/discord/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: builtin
+        name: Official
+        official: true
+        url: https://support.discord.com/hc/en-us/articles/360004027692-Requesting-a-Copy-of-your-Data
+        description: |
+          Discord's first-party data request, available in User Settings → Privacy & Safety → Request all of my data. Delivered by email as a zip (can take up to 30 days). Includes messages, servers, account info, and activity.
+        seed_prompt: |
+          Help me import my Discord archive. Walk me through requesting my data at User Settings → Privacy & Safety → Request all of my data, waiting for the email (up to 30 days), then unpacking the zip into imports/discord/.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      Discord does not offer a sanctioned continuous-sync mechanism for end users. The official data request is one-off and rate-limited, and Discord's Terms of Service prohibit automated user-account scraping ("self-bots"). Bots can stream messages only in servers/channels they're explicitly added to, not your full personal account history.
