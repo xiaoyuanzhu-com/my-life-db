@@ -3,5 +3,33 @@ name: "Apple Notes"
 category: notes
 website: https://apple.com/notes
 description: "Apple's native notes app."
-import_prompt: |
-  Help me export Apple Notes. Options: (1) Apple Shortcuts with a 'Get all Notes' shortcut saving to disk, (2) open each folder → File → Export as PDF (per note), or (3) the on-disk SQLite database. Walk me through the cleanest option and land files in imports/apple-notes/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: export-pdf
+        name: Official
+        official: true
+        description: |
+          Apple Notes' built-in export. On macOS, select notes and use File → Export as PDF (one PDF per note). No bulk Markdown/HTML export is provided.
+        seed_prompt: |
+          Help me export my Apple Notes via the built-in File → Export as PDF on macOS. Walk me through selecting folders/notes, exporting, and landing the PDFs under imports/apple-notes/.
+      - id: shortcuts
+        name: Apple Shortcuts
+        url: https://support.apple.com/guide/shortcuts/welcome/ios
+        description: |
+          A custom Apple Shortcut iterating over notes (e.g. "Find Notes" → "Save File") can dump titles and bodies to disk as text/Markdown. Limited fidelity for attachments but the closest thing to bulk export on Apple platforms.
+        seed_prompt: |
+          Help me build (or run) an Apple Shortcut that walks all my Apple Notes and saves each one as a text/Markdown file into imports/apple-notes/. Walk me through the Shortcut actions and verify the output.
+      - id: sqlite-db
+        name: On-disk SQLite database
+        description: |
+          Apple Notes stores its data in a SQLite database under ~/Library/Group Containers (NoteStore.sqlite). Third-party scripts can read it directly, but the schema is undocumented and bodies are stored as compressed protobuf — fragile but high-fidelity.
+        seed_prompt: |
+          Help me extract Apple Notes from the on-disk NoteStore.sqlite database. Walk me through locating the file, copying it safely, and parsing notes (titles + bodies) into imports/apple-notes/.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      Apple Notes has no public API and no scheduled export. iCloud sync only moves data between Apple devices, not into a local folder MyLifeDB can watch.
