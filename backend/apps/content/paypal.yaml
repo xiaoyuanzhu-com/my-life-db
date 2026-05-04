@@ -3,5 +3,21 @@ name: "PayPal"
 category: finance
 website: https://paypal.com
 description: "Online payments service."
-import_prompt: |
-  Help me export my PayPal activity. Walk me through paypal.com/activity → Download (CSV for a chosen date range), landing files in imports/paypal/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: activity-download
+        name: Official
+        official: true
+        url: https://www.paypal.com/activity
+        description: |
+          PayPal's first-party activity download. paypal.com/activity → Download → choose CSV (or other format) for a chosen date range. Web-based, available to all personal accounts.
+        seed_prompt: |
+          Help me import my PayPal activity. Walk me through paypal.com/activity → Download, picking a date range and the CSV format, then land the file in imports/paypal/ and orient me to its columns.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      PayPal's developer APIs target merchants and platform integrations, not personal-account transaction history. There is no first-party scheduled-export feature for individual users, so continuous sync requires re-running the manual activity download.
