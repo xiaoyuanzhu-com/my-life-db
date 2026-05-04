@@ -3,5 +3,21 @@ name: "Gemini"
 category: chat
 website: https://gemini.google.com
 description: "Google's conversational AI."
-import_prompt: |
-  Help me import my Gemini conversations. Walk me through Google Takeout at takeout.google.com → select 'Gemini Apps', generate and download the export, then unpack into imports/gemini/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: takeout
+        name: Official
+        official: true
+        url: https://takeout.google.com
+        description: |
+          Google Takeout is Google's account-wide export. Selecting "Gemini Apps Activity" produces an archive of your Gemini conversations alongside any other Google data you include.
+        seed_prompt: |
+          Help me import my Gemini conversations. Walk me through Google Takeout at takeout.google.com → select "Gemini Apps Activity", generate and download the export, then unpack into imports/gemini/.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      Google does not offer a continuous export or conversation-streaming API for Gemini chat history. Takeout supports scheduled exports (every two months for up to a year), which is the closest approximation but still a one-off-style archive rather than true streaming sync.
