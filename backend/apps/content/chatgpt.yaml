@@ -3,5 +3,21 @@ name: "ChatGPT"
 category: chat
 website: https://chat.openai.com
 description: "OpenAI's conversational AI assistant."
-import_prompt: |
-  Help me import my ChatGPT history. Walk me through Settings → Data Controls → Export Data at chat.openai.com — you'll get an email with a zip (conversations.json + HTML). Unpack into imports/chatgpt/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: builtin
+        name: Official
+        official: true
+        url: https://help.openai.com/en/articles/7260999-how-do-i-export-my-chatgpt-history-and-data
+        description: |
+          OpenAI's first-party data export. Settings → Data Controls → Export Data emails a download link with a zip containing conversations.json, message HTML, and account metadata.
+        seed_prompt: |
+          Help me import my ChatGPT export. Walk me through Settings → Data Controls → Export Data at chat.openai.com, wait for the email, then unpack the zip under imports/chatgpt/ and show me how conversations.json is structured.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      OpenAI does not offer a continuous export or conversation-streaming API for ChatGPT history. Ongoing sync would require a custom poller against the (separate) developer API and would not capture chat.openai.com conversations.
