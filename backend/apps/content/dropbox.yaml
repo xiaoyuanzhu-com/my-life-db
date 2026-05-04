@@ -3,5 +3,43 @@ name: "Dropbox"
 category: cloud
 website: https://dropbox.com
 description: "Cloud file storage and sync."
-import_prompt: |
-  Help me import my Dropbox files. The simplest path is to install the Dropbox desktop app and symlink the local Dropbox folder into imports/dropbox/; alternatively, walk me through a bulk download via dropbox.com or the API.
+icon: dropbox
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: web-download
+        name: Official
+        official: true
+        url: https://help.dropbox.com/share/download-files-folders
+        description: |
+          Dropbox's web UI supports downloading entire folders as a zip. Reasonable for small-to-medium accounts; large accounts may hit zip size limits and need to download in chunks.
+        seed_prompt: |
+          Help me do a one-off import of my Dropbox files via the web UI. Walk me through selecting folders on dropbox.com, downloading them as zips, handling the size limit if my account is large, and unpacking everything under imports/dropbox/.
+      - id: rclone
+        name: rclone
+        url: https://rclone.org/dropbox/
+        description: |
+          Open-source CLI that talks to Dropbox's API and can copy a whole account to local disk. Better than the web UI for large accounts because it streams files without zipping and resumes on failure.
+        seed_prompt: |
+          Help me do a one-off import of my Dropbox account using rclone. Walk me through `rclone config` to authorize Dropbox, then `rclone copy dropbox: imports/dropbox/` with sensible flags for resuming and rate limits.
+
+  continuous_sync:
+    feasible: true
+    options:
+      - id: desktop-client
+        name: Official
+        official: true
+        url: https://www.dropbox.com/install
+        description: |
+          The Dropbox desktop app keeps a local folder in sync with the account. Pointing MyLifeDB at that local folder (or symlinking it under imports/dropbox/) gives you continuous sync for free.
+        seed_prompt: |
+          Help me set up continuous Dropbox sync for MyLifeDB. Walk me through installing the desktop app, choosing which folders to keep on local disk (Smart Sync vs always-local), and either pointing imports/dropbox/ at the Dropbox folder or symlinking it in.
+      - id: rclone
+        name: rclone
+        url: https://rclone.org/dropbox/
+        description: |
+          rclone can be scheduled (cron, systemd timer, etc.) to sync Dropbox to a local folder on a recurring basis. Useful when you don't want the official desktop client running.
+        seed_prompt: |
+          Help me set up rclone to continuously sync Dropbox to imports/dropbox/. Walk me through `rclone config`, picking between `rclone sync` and `rclone copy`, and scheduling it (cron or launchd) at a reasonable interval.
