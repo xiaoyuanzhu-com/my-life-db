@@ -245,8 +245,8 @@ function SettingsContent() {
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {t(
-                    'general.surfaces.restartHint',
-                    'Toggling a surface requires a server restart to take effect.',
+                    'general.surfaces.liveHint',
+                    'Toggling a surface takes effect immediately.',
                   )}
                 </p>
               </div>

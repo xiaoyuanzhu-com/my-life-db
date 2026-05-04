@@ -103,6 +103,15 @@ func (h *Handlers) WebDAVHandler(c *gin.Context) {
 		return
 	}
 
+	// Per-credential rate limit. WebDAV clients (Finder, Obsidian
+	// Remotely Save, etc.) honor a bare 429 with Retry-After; we send
+	// a 1-second hint so well-behaved clients back off briefly.
+	if !h.server.IntegrationsLimiter().Allow(cred.ID) {
+		c.Header("Retry-After", "1")
+		c.Status(http.StatusTooManyRequests)
+		return
+	}
+
 	scopes, err := connect.ParseScopes(cred.Scope)
 	if err != nil {
 		log.Error().Err(err).Str("credentialId", cred.ID).Str("scope", cred.Scope).

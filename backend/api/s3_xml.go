@@ -58,6 +58,7 @@ const (
 	S3ErrXAmzContentSHA256Mismatch = "XAmzContentSHA256Mismatch"
 	S3ErrInvalidPart             = "InvalidPart"
 	S3ErrInvalidPartOrder        = "InvalidPartOrder"
+	S3ErrSlowDown                = "SlowDown"
 )
 
 // s3ErrorEnvelope is the body shape AWS returns for every error response.

@@ -53,6 +53,11 @@ type Server struct {
 	connectStore    *connect.Store
 	integrations    *integrations.Store
 
+	// Per-credential rate limiter for the non-OAuth ingestion surfaces
+	// (webhook / WebDAV / S3). Single instance lives for the server's
+	// lifetime; each credential gets its own token bucket inside.
+	integrationsLimiter *integrations.Limiter
+
 	// WebDAV lock system. Process-wide, in-memory; locks are URL-keyed
 	// (not credential-keyed), so a single shared instance is correct
 	// across all WebDAV credentials. Initialized lazily on first
@@ -532,6 +537,16 @@ http_headers = { "x-litellm-customer-id" = %q }
 	// for non-OAuth ingestion surfaces. Schema is owned by
 	// db/migration_031_integration_credentials.go (app DB).
 	s.integrations = integrations.NewStore(s.appDB.Conn())
+	s.integrationsLimiter = integrations.NewLimiter()
+
+	// 7.7. One-shot startup GC for stale S3 multipart staging dirs (Phase 4d).
+	// Detached so a slow disk doesn't delay server start; failures are
+	// logged, not fatal — the next restart will retry.
+	go func() {
+		if _, err := GarbageCollectMultipartStaging(s.cfg.AppDataDir, multipartStagingMaxAge); err != nil {
+			log.Error().Err(err).Msg("multipart-gc: startup sweep failed")
+		}
+	}()
 
 	// 8. Wire service connections
 	s.connectServices()
@@ -841,6 +856,7 @@ func (s *Server) MCPTools() *mcptools.Cache                      { return s.mcpT
 func (s *Server) MCPToken() string                            { return s.mcpToken }
 func (s *Server) Connect() *connect.Store                        { return s.connectStore }
 func (s *Server) Integrations() *integrations.Store              { return s.integrations }
+func (s *Server) IntegrationsLimiter() *integrations.Limiter     { return s.integrationsLimiter }
 
 // WebDAVLocks returns the process-wide WebDAV lock system, lazily creating
 // the in-memory store on first call. Locks are URL-keyed and not durable

@@ -191,6 +191,17 @@ func (h *Handlers) S3Handler(c *gin.Context) {
 		return
 	}
 
+	// Per-credential rate limit. Runs after we've identified the
+	// credential (so the bucket is keyed correctly) but before signature
+	// verification so a flood of bad-signature attempts can't grind the
+	// CPU on SigV4 hashing. AWS clients understand 503 SlowDown and
+	// implement exponential backoff against it.
+	if !h.server.IntegrationsLimiter().Allow(cred.ID) {
+		writeS3Error(c, http.StatusServiceUnavailable, S3ErrSlowDown,
+			"reduce your request rate", c.Request.URL.Path)
+		return
+	}
+
 	if err := verifySignature(c.Request, parsed, hash, body); err != nil {
 		log.Debug().Err(err).Str("credentialId", cred.ID).Msg("s3: signature verify failed")
 		// Streaming SigV4 surfaces specifically as XAmzContentSHA256Mismatch

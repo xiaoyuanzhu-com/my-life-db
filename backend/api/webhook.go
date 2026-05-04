@@ -123,6 +123,16 @@ func (h *Handlers) WebhookIngest(c *gin.Context) {
 		return
 	}
 
+	// Per-credential rate limit. Token bucket lives on the server; on
+	// reject we surface a webhook-shaped 429 so the sender can back off.
+	// Runs after auth so the limit applies to the credential's id, not
+	// to whatever bearer token an unauthenticated probe happens to send.
+	if !h.server.IntegrationsLimiter().Allow(cred.ID) {
+		RespondCoded(c, http.StatusTooManyRequests, ErrCodeTooManyRequests,
+			"too many requests for this credential")
+		return
+	}
+
 	// Parse the credential's scope into a ScopeSet so the existing
 	// scope-enforcement machinery can gate the request. Validation already
 	// happened at credential-create time, so failure here is a corrupted

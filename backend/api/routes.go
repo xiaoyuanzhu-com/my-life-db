@@ -4,8 +4,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-
-	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
 // SetupRoutes configures all API routes with handlers.
@@ -57,44 +55,32 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 	r.PUT("/raw/*path", connectAuth, auth, h.RequireConnectScope("files.write"), h.SaveRawFile)
 	r.GET("/sqlar/*path", auth, h.ServeSqlarFile)
 
-	// Integration surfaces — non-OAuth ingestion endpoints. Each is gated
-	// by its own settings toggle so users who don't need a surface don't
-	// expose it (off → no route registered → 404 by default).
-	//
-	// In v1 the toggle is read once at startup; flipping it requires a
-	// restart. Phase 4 will swap the router on toggle change for live
-	// reconfiguration.
-	settings, err := h.server.AppDB().LoadUserSettings()
-	if err != nil {
-		log.Error().Err(err).Msg("routes: failed to load user settings; integration surfaces stay off")
-	} else {
-		if settings.Integrations.Surfaces.Webhook {
-			log.Info().Msg("integrations: webhook surface enabled, mounting /webhook/*")
-			r.POST("/webhook/:credentialId/*subpath", h.WebhookIngest)
-			r.PUT("/webhook/:credentialId/*subpath", h.WebhookIngest)
-		}
-		if settings.Integrations.Surfaces.WebDAV {
-			log.Info().Msg("integrations: webdav surface enabled, mounting /webdav/*")
-			// One handler for every WebDAV verb. gin's Any() covers
-			// the standard methods; the WebDAV-specific verbs
-			// (PROPFIND, PROPPATCH, MKCOL, COPY, MOVE, LOCK, UNLOCK)
-			// must be registered explicitly via Handle().
-			r.Any("/webdav/*path", h.WebDAVHandler)
-			for _, m := range []string{"PROPFIND", "PROPPATCH", "MKCOL", "COPY", "MOVE", "LOCK", "UNLOCK"} {
-				r.Handle(m, "/webdav/*path", h.WebDAVHandler)
-			}
-		}
-		if settings.Integrations.Surfaces.S3 {
-			log.Info().Msg("integrations: s3 surface enabled, mounting /s3/*")
-			// One catch-all dispatcher for every S3 op. Path-style
-			// addressing (/s3/<bucket>/<key>) means the bucket lives
-			// in the URL alongside the key — gin's `*path` covers
-			// both. The dispatcher in api/s3.go does the real routing
-			// based on method + query parameters.
-			r.Any("/s3", h.S3Handler)
-			r.Any("/s3/*path", h.S3Handler)
-		}
+	// Integration surfaces — non-OAuth ingestion endpoints. Each route
+	// is mounted unconditionally and gated per-request by
+	// RequireSurfaceEnabled, which reads the live settings toggle and
+	// 404s when off. Flipping the toggle in the UI takes effect on the
+	// very next request — no restart needed.
+	webhookGuard := RequireSurfaceEnabled(h.server, surfaceWebhook)
+	r.POST("/webhook/:credentialId/*subpath", webhookGuard, h.WebhookIngest)
+	r.PUT("/webhook/:credentialId/*subpath", webhookGuard, h.WebhookIngest)
+
+	webdavGuard := RequireSurfaceEnabled(h.server, surfaceWebDAV)
+	// One handler for every WebDAV verb. gin's Any() covers the
+	// standard methods; the WebDAV-specific verbs (PROPFIND, PROPPATCH,
+	// MKCOL, COPY, MOVE, LOCK, UNLOCK) must be registered explicitly
+	// via Handle().
+	r.Any("/webdav/*path", webdavGuard, h.WebDAVHandler)
+	for _, m := range []string{"PROPFIND", "PROPPATCH", "MKCOL", "COPY", "MOVE", "LOCK", "UNLOCK"} {
+		r.Handle(m, "/webdav/*path", webdavGuard, h.WebDAVHandler)
 	}
+
+	s3Guard := RequireSurfaceEnabled(h.server, surfaceS3)
+	// One catch-all dispatcher for every S3 op. Path-style addressing
+	// (/s3/<bucket>/<key>) means the bucket lives in the URL alongside
+	// the key — gin's `*path` covers both. The dispatcher in api/s3.go
+	// does the real routing based on method + query parameters.
+	r.Any("/s3", s3Guard, h.S3Handler)
+	r.Any("/s3/*path", s3Guard, h.S3Handler)
 
 	// =========================================================================
 	// /api/* — public group (no auth required)
@@ -258,6 +244,7 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 			connect.GET("/credentials", h.IntegrationListCredentials)
 			connect.POST("/credentials", h.IntegrationCreateCredential)
 			connect.DELETE("/credentials/:id", h.IntegrationRevokeCredential)
+			connect.GET("/credentials/:id/audit", h.IntegrationCredentialAudit)
 		}
 
 		// ---------------------------------------------------------------------

@@ -27,7 +27,18 @@
     "empty": "暂无凭据。点击「新建」来生成一个。",
     "created": "创建于",
     "lastUsed": "最后使用",
+    "fromIp": "来自 {{ip}}",
     "revoke": "撤销",
+    "history": "历史",
+    "audit": {
+      "title": "最近的请求",
+      "empty": "暂无请求。",
+      "time": "时间",
+      "method": "方法",
+      "path": "路径",
+      "status": "状态",
+      "ip": "IP"
+    },
     "confirmRevoke": "撤销凭据「{{name}}」？任何使用它的应用将立即停止工作。",
     "errors": {
       "nameRequired": "需要填写名称。",
@@ -41,7 +52,7 @@
       "protocolLabel": "协议",
       "scopeLabel": "范围",
       "scopeHint": "数据根目录下的文件夹。该凭据只能看到这棵子树。",
-      "surfaceDisabled": "此协议当前在「设置 → 通用」中已禁用。凭据可以生成，但只有在打开开关并重启服务后，对应的接入路由才会挂载。",
+      "surfaceDisabled": "此协议当前在「设置 → 通用」中已禁用。凭据可以生成，但在打开开关之前，对应的请求都会返回 404。",
       "submit": "创建"
     },
     "reveal": {
@@ -83,7 +94,7 @@
       "webhook": "HTTP Webhook",
       "webdav": "WebDAV",
       "s3": "兼容 S3",
-      "restartHint": "切换接入方式需要重启服务才能生效。"
+      "liveHint": "切换接入方式会立即生效。"
     }
   },
   "stats": {

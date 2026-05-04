@@ -48,6 +48,7 @@ import {
   Database,
   Copy,
   Check,
+  History,
 } from "lucide-react";
 import { api } from "~/lib/api";
 import { useSettingsContext } from "~/components/settings/settings-context";
@@ -87,6 +88,7 @@ export function IntegrationsTab() {
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [issued, setIssued] = useState<IssuedCredential | null>(null);
+  const [auditOpen, setAuditOpen] = useState<Credential | null>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -190,8 +192,24 @@ export function IntegrationsTab() {
                       <p className="mt-2 text-xs text-muted-foreground">
                         {t("integrations.created", "Created")}: {fmtTs(c.createdAt)} ·{" "}
                         {t("integrations.lastUsed", "Last used")}: {fmtTs(c.lastUsedAt)}
+                        {c.lastUsedIp && (
+                          <>
+                            {" "}
+                            <span className="text-muted-foreground/80">
+                              · {t("integrations.fromIp", "from {{ip}}", { ip: c.lastUsedIp })}
+                            </span>
+                          </>
+                        )}
                       </p>
                     </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setAuditOpen(c)}
+                      title={t("integrations.history", "History")}
+                    >
+                      <History className="h-4 w-4 text-muted-foreground" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -219,7 +237,145 @@ export function IntegrationsTab() {
       />
 
       <SecretRevealDialog issued={issued} onClose={() => setIssued(null)} />
+
+      <AuditDialog credential={auditOpen} onClose={() => setAuditOpen(null)} />
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Audit drawer
+// ---------------------------------------------------------------------------
+
+interface AuditRow {
+  id: number;
+  ts: number;
+  ip?: string;
+  method: string;
+  path: string;
+  status: number;
+}
+
+function AuditDialog({
+  credential,
+  onClose,
+}: {
+  credential: Credential | null;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation("settings");
+  const [rows, setRows] = useState<AuditRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!credential) {
+      setRows(null);
+      setError(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      setRows(null);
+      setError(null);
+      try {
+        const res = await api.get(
+          `/api/connect/credentials/${encodeURIComponent(credential.id)}/audit?limit=100`,
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        if (!cancelled) setRows(json.data || []);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [credential]);
+
+  if (!credential) return null;
+
+  return (
+    <Dialog open={!!credential} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>{t("integrations.audit.title", "Recent requests")}</DialogTitle>
+          <DialogDescription>
+            <span className="font-mono text-xs">{credential.name}</span>
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="max-h-[60vh] overflow-y-auto">
+          {error && (
+            <div className="text-sm text-destructive bg-destructive/10 rounded-md p-2">
+              {error}
+            </div>
+          )}
+          {rows === null && !error && (
+            <div className="flex justify-center py-6">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          )}
+          {rows !== null && rows.length === 0 && !error && (
+            <p className="text-sm text-muted-foreground py-6 text-center">
+              {t("integrations.audit.empty", "No requests yet.")}
+            </p>
+          )}
+          {rows !== null && rows.length > 0 && (
+            <table className="w-full text-xs">
+              <thead className="text-muted-foreground">
+                <tr className="text-left">
+                  <th className="py-1.5 pr-2 font-normal">
+                    {t("integrations.audit.time", "Time")}
+                  </th>
+                  <th className="py-1.5 pr-2 font-normal">
+                    {t("integrations.audit.method", "Method")}
+                  </th>
+                  <th className="py-1.5 pr-2 font-normal">
+                    {t("integrations.audit.path", "Path")}
+                  </th>
+                  <th className="py-1.5 pr-2 font-normal">
+                    {t("integrations.audit.status", "Status")}
+                  </th>
+                  <th className="py-1.5 pr-2 font-normal">
+                    {t("integrations.audit.ip", "IP")}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id} className="align-top">
+                    <td className="py-1 pr-2 whitespace-nowrap">{fmtTs(r.ts)}</td>
+                    <td className="py-1 pr-2 font-mono">{r.method}</td>
+                    <td className="py-1 pr-2 font-mono break-all">{r.path}</td>
+                    <td className="py-1 pr-2">
+                      <span
+                        className={
+                          r.status >= 500
+                            ? "text-destructive"
+                            : r.status >= 400
+                              ? "text-amber-600 dark:text-amber-400"
+                              : ""
+                        }
+                      >
+                        {r.status}
+                      </span>
+                    </td>
+                    <td className="py-1 pr-2 font-mono text-muted-foreground">
+                      {r.ip || "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button onClick={onClose}>{t("actions.close", "Close")}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -335,7 +491,7 @@ function CreateCredentialDialog({
               <div className="text-xs rounded-md bg-muted/60 text-muted-foreground p-2">
                 {t(
                   "integrations.create.surfaceDisabled",
-                  "This protocol is currently disabled in Settings \u2192 General. The credential will mint, but the surface route is not mounted until you enable the toggle and restart the server.",
+                  "This protocol is currently disabled in Settings \u2192 General. The credential will mint, but requests to its URL will 404 until you enable the toggle.",
                 )}
               </div>
             )}

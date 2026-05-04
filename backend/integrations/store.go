@@ -197,6 +197,68 @@ func (s *Store) RecordAudit(credentialID, ip, method, path string, status int, s
 	)
 }
 
+// AuditRow is one decoded row from integration_audit. Mirrors the shape
+// connect.AuditEntry exposes (timestamp, method, path, status, IP,
+// scope_family) so the frontend audit drawer can render either source
+// with the same column layout.
+type AuditRow struct {
+	ID           int64
+	CredentialID string
+	Timestamp    time.Time
+	IP           string
+	Method       string
+	Path         string
+	Status       int
+	ScopeFamily  string
+}
+
+// ListAudit returns audit rows for one credential, newest first. limit is
+// clamped to [1, 1000] (default 100 when ≤ 0). offset must be ≥ 0; use
+// it to page when more than `limit` rows exist for a chatty credential.
+func (s *Store) ListAudit(credentialID string, limit, offset int) ([]AuditRow, error) {
+	if credentialID == "" {
+		return nil, errors.New("credentialID is required")
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	rows, err := s.db.Query(
+		`SELECT id, credential_id, timestamp, ip, method, path, status, scope_family
+		 FROM integration_audit
+		 WHERE credential_id = ?
+		 ORDER BY timestamp DESC
+		 LIMIT ? OFFSET ?`,
+		credentialID, limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []AuditRow
+	for rows.Next() {
+		var (
+			r   AuditRow
+			ts  int64
+			ipNS sql.NullString
+		)
+		if err := rows.Scan(&r.ID, &r.CredentialID, &ts, &ipNS, &r.Method, &r.Path, &r.Status, &r.ScopeFamily); err != nil {
+			return nil, err
+		}
+		r.Timestamp = time.Unix(ts, 0)
+		r.IP = ipNS.String
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 // Revoke soft-deletes a credential by stamping revoked_at. After this, all
 // lookups for the credential return nil and incoming requests using its
 // secret are rejected.

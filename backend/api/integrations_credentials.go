@@ -76,6 +76,57 @@ func (h *Handlers) IntegrationCreateCredential(c *gin.Context) {
 	RespondCreated(c, credentialToJSON(issued.Credential, issued.Secret), "/api/connect/credentials/"+issued.ID)
 }
 
+// IntegrationCredentialAudit returns the most recent audit rows for one
+// credential, newest first. Mirrors the shape of ConnectClientAudit so
+// the frontend audit drawer can render either source with one component.
+//
+// GET /api/connect/credentials/:id/audit?limit=N&offset=N
+//
+// Defaults: limit=100, offset=0. Maximum limit=1000 (clamped server-side).
+func (h *Handlers) IntegrationCredentialAudit(c *gin.Context) {
+	id := c.Param("id")
+	if id == "" {
+		RespondBadRequest(c, "credential id is required")
+		return
+	}
+	limit := 100
+	if v := c.Query("limit"); v != "" {
+		var n int
+		_, _ = fmtSscan(v, &n)
+		if n > 0 {
+			limit = n
+		}
+	}
+	offset := 0
+	if v := c.Query("offset"); v != "" {
+		var n int
+		_, _ = fmtSscan(v, &n)
+		if n > 0 {
+			offset = n
+		}
+	}
+	rows, err := h.server.Integrations().ListAudit(id, limit, offset)
+	if err != nil {
+		log.Error().Err(err).Msg("integrations: list audit failed")
+		RespondInternalError(c, "failed to list audit")
+		return
+	}
+	out := make([]gin.H, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, gin.H{
+			"id":           r.ID,
+			"credentialId": r.CredentialID,
+			"ts":           r.Timestamp.Unix(),
+			"ip":           r.IP,
+			"method":       r.Method,
+			"path":         r.Path,
+			"status":       r.Status,
+			"scopeFamily":  r.ScopeFamily,
+		})
+	}
+	RespondList(c, out, nil)
+}
+
 // IntegrationRevokeCredential soft-deletes a credential. Idempotent.
 //
 // DELETE /api/connect/credentials/:id

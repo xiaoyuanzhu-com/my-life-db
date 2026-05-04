@@ -27,7 +27,18 @@
     "empty": "No credentials yet. Click \u201CNew\u201D to mint one.",
     "created": "Created",
     "lastUsed": "Last used",
+    "fromIp": "from {{ip}}",
     "revoke": "Revoke",
+    "history": "History",
+    "audit": {
+      "title": "Recent requests",
+      "empty": "No requests yet.",
+      "time": "Time",
+      "method": "Method",
+      "path": "Path",
+      "status": "Status",
+      "ip": "IP"
+    },
     "confirmRevoke": "Revoke credential \"{{name}}\"? Any apps using it will stop working immediately.",
     "errors": {
       "nameRequired": "Name is required.",
@@ -41,7 +52,7 @@
       "protocolLabel": "Protocol",
       "scopeLabel": "Scope",
       "scopeHint": "Folder under your data root. The credential will only see this subtree.",
-      "surfaceDisabled": "This protocol is currently disabled in Settings \u2192 General. The credential will mint, but the surface route is not mounted until you enable the toggle and restart the server.",
+      "surfaceDisabled": "This protocol is currently disabled in Settings \u2192 General. The credential will mint, but requests to its URL will 404 until you enable the toggle.",
       "submit": "Create"
     },
     "reveal": {
@@ -83,7 +94,7 @@
       "webhook": "HTTP webhook",
       "webdav": "WebDAV",
       "s3": "S3-compatible",
-      "restartHint": "Toggling a surface requires a server restart to take effect."
+      "liveHint": "Toggling a surface takes effect immediately."
     }
   },
   "stats": {
