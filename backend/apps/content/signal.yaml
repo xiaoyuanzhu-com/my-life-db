@@ -3,5 +3,28 @@ name: "Signal"
 category: chat
 website: https://signal.org
 description: "End-to-end encrypted messenger."
-import_prompt: |
-  Help me back up my Signal chats. On Android: Settings → Chats → Chat backups → Create backup (saves an encrypted file to device). On iOS: there's no direct export — walk me through options like signal-cli or Transfer account. Land the backup file in imports/signal/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: android-backup
+        name: Official
+        official: true
+        url: https://support.signal.org/hc/en-us/articles/360007059752-Backup-and-Restore-Messages
+        description: |
+          Signal's only first-party export is the Android local backup (Settings → Chats → Chat backups → Create backup). Produces an encrypted .backup file on the device, decryptable with the 30-digit passphrase. iOS has no equivalent local backup — chats live only on-device and in the secure-enclave-encrypted iCloud sync.
+        seed_prompt: |
+          Help me back up my Signal chats from Android. Walk me through Settings → Chats → Chat backups → Create backup, copying the encrypted .backup file off the device, and landing it in imports/signal/.
+      - id: signal-cli
+        name: signal-cli
+        url: https://github.com/AsamK/signal-cli
+        description: |
+          Open-source command-line client that links as a secondary device on your Signal account and exposes local message storage. Often used to extract messages programmatically; works on Linux/macOS/Windows.
+        seed_prompt: |
+          Help me use signal-cli to capture my Signal messages as a linked device. Walk me through installation, linking via QR code, and dumping received messages into imports/signal/.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      Signal is end-to-end encrypted with no server-side message storage, so there is no cloud API to sync from. Continuous capture is only possible by running a linked device (e.g. signal-cli) that receives new messages live — that is closer to a manual setup than a turnkey sync, and historical messages from before linking cannot be retrieved.
