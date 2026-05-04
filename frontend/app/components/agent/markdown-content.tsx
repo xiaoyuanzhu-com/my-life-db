@@ -6,6 +6,7 @@
  */
 import { useMemo } from "react"
 import { marked, type MarkedOptions, Renderer } from "marked"
+import { useMarkdownImageLightbox } from "~/hooks/use-markdown-image-lightbox"
 
 interface MarkdownContentProps {
   text: string
@@ -75,11 +76,17 @@ export function MarkdownContent({ text, className = "" }: MarkdownContentProps) 
     }
   }, [text])
 
+  const { containerRef, lightboxNode } = useMarkdownImageLightbox<HTMLDivElement>()
+
   return (
-    <div
-      className={`markdown-content text-sm break-words ${className}`}
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
+    <>
+      <div
+        ref={containerRef}
+        className={`markdown-content text-sm break-words ${className}`}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      {lightboxNode}
+    </>
   )
 }
 

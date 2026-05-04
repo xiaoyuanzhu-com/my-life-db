@@ -713,6 +713,10 @@ a.library-file-link:hover {
   font-weight: 600;
 }
 
+.markdown-content img {
+  cursor: zoom-in;
+}
+
 /* Permission card slide-up animation */
 @keyframes permission-slide-up {
   from {

@@ -25,6 +25,7 @@ import type { FileWithDigests } from '~/types/file-card';
 import { fetchFullContent, saveFileContent } from '../utils';
 import { TextEditor } from '~/components/text-editor';
 import { parseMarkdown, parseMarkdownSync } from '~/lib/markdown';
+import { useMarkdownImageLightbox } from '~/hooks/use-markdown-image-lightbox';
 import type { TextContentHandle } from './text-content';
 
 type Mode = 'preview' | 'source';
@@ -62,6 +63,7 @@ export const MarkdownContent = forwardRef<TextContentHandle, MarkdownContentProp
     const hasUnsavedChanges = editedContent !== null && editedContent !== fullContent;
     const basePath = useMemo(() => getDirname(file.path), [file.path]);
     const sourceText = editedContent ?? fullContent ?? file.textPreview ?? '';
+    const { containerRef: previewRef, lightboxNode } = useMarkdownImageLightbox<HTMLDivElement>();
 
     useEffect(() => {
       onDirtyStateChange?.(hasUnsavedChanges);
@@ -174,6 +176,7 @@ export const MarkdownContent = forwardRef<TextContentHandle, MarkdownContentProp
         <div className="relative w-full h-full overflow-hidden bg-[#fffffe] [@media(prefers-color-scheme:dark)]:bg-[#1e1e1e] rounded-lg">
           {mode === 'preview' ? (
             <div
+              ref={previewRef}
               className="markdown-content w-full h-full overflow-auto px-8 py-6 text-sm leading-relaxed"
               dangerouslySetInnerHTML={{ __html: renderedHtml }}
             />
@@ -188,6 +191,8 @@ export const MarkdownContent = forwardRef<TextContentHandle, MarkdownContentProp
 
           <ModeToggle mode={mode} onChange={setModePersisted} />
         </div>
+
+        {lightboxNode}
 
         <AlertDialog open={isCloseDialogOpen} onOpenChange={setIsCloseDialogOpen}>
           <AlertDialogContent>
