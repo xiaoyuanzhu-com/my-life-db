@@ -3,5 +3,28 @@ name: "Spotify"
 category: media
 website: https://spotify.com
 description: "Music + podcast streaming platform."
-import_prompt: |
-  Help me import my Spotify listening history. Walk me through requesting my data at spotify.com/account/privacy (choose 'Extended streaming history' for full history — takes up to 30 days). Unpack the resulting zip into imports/spotify/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: privacy-request
+        name: Official
+        official: true
+        url: https://www.spotify.com/account/privacy/
+        description: |
+          Spotify's GDPR-style data request. Account Data covers playlists, library, and the last ~12 months of streaming history; "Extended streaming history" returns your full lifetime listening archive but can take up to 30 days to arrive.
+        seed_prompt: |
+          Help me import my Spotify data export. Walk me through spotify.com/account/privacy → Download your data, choosing both Account Data and Extended streaming history, waiting for the emails, then unpacking the zips into imports/spotify/ and orienting me to the JSON layout.
+
+  continuous_sync:
+    feasible: true
+    options:
+      - id: web-api-recently-played
+        name: Official
+        official: true
+        url: https://developer.spotify.com/documentation/web-api/reference/get-recently-played
+        description: |
+          Spotify's Web API exposes `/me/player/recently-played`, which returns the last 50 tracks for the authorized user. Polling on a schedule with OAuth credentials gives a rolling stream of listening history. Library and playlist endpoints are also available for periodic full re-fetches.
+        seed_prompt: |
+          Help me set up an incremental Spotify sync into imports/spotify/. Walk me through registering a Web API app, completing the OAuth flow, and scheduling a job that polls /me/player/recently-played plus my library and playlist endpoints.
