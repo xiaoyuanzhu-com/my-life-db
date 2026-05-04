@@ -4,6 +4,7 @@ import { FileX, Download } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { TextEditor } from '~/components/text-editor';
 import { isTextFile } from '~/lib/file-types';
+import { ImageLightbox } from '~/components/ui/image-lightbox';
 
 interface FileViewerProps {
   filePath: string;
@@ -37,6 +38,7 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
   const [error, setError] = useState<string | null>(null);
   const [editedContent, setEditedContent] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const isInitialMount = useRef(true);
 
   const originalContentRef = useRef<string | undefined>(undefined);
@@ -239,9 +241,17 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
             <img
               src={fileUrl}
               alt={fileData.name}
-              className="max-w-full h-auto"
+              className="max-w-full h-auto cursor-pointer"
+              onClick={() => setLightboxOpen(true)}
             />
           </div>
+        )}
+        {fileType === 'image' && lightboxOpen && (
+          <ImageLightbox
+            images={[{ src: fileUrl, alt: fileData.name }]}
+            initialIndex={0}
+            onClose={() => setLightboxOpen(false)}
+          />
         )}
 
         {fileType === 'video' && (

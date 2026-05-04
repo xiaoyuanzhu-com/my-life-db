@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useFormatter } from "~/lib/i18n/use-formatter";
 import { fetchExplorePost } from "~/hooks/use-explore";
-import { ImageFullscreen } from "./image-fullscreen";
+import { ImageLightbox } from "~/components/ui/image-lightbox";
 import type { ExplorePostWithComments } from "~/types/explore";
 
 interface PostDetailProps {
@@ -303,8 +303,8 @@ export function PostDetail({ postId, onClose }: PostDetailProps) {
 
       {/* Fullscreen image viewer */}
       {fullscreenOpen && post?.mediaType === "image" && mediaPaths.length > 0 && (
-        <ImageFullscreen
-          images={mediaPaths}
+        <ImageLightbox
+          images={mediaPaths.map(p => ({ src: `/raw/${p}` }))}
           initialIndex={currentImageIndex}
           onClose={() => setFullscreenOpen(false)}
         />

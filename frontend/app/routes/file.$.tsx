@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import type { FileRecord } from "~/types";
 import { api, encodePath } from "~/lib/api";
+import { ImageLightbox } from "~/components/ui/image-lightbox";
 
 interface FileInfoData extends FileRecord {
   isPinned: boolean;
@@ -55,6 +56,7 @@ export default function FileInfoPage() {
   const [fileContentType, setFileContentType] = useState<string | null>(null);
   const [isContentLoading, setIsContentLoading] = useState(true);
   const [fileContentError, setFileContentError] = useState<string | null>(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Reconstruct file path from params
@@ -191,7 +193,7 @@ export default function FileInfoPage() {
       <div className="flex items-center justify-center bg-muted/50">
         <div className="max-w-3xl w-full">
           <div className="relative w-full border-b">
-            <img src={filePreviewUrl} alt={file.name} className="w-full h-auto object-contain bg-black/5" />
+            <img src={filePreviewUrl} alt={file.name} className="w-full h-auto object-contain bg-black/5 cursor-pointer" onClick={() => setLightboxOpen(true)} />
           </div>
         </div>
       </div>
@@ -290,6 +292,13 @@ export default function FileInfoPage() {
           </div>
         </section>
       </div>
+      {lightboxOpen && filePreviewUrl && (
+        <ImageLightbox
+          images={[{ src: filePreviewUrl, alt: file.name }]}
+          initialIndex={0}
+          onClose={() => setLightboxOpen(false)}
+        />
+      )}
     </div>
   );
 }

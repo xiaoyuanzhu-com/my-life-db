@@ -8,6 +8,7 @@
 import { useState, useRef } from "react"
 import type { ToolCallMessagePartProps } from "@assistant-ui/react"
 import { MessageDot, toolStatusToDotType, computeToolEffectiveStatus } from "../message-dot"
+import { ImageLightbox } from "~/components/ui/image-lightbox"
 
 interface ImageArgs {
   prompt?: string
@@ -149,6 +150,7 @@ export function ImageToolRenderer({
 
   const [showDetails, setShowDetails] = useState(false)
   const [imgFailed, setImgFailed] = useState(false)
+  const [lightboxOpen, setLightboxOpen] = useState(false)
   const failedSrcRef = useRef<string | null>(null)
 
   const op = toolName.toLowerCase().includes("edit") ? "Edit Image" : "Generate Image"
@@ -230,13 +232,21 @@ export function ImageToolRenderer({
           <img
             src={src}
             alt={prompt || "generated image"}
-            className="max-w-full max-h-[480px] rounded-md border border-border bg-muted/30"
+            className="max-w-full max-h-[480px] rounded-md border border-border bg-muted/30 cursor-pointer"
+            onClick={() => setLightboxOpen(true)}
             onError={() => {
               failedSrcRef.current = src
               setImgFailed(true)
             }}
           />
         </div>
+      )}
+      {src && !imgFailed && lightboxOpen && (
+        <ImageLightbox
+          images={[{ src, alt: prompt || "generated image" }]}
+          initialIndex={0}
+          onClose={() => setLightboxOpen(false)}
+        />
       )}
       {src && imgFailed && (
         <div className="ml-5 mt-2 text-destructive">Image saved to disk but failed to load from {src}.</div>
