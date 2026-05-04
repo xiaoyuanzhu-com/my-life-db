@@ -3,5 +3,19 @@ name: "QQ"
 category: chat
 website: https://im.qq.com
 description: "Long-running Chinese chat/IM platform by Tencent."
-import_prompt: |
-  Help me export my QQ chat history. On desktop QQ, messages are in a local file at %APPDATA%\\Tencent\\QQ\\Msg2.0.db (encrypted). Walk me through exporting per-chat .txt files via QQ → Message Manager, and land them in imports/qq/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: message-manager
+        name: Message Manager export
+        description: |
+          Desktop QQ's built-in Message Manager (消息管理器) can export per-chat history to plain .txt (or .bak) files. The local Msg2.0.db on disk is encrypted and not directly readable, so this manual export is the only practical first-party path.
+        seed_prompt: |
+          Help me export my QQ chat history via Message Manager on desktop QQ. Walk me through opening 消息管理器, selecting the chats I care about, exporting each as .txt, and landing the files under imports/qq/.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      QQ has no public personal-messaging API and no third-party sync tool with stable access. The only data store is the encrypted local Msg2.0.db, which is not designed for incremental external reads.
