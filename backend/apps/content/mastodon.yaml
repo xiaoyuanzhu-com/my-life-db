@@ -3,5 +3,28 @@ name: "Mastodon"
 category: social
 website: https://joinmastodon.org
 description: "Decentralized social network (ActivityPub)."
-import_prompt: |
-  Help me import my Mastodon archive. Walk me through Settings → Import and export → Request your archive on my home instance, wait for it to generate, then unpack the tarball into imports/mastodon/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: builtin
+        name: Official
+        official: true
+        url: https://docs.joinmastodon.org/user/moving/#export
+        description: |
+          Mastodon's first-party export, available on every instance under Settings → Import and export → Request your archive. Produces a tarball containing your posts (as ActivityPub JSON), media attachments, and account info. Generation is rate-limited (typically once per week).
+        seed_prompt: |
+          Help me import my Mastodon archive. Walk me through Settings → Import and export → Request your archive on my home instance, waiting for it to generate, then unpacking the tarball into imports/mastodon/.
+
+  continuous_sync:
+    feasible: true
+    options:
+      - id: rest-api
+        name: Mastodon API
+        official: true
+        url: https://docs.joinmastodon.org/api/
+        description: |
+          Mastodon exposes a documented REST API on every instance. With a personal access token from Settings → Development, you can paginate your own statuses, favourites, bookmarks, and follows, or stream new events via the streaming API.
+        seed_prompt: |
+          Help me set up continuous sync of my Mastodon account using the API. Walk me through generating a personal access token on my home instance, then periodically pulling my statuses/favourites/bookmarks (or subscribing to the streaming API) into imports/mastodon/.
