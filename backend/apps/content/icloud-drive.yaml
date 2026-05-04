@@ -3,5 +3,37 @@ name: "iCloud Drive"
 category: cloud
 website: https://icloud.com
 description: "Apple's cloud file storage."
-import_prompt: |
-  Help me import my iCloud Drive files. On macOS, iCloud Drive lives at ~/Library/Mobile Documents/com~apple~CloudDocs/ — walk me through symlinking that into imports/icloud-drive/, or doing a bulk selective download from icloud.com.
+icon: icloud-drive
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: macos-finder
+        name: Official
+        official: true
+        url: https://support.apple.com/guide/icloud/set-up-icloud-drive-mm9c7a45ee/icloud
+        description: |
+          On macOS, iCloud Drive is mounted at `~/Library/Mobile Documents/com~apple~CloudDocs/`. With "Optimize Mac Storage" disabled, every file is materialized locally and can be copied off in one pass.
+        seed_prompt: |
+          Help me do a one-off import of my iCloud Drive on macOS. Walk me through making sure files are downloaded locally (System Settings → iCloud Drive → turn off Optimize Mac Storage and wait for sync), then copying or rsync-ing `~/Library/Mobile Documents/com~apple~CloudDocs/` into imports/icloud-drive/.
+      - id: web-download
+        name: iCloud.com
+        official: true
+        url: https://www.icloud.com/iclouddrive
+        description: |
+          iCloud.com's web UI lets you select files/folders and download them as a zip. Works on any OS but is impractical for very large drives because of zip size limits and a clunky multi-select.
+        seed_prompt: |
+          Help me do a one-off import of my iCloud Drive via the web at icloud.com. Walk me through selecting folders, downloading them as zips in chunks, and unpacking everything under imports/icloud-drive/.
+
+  continuous_sync:
+    feasible: true
+    options:
+      - id: macos-finder
+        name: Official
+        official: true
+        url: https://support.apple.com/guide/icloud/set-up-icloud-drive-mm9c7a45ee/icloud
+        description: |
+          The macOS iCloud Drive mount stays in sync automatically. Pointing MyLifeDB at that folder (or symlinking it under imports/icloud-drive/) gives continuous sync without extra software, as long as files are kept local.
+        seed_prompt: |
+          Help me set up continuous iCloud Drive sync for MyLifeDB on macOS. Walk me through ensuring files stay materialized locally (Optimize Mac Storage off, or pinning specific folders) and then either pointing imports/icloud-drive/ at `~/Library/Mobile Documents/com~apple~CloudDocs/` or symlinking it.
