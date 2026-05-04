@@ -4,5 +4,28 @@ category: social
 website: https://twitter.com
 description: Microblogging social network.
 icon: x
-import_prompt: |
-  Help me import my Twitter / X archive into MyLifeDB. Walk me through requesting a data export from twitter.com (Settings → Your account → Download an archive of your data), then once I have the .zip, help me extract the tweets, likes, and media into a sensible folder layout under my data root.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: data-archive
+        name: Official
+        official: true
+        url: https://help.x.com/en/managing-your-account/how-to-download-your-x-archive
+        description: |
+          X's first-party data archive. Request via Settings → Your account → Download an archive of your data; X emails a download link within ~24-72 hours. The zip contains `data/*.js` files (JSON with a prefix) covering tweets, replies, likes, bookmarks, DMs, follower/following lists, plus a `tweets_media/` folder.
+        seed_prompt: |
+          Help me import my Twitter / X archive. Walk me through requesting it from Settings → Your account → Download an archive of your data, waiting for the email, and once I have the zip, unpacking it into imports/twitter/ and explaining what each data/*.js file contains.
+      - id: snscrape
+        name: snscrape
+        url: https://github.com/JustAnotherArchivist/snscrape
+        description: |
+          Open-source scraper for public X/Twitter timelines. Useful for grabbing a handle's public posts when you don't own the account or don't want to wait days for the official archive.
+        seed_prompt: |
+          Help me scrape public tweets from a handle I'll give you using snscrape. Walk me through installing it, picking a date range, and saving results as NDJSON under imports/twitter/.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      X's official data archive is a manual request with a multi-day fulfillment delay, not an API. The X API v2 has personal-data endpoints, but useful access tiers are paid and the free tier is too limited for ongoing personal sync. Public scraping (snscrape and similar) is fragile and frequently blocked.
