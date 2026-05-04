@@ -3,5 +3,41 @@ name: "GitHub"
 category: other
 website: https://github.com
 description: "Code hosting + collaboration platform."
-import_prompt: |
-  Help me export my GitHub data. Walk me through Settings → Account → Export account data → Start export — includes repos, issues, gists. Additionally, use 'gh' CLI to mirror-clone each repo into imports/github/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: account-export
+        name: Official
+        official: true
+        url: https://docs.github.com/en/account-and-profile/setting-up-and-managing-your-personal-account-on-github/managing-personal-account-settings/requesting-an-archive-of-your-personal-account-data
+        description: |
+          GitHub's first-party account data export. Settings → Account → Export account data → Start export. Produces a tarball containing your repos, issues, pull requests, gists, and other account metadata, delivered via email link.
+        seed_prompt: |
+          Help me import my GitHub account data export. Walk me through Settings → Account → Export account data, then unpack the resulting tarball under imports/github/ and orient me to its structure (repos, issues, gists, etc.).
+      - id: gh-mirror-clone
+        name: gh CLI mirror clone
+        url: https://cli.github.com/
+        description: |
+          Use the official `gh` CLI to enumerate your repositories and `git clone --mirror` each one. Captures full git history; complementary to the account-data export.
+        seed_prompt: |
+          Help me mirror-clone all my GitHub repos into imports/github/. Walk me through using `gh repo list` to enumerate repositories and `git clone --mirror` to capture full history.
+
+  continuous_sync:
+    feasible: true
+    options:
+      - id: rest-api
+        name: GitHub REST/GraphQL API
+        official: true
+        url: https://docs.github.com/en/rest
+        description: |
+          GitHub's official REST and GraphQL APIs cover repos, issues, PRs, gists, stars, and more. Authenticate with a personal access token; suitable for scripted continuous pulls.
+        seed_prompt: |
+          Help me set up continuous sync from GitHub via the REST/GraphQL API. Walk me through creating a personal access token, picking the data I want (issues, PRs, stars, gists), and writing a periodic job that updates imports/github/.
+      - id: git-fetch-mirrors
+        name: Periodic git fetch on mirrors
+        description: |
+          Run `git fetch --all` on the mirror clones produced by the one-off step to keep repository contents up to date.
+        seed_prompt: |
+          Help me set up a periodic `git fetch --all` over my mirrored GitHub repos under imports/github/ so the local copies stay in sync.
