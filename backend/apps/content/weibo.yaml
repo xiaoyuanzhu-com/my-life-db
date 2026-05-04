@@ -3,5 +3,19 @@ name: "Weibo"
 category: social
 website: https://weibo.com
 description: "Chinese microblogging network."
-import_prompt: |
-  Help me export my Weibo content. Weibo allows exporting via account settings in some clients; otherwise walk me through scraping my own timeline via weibo.com with an agent script, saving posts and media into imports/weibo/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: timeline-scrape
+        name: Timeline scrape
+        description: |
+          Weibo does not offer a first-party personal export. The only path is to scrape your own timeline via weibo.com (or m.weibo.cn) using your logged-in cookies, paginating through your posts and saving the JSON plus any media.
+        seed_prompt: |
+          Help me scrape my own Weibo timeline. Walk me through grabbing my login cookies, paginating through my posts on weibo.com or m.weibo.cn, and saving each post (text + media URLs) as JSON under imports/weibo/.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      Weibo's open API is heavily restricted and not available for personal-data sync, and there is no third-party tool with stable access. Re-scraping on a schedule is brittle and at the mercy of Weibo's anti-scrape measures, not a real continuous-sync path.
