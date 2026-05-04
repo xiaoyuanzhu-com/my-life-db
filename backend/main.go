@@ -59,6 +59,11 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to create server")
 	}
 
+	// All env vars have been read into memory — clear them from the process
+	// so secrets (API keys, OAuth credentials) are not exposed via
+	// /proc/self/environ or printenv.
+	config.ClearEnvVars()
+
 	// Setup API routes
 	handlers := api.NewHandlers(srv)
 	api.SetupRoutes(srv.Router(), handlers)

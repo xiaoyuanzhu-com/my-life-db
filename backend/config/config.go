@@ -143,6 +143,48 @@ func (c *Config) GetAppDataDir() string {
 	return c.AppDataDir
 }
 
+// appEnvKeys lists all environment variables that the application reads at
+// startup. After the config is loaded and the server is initialised, these are
+// cleared from the process environment so that sensitive values (API keys,
+// OAuth secrets, etc.) are not visible via /proc/self/environ or printenv.
+var appEnvKeys = []string{
+	// Server
+	"PORT", "HOST", "NODE_ENV",
+	// Data directories
+	"USER_DATA_DIR", "APP_DATA_DIR", "MLD_SIMPLE_EXTENSION_DIR",
+	// Host directory mounts (Docker)
+	"HOST_USER_DATA_DIR", "HOST_APP_DATA_DIR", "HOST_CLAUDE_DIR",
+	"HOST_CODEX_DIR", "HOST_CONFIG_DIR", "HOST_GEMINI_DIR",
+	"HOST_OPENCODE_DIR", "HOST_QWEN_DIR", "HOST_SSH_DIR",
+	// OAuth
+	"MLD_AUTH_MODE", "MLD_OAUTH_CLIENT_ID", "MLD_OAUTH_CLIENT_SECRET",
+	"MLD_OAUTH_ISSUER_URL", "MLD_OAUTH_REDIRECT_URI", "MLD_EXPECTED_USERNAME",
+	// Agent LLM gateway
+	"AGENT_BASE_URL", "AGENT_API_KEY", "AGENT_CUSTOMER_ID", "AGENT_MODELS",
+	// ANTHROPIC_* (deployment mirrors AGENT_* for agent child processes)
+	"ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "ANTHROPIC_CUSTOM_HEADERS",
+	"ANTHROPIC_MODEL", "ANTHROPIC_SMALL_FAST_MODEL",
+	// OPENAI_* (deployment mirrors AGENT_* for agent child processes)
+	"OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_MODEL",
+	// Agent home/config dirs (read by server.New)
+	"CODEX_HOME", "GEMINI_HOME", "QWEN_HOME", "OPENCODE_CONFIG",
+	// Other app vars
+	"USERNAME", "HAID_BASE_URL", "MLD_LLM_ANTHROPIC_KEY",
+	// Debug
+	"DB_LOG_QUERIES", "DEBUG",
+}
+
+// ClearEnvVars removes all application environment variables from the process.
+// Call this after config is loaded and server initialisation is complete so
+// that sensitive values (API keys, OAuth secrets) are no longer visible in
+// /proc/self/environ or via printenv. Values remain accessible through the
+// Config struct in memory.
+func ClearEnvVars() {
+	for _, key := range appEnvKeys {
+		os.Unsetenv(key)
+	}
+}
+
 // Helper functions
 
 func getEnv(key, defaultValue string) string {
