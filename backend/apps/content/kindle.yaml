@@ -3,5 +3,34 @@ name: "Kindle"
 category: media
 website: https://amazon.com/kindle
 description: "Amazon's e-book reader and library."
-import_prompt: |
-  Help me import my Kindle highlights + reading history. Best path: connect Readwise (readwise.io) to auto-pull highlights, then export from Readwise. Alternative: manual export from read.amazon.com/notebook per book. Land files in imports/kindle/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: kindle-notebook
+        name: Official
+        official: true
+        url: https://read.amazon.com/notebook
+        description: |
+          Amazon's "Your Notebook" web page lists highlights and notes per book. There's no bulk export button, so retrieval is per-book copy/paste or a browser-side scraper against the page.
+        seed_prompt: |
+          Help me import my Kindle highlights from read.amazon.com/notebook. Walk me through extracting highlights and notes for the books I care about and saving them under imports/kindle/.
+      - id: readwise
+        name: Readwise
+        url: https://readwise.io/
+        description: |
+          Third-party service that connects to your Amazon account and syncs Kindle highlights automatically. You can then export everything from Readwise as Markdown or CSV.
+        seed_prompt: |
+          Help me import my Kindle highlights via Readwise. Walk me through connecting my Amazon account to Readwise, letting it sync, then exporting the highlights archive into imports/kindle/.
+
+  continuous_sync:
+    feasible: true
+    options:
+      - id: readwise-sync
+        name: Readwise
+        url: https://readwise.io/
+        description: |
+          Readwise continuously polls Amazon for new highlights and exposes them via its own API and export endpoints. The most reliable way to keep Kindle highlights flowing without re-scraping the notebook page yourself.
+        seed_prompt: |
+          Help me set up Readwise to continuously sync new Kindle highlights into imports/kindle/. Walk me through the Amazon connection, then how to periodically pull fresh data from Readwise into MyLifeDB.
