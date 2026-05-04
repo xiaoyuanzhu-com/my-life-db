@@ -3,5 +3,35 @@ name: "Todoist"
 category: other
 website: https://todoist.com
 description: "Task management app."
-import_prompt: |
-  Help me back up my Todoist tasks. Walk me through Settings → Backups → download the latest ZIP (JSON snapshots), and land them in imports/todoist/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: backups
+        name: Official
+        official: true
+        url: https://todoist.com/help/articles/introduction-to-backups-uMpiETnH
+        description: |
+          Todoist's first-party automatic backups. Settings → Backups → download the latest ZIP (JSON snapshots of all projects and tasks). Pro feature — free accounts may not see this menu.
+        seed_prompt: |
+          Help me import my Todoist data from the Backups feature. Walk me through Settings → Backups → download latest ZIP, then unpack the JSON snapshots under imports/todoist/.
+      - id: csv-export
+        name: Per-project CSV export
+        url: https://todoist.com/help/articles/import-and-export-projects-with-csv-9UVgVgAA
+        description: |
+          Per-project CSV export from each project's menu (… → Export as template / Export as CSV). Useful when Backups is unavailable or you only need specific projects.
+        seed_prompt: |
+          Help me export my Todoist projects as CSV. Walk me through the per-project Export menu and land the CSVs in imports/todoist/.
+
+  continuous_sync:
+    feasible: true
+    options:
+      - id: rest-api
+        name: Todoist REST API
+        official: true
+        url: https://developer.todoist.com/rest/v2/
+        description: |
+          Todoist's official REST API exposes projects, tasks, sections, labels, and comments. Authenticate with a personal API token from Settings → Integrations → Developer.
+        seed_prompt: |
+          Help me set up continuous sync from Todoist via the REST API. Walk me through getting a personal API token from Settings → Integrations → Developer and writing a periodic pull into imports/todoist/.
