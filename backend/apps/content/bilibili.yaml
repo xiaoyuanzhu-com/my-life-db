@@ -3,5 +3,14 @@ name: "Bilibili"
 category: social
 website: https://bilibili.com
 description: "Chinese video-sharing and culture community platform."
-import_prompt: |
-  Help me export my Bilibili account data — uploaded videos, watch history, favorites (收藏夹), and coins. Bilibili has no bulk export UI, so walk me through using the account API or a scraper script with my login cookies, saving everything into imports/bilibili/.
+
+import:
+  one_off:
+    feasible: false
+    reason: |
+      Bilibili does not offer a first-party bulk data export. Public web APIs exist for some account state (uploads, favorites, history) but require your login cookies and rate-limit aggressively, and there is no widely adopted, maintained third-party export tool to recommend confidently.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      No official continuous export feed. Any sync would have to be a custom cookie-authenticated scraper against undocumented endpoints, which is fragile and outside what we recommend.
