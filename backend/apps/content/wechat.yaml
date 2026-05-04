@@ -3,3 +3,25 @@ name: WeChat
 category: chat
 website: https://www.wechat.com
 description: Chinese multi-purpose messaging and social app.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: local-db-extract
+        name: Local DB extraction
+        description: |
+          WeChat has no first-party data export. The only path is to extract the local SQLite databases that desktop or mobile WeChat keeps on your device (encrypted with a key derived from UIN/IMEI) and decrypt them with community tools. This is fragile, version-dependent, and operates against WeChat's ToS — but it is the only way to recover real chat history.
+        seed_prompt: |
+          Help me export my WeChat chat history by extracting the local SQLite databases. Walk me through locating them (iOS unencrypted backup via iMazing, or macOS at ~/Library/Containers/com.tencent.xinWeChat/, or Windows MM.sqlite), recovering the decryption key, decrypting to readable form, and landing the output under imports/wechat/.
+      - id: moments-screen-record
+        name: Moments screen recording
+        description: |
+          WeChat Moments (朋友圈) cannot be exported at all. The only way to preserve them is to scroll while screen-recording and OCR the result.
+        seed_prompt: |
+          I have a screen recording of scrolling through my WeChat Moments. Help me run OCR over it and save the extracted posts plus frame screenshots under imports/wechat/moments/.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      WeChat exposes no consumer API and Tencent actively blocks third-party sync. The local-DB extraction path requires the app to be running and logged in, plus a fresh decryption pass each time, which is not a real continuous-sync mechanism.
