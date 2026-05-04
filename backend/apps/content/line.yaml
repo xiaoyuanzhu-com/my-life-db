@@ -3,5 +3,21 @@ name: "LINE"
 category: chat
 website: https://line.me
 description: "Japanese/Taiwanese/Thai messaging app."
-import_prompt: |
-  Help me back up LINE chats. LINE has no bulk export — each chat must be exported via the chat → Settings → Export chat history (emails as a .txt). Walk me through batching this and landing the results in imports/line/<contact>/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: per-chat-export
+        name: Official
+        official: true
+        url: https://help.line.me/line/?contentId=20013372
+        description: |
+          LINE has no bulk export. Each individual chat must be exported separately from within the chat (Settings → Export chat history), which sends a plain-text transcript via email or share sheet. Media is not included.
+        seed_prompt: |
+          Help me back up LINE chats. Walk me through the per-chat Export chat history flow (Settings → Export chat history) for each conversation I care about, and how to land the resulting .txt files in imports/line/<contact>/.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      LINE provides no public API for personal-account chat history. The official Messaging API is only for Official Accounts (businesses) talking to users, not for syncing your own personal chats. There is no sanctioned continuous-sync path.
