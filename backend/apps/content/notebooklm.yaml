@@ -3,5 +3,14 @@ name: "NotebookLM"
 category: chat
 website: https://notebooklm.google.com
 description: "Google's AI-powered research and notetaking assistant."
-import_prompt: |
-  Help me archive my NotebookLM notebooks. No official export — walk me through copying generated notes, audio overviews, and source links per notebook into imports/notebooklm/.
+
+import:
+  one_off:
+    feasible: false
+    reason: |
+      NotebookLM does not provide a documented bulk export for notebooks, generated notes, or audio overviews. Per-notebook archival currently requires manual copy of notes and downloading audio overviews one at a time.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      Google does not expose a continuous-sync or public API for NotebookLM content.
