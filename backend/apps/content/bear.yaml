@@ -3,5 +3,20 @@ name: "Bear"
 category: notes
 website: https://bear.app
 description: "Beautiful, flexible writing app for crafting notes and prose."
-import_prompt: |
-  Help me export my Bear notes. On Mac: File → Export Notes — pick Markdown (or .bearbook for full fidelity). Drop into imports/bear/.
+
+import:
+  one_off:
+    feasible: true
+    options:
+      - id: export-notes
+        name: Official
+        official: true
+        description: |
+          Bear's built-in File → Export Notes on macOS. Supports Markdown, HTML, PDF, RTF, and Bear's own .bearbook format (highest fidelity, includes tags and attachments).
+        seed_prompt: |
+          Help me export my Bear notes via File → Export Notes on macOS. Walk me through choosing a format (Markdown for portability, .bearbook for fidelity), then unpack the output under imports/bear/.
+
+  continuous_sync:
+    feasible: false
+    reason: |
+      Bear has no scheduled export and no public API. iCloud sync only moves data between Bear instances; nothing lands in a filesystem folder MyLifeDB can watch.
