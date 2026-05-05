@@ -415,7 +415,7 @@ export default function AgentPage() {
   // the model options when configured.
   const [defaultConfigOptions, setDefaultConfigOptions] = useState<Record<string, ConfigOption[]>>({})
   useEffect(() => {
-    fetch('/api/agent/config')
+    api.get('/api/agent/config')
       .then(res => res.json())
       .then(data => {
         if (data.defaultConfigOptions) {

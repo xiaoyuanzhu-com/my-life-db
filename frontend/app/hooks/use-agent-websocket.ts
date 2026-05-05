@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { refreshAccessToken } from "~/lib/fetch-with-refresh"
 
 // ACP envelope frame — two possible discriminators
 export interface AcpFrame {
@@ -257,11 +258,21 @@ export function useAgentWebSocket({
           setConnected(false)
           wsRef.current = null
         }
-        // Reconnect with exponential backoff
+        // Reconnect with exponential backoff. Refresh the access token first —
+        // the cookie may have expired while the tab was idle, in which case
+        // every reconnect attempt would 401 at the gateway forever (cookies
+        // get sent automatically with WS upgrades, but expired ones don't
+        // self-renew like fetchWithRefresh does for HTTP).
         if (!unmounted) {
-          reconnectTimer = setTimeout(() => {
+          reconnectTimer = setTimeout(async () => {
             reconnectDelay = Math.min(reconnectDelay * 2, 30000)
-            connect()
+            try {
+              await refreshAccessToken()
+            } catch {
+              // Refresh failed — still try to reconnect, the cookie may
+              // have been updated by another tab or the native shell.
+            }
+            if (!unmounted) connect()
           }, reconnectDelay)
         }
       }
@@ -284,8 +295,32 @@ export function useAgentWebSocket({
 
     connect()
 
+    // Wake the WS immediately when the tab becomes visible again, instead of
+    // waiting for the backoff timer (which can be up to 30s after a long idle).
+    // Refresh the token first so the reconnect picks up a fresh cookie.
+    const onVisibility = async () => {
+      if (document.visibilityState !== "visible" || unmounted) return
+      const ready = wsRef.current?.readyState ?? -1
+      if (ready === WebSocket.OPEN || ready === WebSocket.CONNECTING) return
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer)
+        reconnectTimer = null
+      }
+      try {
+        await refreshAccessToken()
+      } catch {
+        // Still try to reconnect — cookie may be valid via another path.
+      }
+      if (!unmounted) {
+        reconnectDelay = 1000
+        connect()
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibility)
+
     return () => {
       unmounted = true
+      document.removeEventListener("visibilitychange", onVisibility)
       if (reconnectTimer) clearTimeout(reconnectTimer)
       if (ws) ws.close()
       wsRef.current = null
