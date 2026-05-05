@@ -7,6 +7,7 @@ import mermaidLib from "mermaid";
 import {
   isValidElement,
   memo,
+  useCallback,
   useEffect,
   useId,
   useRef,
@@ -14,7 +15,8 @@ import {
   type FC,
   type ReactNode,
 } from "react";
-import { Maximize2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { Check, Copy, Maximize2 } from "lucide-react";
 import { PreviewFullscreen } from "~/components/agent/preview-fullscreen";
 import { getHighlighter, LIGHT_THEME, DARK_THEME } from "~/lib/markdown/shiki";
 
@@ -118,7 +120,9 @@ const MermaidRenderer: FC<RendererProps> = ({ code: chart }) => {
 };
 
 const CodeRenderer: FC<RendererProps> = ({ code, language }) => {
+  const { t } = useTranslation('agent');
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const codeRef = useRef(code);
   const langRef = useRef(language);
 
@@ -163,10 +167,28 @@ const CodeRenderer: FC<RendererProps> = ({ code, language }) => {
     return () => { cancelled = true; };
   }, [code, language]);
 
+  const handleCopy = useCallback(() => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(code);
+    } else {
+      // Fallback for non-secure contexts (HTTP)
+      const textarea = document.createElement("textarea");
+      textarea.value = code;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }, [code]);
+
   const trimmedCode = code.endsWith("\n") ? code.slice(0, -1) : code;
 
   return (
-    <div className="relative my-3 rounded-lg border border-border/40 bg-zinc-50 dark:bg-zinc-900 overflow-hidden text-sm">
+    <div className="group/code relative my-3 rounded-lg border border-border/40 bg-zinc-50 dark:bg-zinc-900 overflow-hidden text-sm">
       {highlightedHtml ? (
         <div
           className="shiki-code-block overflow-x-auto [&_pre]:!m-0 [&_pre]:!bg-transparent [&_pre]:px-3 [&_pre]:py-3 [&_code]:!text-[13px] [&_code]:!leading-relaxed"
@@ -177,6 +199,18 @@ const CodeRenderer: FC<RendererProps> = ({ code, language }) => {
           <code className="!text-[13px] !leading-relaxed">{trimmedCode}</code>
         </pre>
       )}
+      <button
+        type="button"
+        onClick={handleCopy}
+        className="absolute top-2 right-2 opacity-0 group-hover/code:opacity-100 transition-opacity rounded-md p-1.5 bg-zinc-50/80 dark:bg-zinc-900/80 backdrop-blur-sm hover:bg-muted text-muted-foreground hover:text-foreground"
+        title={t('thread.copyCode')}
+      >
+        {copied ? (
+          <Check className="h-3.5 w-3.5" />
+        ) : (
+          <Copy className="h-3.5 w-3.5" />
+        )}
+      </button>
     </div>
   );
 };
