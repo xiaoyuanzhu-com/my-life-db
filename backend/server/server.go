@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	cryptoRand "crypto/rand"
+	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -83,6 +84,21 @@ type Server struct {
 	router *gin.Engine
 	http   *http.Server
 }
+
+// codexModelCatalog is a snapshot of the upstream codex CLI's default model
+// catalog (extracted via `codex debug models` from @openai/codex@0.128.0).
+// Older codex versions ship outdated catalogs; when the gateway routes a
+// session to a model the bundled catalog doesn't know about, codex emits
+// "Model metadata for <slug> not found. Defaulting to fallback metadata"
+// and may apply wrong context-window/reasoning settings. We write this file
+// alongside config.toml and point `model_catalog_json` at it so codex always
+// has metadata for the gpt-5.x slugs MyLifeDB exposes.
+//
+// To refresh: run `codex debug models > codex_model_catalog.json` against
+// the latest @openai/codex release and pretty-print with `python3 -m json.tool`.
+//
+//go:embed codex_model_catalog.json
+var codexModelCatalog []byte
 
 // New creates a new server with all components initialized
 func New(cfg *Config) (*Server, error) {
@@ -268,9 +284,24 @@ func New(cfg *Config) (*Server, error) {
 				if err := os.WriteFile(authPath, []byte(authJSON), 0600); err != nil {
 					log.Warn().Err(err).Str("path", authPath).Msg("failed to write codex auth.json")
 				}
+
+				// Write the bundled model catalog so codex has metadata for
+				// every gpt-5.x slug we route to it (avoids the "Model
+				// metadata for <slug> not found" warning + fallback defaults).
+				catalogPath := filepath.Join(codexHome, "model_catalog.json")
+				if err := os.WriteFile(catalogPath, codexModelCatalog, 0600); err != nil {
+					log.Warn().Err(err).Str("path", catalogPath).Msg("failed to write codex model_catalog.json")
+				}
+
+				// Always write config.toml: `model_catalog_json` must be set
+				// for the bundled catalog to take effect. The litellm provider
+				// block is only emitted when CustomerID is set (codex has no
+				// env var for custom HTTP headers).
 				configPath := filepath.Join(codexHome, "config.toml")
+				configTOML := fmt.Sprintf("model_catalog_json = %q\n", catalogPath)
 				if cfg.AgentLLM.CustomerID != "" {
-					configTOML := fmt.Sprintf(`model_provider = "litellm"
+					configTOML += fmt.Sprintf(`
+model_provider = "litellm"
 
 [model_providers.litellm]
 name = "litellm"
@@ -279,11 +310,9 @@ wire_api = "responses"
 env_key = "OPENAI_API_KEY"
 http_headers = { "x-litellm-customer-id" = %q }
 `, cfg.AgentLLM.BaseURL+"/v1", cfg.AgentLLM.CustomerID)
-					if err := os.WriteFile(configPath, []byte(configTOML), 0600); err != nil {
-						log.Warn().Err(err).Str("path", configPath).Msg("failed to write codex config.toml")
-					}
-				} else {
-					_ = os.Remove(configPath)
+				}
+				if err := os.WriteFile(configPath, []byte(configTOML), 0600); err != nil {
+					log.Warn().Err(err).Str("path", configPath).Msg("failed to write codex config.toml")
 				}
 			}
 
