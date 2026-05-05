@@ -15,7 +15,7 @@ let refreshPromise: Promise<boolean> | null = null;
 /**
  * Attempt to refresh the access token.
  * - Native WebView: delegates to native bridge (requestTokenRefresh)
- * - Web browser: cookie-based POST to /api/oauth/refresh
+ * - Web browser: cookie-based POST to /api/system/oauth/refresh
  * Exported for use by WebSocket reconnection logic
  */
 export async function refreshAccessToken(): Promise<boolean> {

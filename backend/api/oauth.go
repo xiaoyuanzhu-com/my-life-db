@@ -33,7 +33,7 @@ type TokenResponse struct {
 	IDToken      string `json:"id_token,omitempty"`
 }
 
-// OAuthAuthorize handles GET /api/oauth/authorize
+// OAuthAuthorize handles GET /api/system/oauth/authorize
 func (h *Handlers) OAuthAuthorize(c *gin.Context) {
 	// Get OIDC provider with automatic discovery
 	provider, err := auth.GetOIDCProvider()
@@ -65,7 +65,7 @@ func (h *Handlers) OAuthAuthorize(c *gin.Context) {
 	// Store state in a short-lived httpOnly cookie for validation on callback
 	cfg := config.Get()
 	secure := !cfg.IsDevelopment()
-	c.SetCookie(oauthStateCookieName, state, oauthStateCookieMaxAge, "/api/oauth", "", secure, true)
+	c.SetCookie(oauthStateCookieName, state, oauthStateCookieMaxAge, "/api/system/oauth", "", secure, true)
 
 	// Build dynamic redirect URI from request if not configured
 	redirectURI := buildOAuthRedirectURI(c)
@@ -76,7 +76,7 @@ func (h *Handlers) OAuthAuthorize(c *gin.Context) {
 	c.Redirect(http.StatusFound, authURL)
 }
 
-// OAuthCallback handles GET /api/oauth/callback
+// OAuthCallback handles GET /api/system/oauth/callback
 func (h *Handlers) OAuthCallback(c *gin.Context) {
 	code := c.Query("code")
 	if code == "" {
@@ -101,7 +101,7 @@ func (h *Handlers) OAuthCallback(c *gin.Context) {
 	}
 
 	// Clear the state cookie immediately
-	c.SetCookie(oauthStateCookieName, "", -1, "/api/oauth", "", false, true)
+	c.SetCookie(oauthStateCookieName, "", -1, "/api/system/oauth", "", false, true)
 
 	// Verify state matches
 	if stateParam != stateCookie {
@@ -222,7 +222,7 @@ func (h *Handlers) OAuthCallback(c *gin.Context) {
 	c.Redirect(http.StatusFound, "/")
 }
 
-// OAuthRefresh handles POST /api/oauth/refresh
+// OAuthRefresh handles POST /api/system/oauth/refresh
 func (h *Handlers) OAuthRefresh(c *gin.Context) {
 	// Get refresh token: cookie first (web clients), then JSON body (native clients)
 	refreshToken, _ := c.Cookie("refresh_token")
@@ -297,7 +297,7 @@ func (h *Handlers) OAuthRefresh(c *gin.Context) {
 	})
 }
 
-// OAuthToken handles GET /api/oauth/token
+// OAuthToken handles GET /api/system/oauth/token
 func (h *Handlers) OAuthToken(c *gin.Context) {
 	// Get access token from cookie or header
 	accessToken := c.Request.Header.Get("Authorization")
@@ -380,7 +380,7 @@ func (h *Handlers) OAuthToken(c *gin.Context) {
 	})
 }
 
-// OAuthLogout handles POST /api/oauth/logout
+// OAuthLogout handles POST /api/system/oauth/logout
 func (h *Handlers) OAuthLogout(c *gin.Context) {
 	// Clear auth cookies
 	clearAuthCookiesGin(c)
@@ -399,15 +399,15 @@ func setAuthCookiesGin(c *gin.Context, tokens *TokenResponse) {
 
 	c.SetCookie("access_token", tokens.AccessToken, tokens.ExpiresIn, "/", "", secure, true)
 
-	// Refresh token cookie - longer lived, path set to /api/oauth to be accessible by all OAuth endpoints
+	// Refresh token cookie - longer lived, path set to /api/system/oauth to be accessible by all OAuth endpoints
 	if tokens.RefreshToken != "" {
-		c.SetCookie("refresh_token", tokens.RefreshToken, 60*60*24*30, "/api/oauth", "", secure, true)
+		c.SetCookie("refresh_token", tokens.RefreshToken, 60*60*24*30, "/api/system/oauth", "", secure, true)
 	}
 }
 
 func clearAuthCookiesGin(c *gin.Context) {
 	c.SetCookie("access_token", "", -1, "/", "", false, true)
-	c.SetCookie("refresh_token", "", -1, "/api/oauth", "", false, true)
+	c.SetCookie("refresh_token", "", -1, "/api/system/oauth", "", false, true)
 }
 
 // generateOAuthState generates a cryptographically random state string
@@ -431,7 +431,7 @@ func buildOAuthRedirectURI(c *gin.Context) string {
 	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
 		scheme = "https"
 	}
-	return fmt.Sprintf("%s://%s/api/oauth/callback", scheme, c.Request.Host)
+	return fmt.Sprintf("%s://%s/api/system/oauth/callback", scheme, c.Request.Host)
 }
 
 // extractNativeRedirect extracts native app redirect URL from the OAuth state parameter.
