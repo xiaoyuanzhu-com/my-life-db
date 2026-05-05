@@ -35,12 +35,6 @@
   "apps": {
     "title": "从应用导入",
     "back": "数据",
-    "hero": {
-      "kicker": "从你已有的数据开始",
-      "title": "把常用应用变成你的私有 AI 记忆。",
-      "description": "选择一个应用和导入方式，先预览完整的 Agent 提示词，再创建你的 MyLifeDB 空间。",
-      "signInLater": "浏览不需要账号。只有真正开始导入时才需要登录。"
-    },
     "sections": {
       "featured": "精选",
       "fitness": "运动健康",

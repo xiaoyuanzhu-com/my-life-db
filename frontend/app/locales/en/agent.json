@@ -5,10 +5,10 @@
     "signInHint": "Please sign in using the button in the header to get started."
   },
   "accountGate": {
-    "title": "Create your private MyLifeDB space",
-    "description": "This prompt will start an agent session and may import or create files. Sign in first so it runs in your own instance and storage.",
+    "title": "Create an account to continue",
+    "description": "Create an account, then we will continue from this prompt.",
     "keepEditing": "Keep editing",
-    "createSpace": "Create my space"
+    "createSpace": "Create account"
   },
   "loading": "Loading...",
   "sidebar": {

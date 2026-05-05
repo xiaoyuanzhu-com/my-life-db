@@ -5,10 +5,10 @@
     "signInHint": "请使用顶栏的按钮登录以开始。"
   },
   "accountGate": {
-    "title": "创建你的私有 MyLifeDB 空间",
-    "description": "这个提示词会启动助手会话，并可能导入或创建文件。请先登录，让它运行在你自己的实例和存储空间里。",
+    "title": "创建账号以继续",
+    "description": "创建账号后，我们会从当前提示词继续。",
     "keepEditing": "继续编辑",
-    "createSpace": "创建我的空间"
+    "createSpace": "创建账号"
   },
   "loading": "加载中…",
   "sidebar": {
