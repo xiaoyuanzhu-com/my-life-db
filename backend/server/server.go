@@ -17,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"golang.org/x/net/webdav"
 
+	"github.com/xiaoyuanzhu-com/my-life-db/agentproxy"
 	"github.com/xiaoyuanzhu-com/my-life-db/agentrunner"
 	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/connect"
@@ -44,6 +45,7 @@ type Server struct {
 	textIndexer  *textindex.Indexer
 	notifService *notifications.Service
 	agentClient  *agentsdk.Client
+	agentProxy   *agentproxy.Server   // loopback HTTP proxy that injects upstream LLM creds
 	frameStore   *agentsdk.FrameStore // persists ACP frames to disk JSONL
 	explore      *explore.Service
 	hookRegistry    *hooks.Registry
@@ -219,11 +221,36 @@ func New(cfg *Config) (*Server, error) {
 		qwenEnv := map[string]string{}
 		geminiEnv := map[string]string{}
 		if cfg.AgentLLM.HasAgentLLM() {
-			ccEnv["ANTHROPIC_BASE_URL"] = cfg.AgentLLM.BaseURL
-			ccEnv["ANTHROPIC_API_KEY"] = cfg.AgentLLM.APIKey
+			// Start a loopback reverse-proxy that holds the real upstream key
+			// in-process and injects it on outgoing requests. The Claude Code
+			// agent gets ANTHROPIC_BASE_URL pointing at the proxy and a
+			// per-process token in ANTHROPIC_API_KEY — the real key never
+			// appears in the agent's env, /proc/<pid>/environ, or any output
+			// of `env` from the agent's Bash tool.
+			//
+			// Other agents (Codex, Gemini, Qwen, opencode) still receive the
+			// real key for now; their CLIs also persist it to disk
+			// (~/.codex/auth.json etc.), so proxying only the env would give
+			// a misleading sense of secrecy. Tracked as follow-up.
+			extraHeaders := http.Header{}
 			if cfg.AgentLLM.CustomerID != "" {
-				ccEnv["ANTHROPIC_CUSTOM_HEADERS"] = "x-litellm-customer-id: " + cfg.AgentLLM.CustomerID
+				extraHeaders.Set("x-litellm-customer-id", cfg.AgentLLM.CustomerID)
 			}
+			proxy, err := agentproxy.New(cfg.AgentLLM.BaseURL, cfg.AgentLLM.APIKey, extraHeaders)
+			if err != nil {
+				return nil, fmt.Errorf("agent proxy: %w", err)
+			}
+			proxySrv, err := agentproxy.Start(proxy)
+			if err != nil {
+				return nil, fmt.Errorf("agent proxy listen: %w", err)
+			}
+			s.agentProxy = proxySrv
+			ccToken := proxy.IssueToken()
+
+			ccEnv["ANTHROPIC_BASE_URL"] = proxySrv.BaseURL()
+			ccEnv["ANTHROPIC_API_KEY"] = ccToken
+			// Custom header is now injected by the proxy — agent must not
+			// (and does not need to) carry it.
 			// Set default model from AGENT_MODELS (filtered per agent type) so the
 			// agent doesn't use its built-in default (which may not exist on the gateway).
 			if ccModels := FilterModelsForAgent(cfg.AgentLLM.Models, "claude_code"); len(ccModels) > 0 {
@@ -803,6 +830,17 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		if err := s.agentClient.Shutdown(ctx); err != nil {
 			log.Error().Err(err).Msg("agent client shutdown error")
 		}
+	}
+
+	// 5.1. Shut down the agent LLM proxy. Must come AFTER agent client
+	// shutdown so any final in-flight agent requests can complete; coming
+	// before would 502 them.
+	if s.agentProxy != nil {
+		proxyCtx, proxyCancel := context.WithTimeout(ctx, 5*time.Second)
+		if err := s.agentProxy.Shutdown(proxyCtx); err != nil {
+			log.Error().Err(err).Msg("agent proxy shutdown error")
+		}
+		proxyCancel()
 	}
 
 	// 5.5. Close the frame store (drains all writer goroutines).
