@@ -695,6 +695,19 @@ export default function AgentPage() {
     }
   }, [showNewSessionMobile])
 
+  // Hide BottomNav while the mobile new-session composer is mounted.
+  // The composer sits at the bottom of the viewport and the fixed BottomNav
+  // would otherwise overlap it. Session detail (`/agent/:id`) is already
+  // handled in root.tsx via pathname match; this covers the compose view
+  // where the URL is still `/agent`. CSS rule: globals.css.
+  useEffect(() => {
+    if (isNativeApp() || !isMobile || !showNewSessionMobile) return
+    document.body.dataset.hideBottomNav = '1'
+    return () => {
+      delete document.body.dataset.hideBottomNav
+    }
+  }, [isMobile, showNewSessionMobile])
+
   // Swipe gesture handler for mobile back navigation
   useEffect(() => {
     const handleTouchStart = (e: TouchEvent) => {

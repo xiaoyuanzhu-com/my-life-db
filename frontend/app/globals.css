@@ -763,3 +763,12 @@ a.library-file-link:hover {
   padding: 0 !important;
   gap: 0 !important;
 }
+
+/* Hide mobile BottomNav when a chat composer is mounted (agent.tsx sets
+   data-hide-bottom-nav on <body> for the mobile new-session compose view —
+   session detail routes are already handled by ConditionalBottomNav in
+   root.tsx via pathname match). The composer sits at the bottom of the
+   viewport and the fixed BottomNav would otherwise overlap it. */
+body[data-hide-bottom-nav] nav[data-mld-bottom-nav] {
+  display: none;
+}
