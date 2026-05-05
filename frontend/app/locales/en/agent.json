@@ -4,6 +4,12 @@
     "description": "Access your agent sessions for software development tasks.",
     "signInHint": "Please sign in using the button in the header to get started."
   },
+  "accountGate": {
+    "title": "Create your private MyLifeDB space",
+    "description": "This prompt will start an agent session and may import or create files. Sign in first so it runs in your own instance and storage.",
+    "keepEditing": "Keep editing",
+    "createSpace": "Create my space"
+  },
   "loading": "Loading...",
   "sidebar": {
     "sessions": "Sessions",

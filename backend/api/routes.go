@@ -100,6 +100,13 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		public.GET("/agent/share/:token", h.GetSharedSession)
 		public.GET("/agent/share/:token/messages", h.GetSharedSessionMessages)
 
+		// --- /api/public/apps — public read-only onboarding catalog ---
+		// These routes expose static app import metadata and seed prompts only.
+		// User data, collectors, uploads, sessions, and all /api/data/* routes
+		// remain behind the authenticated group below.
+		public.GET("/public/apps", h.GetApps)
+		public.GET("/public/apps/:id", h.GetApp)
+
 		// --- /api/connect/* — Connect consent UI preview (public) ---
 		// The consent screen renders "App X wants permissions Y" before the
 		// user is asked to approve. Read-only; mints no tokens or grants.

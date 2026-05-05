@@ -55,11 +55,14 @@ func (h *Handlers) OAuthAuthorize(c *gin.Context) {
 		return
 	}
 
-	// If native app redirect is requested, encode it in the state parameter
-	// so it survives the IdP redirect chain (cookies can be lost cross-site)
+	// If native app or browser return redirects are requested, encode them in
+	// the state parameter so they survive the IdP redirect chain (cookies can
+	// be lost cross-site). Prefer native_redirect when both are present.
 	nativeRedirect := c.Query("native_redirect")
 	if nativeRedirect != "" {
-		state = state + "." + base64.URLEncoding.EncodeToString([]byte(nativeRedirect))
+		state = state + ".native." + base64.URLEncoding.EncodeToString([]byte(nativeRedirect))
+	} else if returnTo := sanitizeOAuthReturnTo(c.Query("return_to")); returnTo != "" {
+		state = state + ".browser." + base64.URLEncoding.EncodeToString([]byte(returnTo))
 	}
 
 	// Store state in a short-lived httpOnly cookie for validation on callback
@@ -215,6 +218,11 @@ func (h *Handlers) OAuthCallback(c *gin.Context) {
 		}
 
 		c.Redirect(http.StatusFound, redirectURL)
+		return
+	}
+
+	if returnTo := extractBrowserReturnTo(stateParam); returnTo != "" {
+		c.Redirect(http.StatusFound, returnTo)
 		return
 	}
 
@@ -435,15 +443,52 @@ func buildOAuthRedirectURI(c *gin.Context) string {
 }
 
 // extractNativeRedirect extracts native app redirect URL from the OAuth state parameter.
-// State format: "<csrf_token>.<base64url(native_redirect)>" or just "<csrf_token>"
+// Supported state formats:
+//   - "<csrf_token>.native.<base64url(native_redirect)>"
+//   - legacy "<csrf_token>.<base64url(native_redirect)>"
+//   - just "<csrf_token>"
 func extractNativeRedirect(state string) string {
-	parts := strings.SplitN(state, ".", 2)
-	if len(parts) != 2 {
+	parts := strings.SplitN(state, ".", 3)
+	if len(parts) == 3 {
+		if parts[1] != "native" {
+			return ""
+		}
+		decoded, err := base64.URLEncoding.DecodeString(parts[2])
+		if err != nil {
+			return ""
+		}
+		return string(decoded)
+	}
+
+	legacyParts := strings.SplitN(state, ".", 2)
+	if len(legacyParts) != 2 {
 		return ""
 	}
-	decoded, err := base64.URLEncoding.DecodeString(parts[1])
+	decoded, err := base64.URLEncoding.DecodeString(legacyParts[1])
 	if err != nil {
 		return ""
 	}
 	return string(decoded)
+}
+
+func extractBrowserReturnTo(state string) string {
+	parts := strings.SplitN(state, ".", 3)
+	if len(parts) != 3 || parts[1] != "browser" {
+		return ""
+	}
+	decoded, err := base64.URLEncoding.DecodeString(parts[2])
+	if err != nil {
+		return ""
+	}
+	return sanitizeOAuthReturnTo(string(decoded))
+}
+
+func sanitizeOAuthReturnTo(returnTo string) string {
+	if returnTo == "" || !strings.HasPrefix(returnTo, "/") || strings.HasPrefix(returnTo, "//") {
+		return ""
+	}
+	if u, err := url.Parse(returnTo); err != nil || u.IsAbs() {
+		return ""
+	}
+	return returnTo
 }

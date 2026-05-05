@@ -26,6 +26,12 @@
   "apps": {
     "title": "Import from apps",
     "back": "Data",
+    "hero": {
+      "kicker": "Start with data you already have",
+      "title": "Turn your apps into a private AI memory.",
+      "description": "Pick an app, choose an import path, and preview the exact agent prompt before creating your own MyLifeDB space.",
+      "signInLater": "No account needed to browse. You only sign in when you run an import."
+    },
     "sections": {
       "featured": "Featured",
       "fitness": "Fitness",

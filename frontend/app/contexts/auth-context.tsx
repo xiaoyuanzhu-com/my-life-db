@@ -9,7 +9,7 @@ import { api } from '~/lib/api';
 interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: () => void;
+  login: (returnTo?: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -56,8 +56,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => document.removeEventListener('visibilitychange', handler);
   }, []);
 
-  const login = () => {
-    window.location.href = '/api/system/oauth/authorize';
+  const login = (returnTo?: string) => {
+    const url = new URL('/api/system/oauth/authorize', window.location.origin);
+    if (returnTo) url.searchParams.set('return_to', returnTo);
+    window.location.href = url.pathname + url.search;
   };
 
   return (

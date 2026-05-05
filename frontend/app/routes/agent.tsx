@@ -21,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '~/components/ui/dropdown-menu'
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '~/components/ui/resizable'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '~/components/ui/dialog'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '~/components/ui/dialog'
 import { Switch } from '~/components/ui/switch'
 import type { ImperativePanelHandle } from 'react-resizable-panels'
 import { cn } from '~/lib/utils'
@@ -224,7 +224,7 @@ function ShareButton({ session, onUpdate }: { session: Session; onUpdate: (s: Pa
 
 export default function AgentPage() {
   const { t } = useTranslation('agent')
-  const { isAuthenticated, isLoading: authLoading } = useAuth()
+  const { isAuthenticated, isLoading: authLoading, login } = useAuth()
   const { sessionSidebar, sessionCreateNew } = useFeatureFlags()
   const isMobile = useIsMobile()
   const navigate = useNavigate()
@@ -238,6 +238,7 @@ export default function AgentPage() {
   const activeSessionId = urlSessionId ?? null
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
+  const [accountGateOpen, setAccountGateOpen] = useState(false)
   const touchStartX = useRef<number>(0)
   const touchEndX = useRef<number>(0)
   // Track previous activeSessionId so handlers can choose push vs replace
@@ -415,6 +416,7 @@ export default function AgentPage() {
   // the model options when configured.
   const [defaultConfigOptions, setDefaultConfigOptions] = useState<Record<string, ConfigOption[]>>({})
   useEffect(() => {
+    if (!isAuthenticated) return
     api.get('/api/agent/config')
       .then(res => res.json())
       .then(data => {
@@ -445,7 +447,7 @@ export default function AgentPage() {
         }
       })
       .catch(() => {}) // silently ignore — self-hosted may not have agent configured
-  }, [])
+  }, [isAuthenticated])
 
   // Result count — increments on each agent session update, used as refreshKey for changed files popover
   const [resultCount, setResultCount] = useState(0)
@@ -522,6 +524,13 @@ export default function AgentPage() {
   }
 
   const loadSessions = useCallback(async () => {
+    if (!isAuthenticated) {
+      setSessions([])
+      setPagination({ hasMore: false, nextCursor: null, totalCount: 0 })
+      setLoading(false)
+      return
+    }
+
     try {
       setLoading(true)
       // Fetch first page of sessions with pagination
@@ -545,7 +554,7 @@ export default function AgentPage() {
     } finally {
       setLoading(false)
     }
-  }, [statusFilter])
+  }, [isAuthenticated, statusFilter])
 
   // Background refresh - updates sessions without showing loading state.
   // Used for SSE-triggered updates (e.g., title changes, new sessions, state changes).
@@ -819,6 +828,12 @@ export default function AgentPage() {
   const createSessionWithMessage = async (message: string) => {
     if (!message || isCreatingSession) return
 
+    if (!isAuthenticated) {
+      localStorage.setItem('agent-input:new-session', message)
+      setAccountGateOpen(true)
+      throw new Error('Authentication required to create an agent session')
+    }
+
     setIsCreatingSession(true)
     try {
       // Mirror newSessionConfigOptions: user pref wins, otherwise fall back to
@@ -1080,27 +1095,10 @@ export default function AgentPage() {
   }, [activeSessionId, reconnect])
 
   // Show loading state while checking authentication
-  if (authLoading || loading) {
+  if (authLoading || (isAuthenticated && loading)) {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="text-muted-foreground">{t('loading', 'Loading...')}</div>
-      </div>
-    )
-  }
-
-  // Show welcome page when not authenticated
-  if (!isAuthenticated) {
-    return (
-      <div className="flex h-full items-center justify-center p-8 text-center">
-        <div>
-          <h1 className="text-3xl font-bold mb-4">{t('page.title', 'Agent Sessions')}</h1>
-          <p className="text-muted-foreground text-lg mb-8 max-w-2xl">
-            {t('page.description', 'Access your agent sessions for software development tasks.')}
-          </p>
-          <p className="text-muted-foreground">
-            {t('page.signInHint', 'Please sign in using the button in the header to get started.')}
-          </p>
-        </div>
       </div>
     )
   }
@@ -1517,6 +1515,27 @@ export default function AgentPage() {
         <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
           {isMobile ? mobileLayout : desktopLayout}
         </div>
+        <Dialog open={accountGateOpen} onOpenChange={setAccountGateOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>{t('accountGate.title', 'Create your private MyLifeDB space')}</DialogTitle>
+              <DialogDescription>
+                {t(
+                  'accountGate.description',
+                  'This prompt will start an agent session and may import or create files. Sign in first so it runs in your own instance and storage.',
+                )}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAccountGateOpen(false)}>
+                {t('accountGate.keepEditing', 'Keep editing')}
+              </Button>
+              <Button onClick={() => login('/agent')}>
+                {t('accountGate.createSpace', 'Create my space')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </AssistantRuntimeProvider>
     </AgentContextProvider>
   )
