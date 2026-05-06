@@ -1035,6 +1035,15 @@ export default function AgentPage() {
   // wraps all AgentChat instances. The key on the provider forces a remount
   // on session switch, preserving the original reset behavior.
   const hasActiveSession = Boolean(activeSessionId)
+
+  // Single key for all <AgentChat> instances. Changing this remounts the chat
+  // panel from scratch, guaranteeing no stale per-session state (composer
+  // refs, draft registration, child component state) leaks across:
+  //   - session ↔ session switches (key = sessionId)
+  //   - session → empty new-session view, e.g. clicking + (key flips to 'new-N')
+  //   - seedNewSession() bumps newSessionComposerKey to force a fresh read of
+  //     the seeded localStorage prompt
+  const agentChatKey = activeSessionId ?? `new-${newSessionComposerKey}`
   const activeSessionAgentType =
     effectiveActiveSession?.agentType === 'codex' || effectiveActiveSession?.agentType === 'claude_code'
       ? effectiveActiveSession.agentType
@@ -1158,6 +1167,7 @@ export default function AgentPage() {
           <div className="flex h-full min-w-0">
             <div className="flex flex-1 flex-col bg-background overflow-hidden min-w-0 h-full">
               <AgentChat
+                key={agentChatKey}
                 sessionId={activeSessionId}
                 className="flex-1"
                 onAttachmentsStorageIdChange={handleAttachmentsStorageIdChange}
@@ -1367,6 +1377,7 @@ export default function AgentPage() {
                 agentEditorPanel
               ) : activeSessionId ? (
                 <AgentChat
+                  key={agentChatKey}
                   sessionId={activeSessionId}
                   className="flex-1"
                   onAttachmentsStorageIdChange={handleAttachmentsStorageIdChange}
@@ -1374,7 +1385,7 @@ export default function AgentPage() {
                 />
               ) : (
                 <AgentChat
-                  key={`new-${newSessionComposerKey}`}
+                  key={agentChatKey}
                   sessionId=""
                   className="flex-1 agent-bg"
                   onAttachmentsStorageIdChange={handleAttachmentsStorageIdChange}
@@ -1392,6 +1403,7 @@ export default function AgentPage() {
             agentEditorPanel
           ) : activeSessionId ? (
             <AgentChat
+              key={agentChatKey}
               sessionId={activeSessionId}
               className="flex-1"
               onAttachmentsStorageIdChange={handleAttachmentsStorageIdChange}
@@ -1399,6 +1411,7 @@ export default function AgentPage() {
             />
           ) : (
             <AgentChat
+              key={agentChatKey}
               sessionId=""
               className="flex-1 agent-bg"
               onAttachmentsStorageIdChange={handleAttachmentsStorageIdChange}
@@ -1438,6 +1451,7 @@ export default function AgentPage() {
             </div>
           )}
           <AgentChat
+            key={agentChatKey}
             sessionId={activeSessionId}
             className="flex-1"
             onAttachmentsStorageIdChange={handleAttachmentsStorageIdChange}
@@ -1456,7 +1470,7 @@ export default function AgentPage() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <AgentChat
-            key={`new-${newSessionComposerKey}`}
+            key={agentChatKey}
             sessionId=""
             className="flex-1"
             onAttachmentsStorageIdChange={handleAttachmentsStorageIdChange}
@@ -1501,6 +1515,7 @@ export default function AgentPage() {
       ) : (
         /* No sidebar (hybrid app) — just the chat input */
         <AgentChat
+          key={agentChatKey}
           sessionId=""
           className="flex-1 agent-bg"
           onAttachmentsStorageIdChange={handleAttachmentsStorageIdChange}
