@@ -102,6 +102,22 @@ type Server struct {
 //go:embed codex_model_catalog.json
 var codexModelCatalog []byte
 
+// resolveAgentHome returns the directory MyLifeDB owns for a given agent's
+// configuration files (auth, model catalogs, settings). Default is
+// <APP_DATA_DIR>/agents/<name>/ so that local-dev, native, and docker all
+// behave identically and we never clobber the developer's personal
+// ~/.codex/ etc. An explicit env override (e.g. CODEX_HOME=...) wins as an
+// escape hatch. The resolved path is exported back to the process env so
+// spawned ACP subprocesses inherit it.
+func resolveAgentHome(envName, name, appDataDir string) string {
+	home := os.Getenv(envName)
+	if home == "" {
+		home = filepath.Join(appDataDir, "agents", name)
+	}
+	os.Setenv(envName, home)
+	return home
+}
+
 // New creates a new server with all components initialized
 func New(cfg *Config) (*Server, error) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -289,21 +305,15 @@ func New(cfg *Config) (*Server, error) {
 			if cfg.AgentLLM.CustomerID != "" {
 				geminiEnv["GEMINI_CLI_CUSTOM_HEADERS"] = "x-litellm-customer-id: " + cfg.AgentLLM.CustomerID
 			}
-			// Write codex auth.json (forces auth_mode=apikey so it doesn't
-			// try OAuth) and config.toml (injects x-litellm-customer-id
-			// header when set; codex has no env var for custom HTTP headers).
-			// Respect $CODEX_HOME if the operator set one; otherwise use the
-			// default ~/.codex/. In local dev, run.js sets CODEX_HOME to a
-			// repo-local folder so we don't clobber the developer's own config.
-			codexHome := os.Getenv("CODEX_HOME")
-			if codexHome == "" {
-				if home, err := os.UserHomeDir(); err == nil {
-					codexHome = filepath.Join(home, ".codex")
-				}
-			}
-			if codexHome == "" {
-				log.Warn().Msg("cannot resolve codex home directory; skipping codex config setup")
-			} else if err := os.MkdirAll(codexHome, 0700); err != nil {
+			// MyLifeDB fully owns the per-agent config dirs for codex, gemini,
+			// qwen, and opencode (auth files, settings, model catalogs). To keep
+			// dev/docker/native flows identical and avoid clobbering the
+			// developer's personal ~/.codex/ etc., we default each *_HOME to
+			// <APP_DATA_DIR>/agents/<name>/ and export the resolved value to the
+			// process env so spawned ACP subprocesses inherit it. An explicit
+			// env override still wins as an escape hatch.
+			codexHome := resolveAgentHome("CODEX_HOME", "codex", cfg.AppDataDir)
+			if err := os.MkdirAll(codexHome, 0700); err != nil {
 				log.Warn().Err(err).Str("path", codexHome).Msg("failed to create codex home")
 			} else {
 				authJSON := fmt.Sprintf(`{"auth_mode":"apikey","OPENAI_API_KEY":%q,"tokens":null,"last_refresh":null}`, cfg.AgentLLM.APIKey)
@@ -343,110 +353,91 @@ http_headers = { "x-litellm-customer-id" = %q }
 				}
 			}
 
-			// Write ~/.gemini/settings.json to force API-key auth. Without this,
-			// gemini-cli defaults to oauth-personal and hits the ineligible-tier
-			// geo check even when GEMINI_API_KEY is set. MyLifeDB fully owns
-			// this file. Respect $GEMINI_HOME if set.
-			geminiHome := os.Getenv("GEMINI_HOME")
-			if geminiHome == "" {
-				if home, err := os.UserHomeDir(); err == nil {
-					geminiHome = filepath.Join(home, ".gemini")
+			// Write settings.json under GEMINI_HOME to force API-key auth.
+			// Without this, gemini-cli defaults to oauth-personal and hits the
+			// ineligible-tier geo check even when GEMINI_API_KEY is set.
+			geminiHome := resolveAgentHome("GEMINI_HOME", "gemini", cfg.AppDataDir)
+			if err := os.MkdirAll(geminiHome, 0700); err != nil {
+				log.Warn().Err(err).Str("path", geminiHome).Msg("failed to create gemini home")
+			} else {
+				geminiSettings := map[string]any{
+					"security": map[string]any{
+						"auth": map[string]string{"selectedType": "gemini-api-key"},
+					},
+				}
+				geminiSettingsPath := filepath.Join(geminiHome, "settings.json")
+				if body, err := json.MarshalIndent(geminiSettings, "", "  "); err != nil {
+					log.Warn().Err(err).Msg("failed to marshal gemini settings.json")
+				} else if err := os.WriteFile(geminiSettingsPath, body, 0600); err != nil {
+					log.Warn().Err(err).Str("path", geminiSettingsPath).Msg("failed to write gemini settings.json")
 				}
 			}
-			if geminiHome != "" {
-				if err := os.MkdirAll(geminiHome, 0700); err != nil {
-					log.Warn().Err(err).Str("path", geminiHome).Msg("failed to create gemini home")
-				} else {
-					geminiSettings := map[string]any{
-						"security": map[string]any{
-							"auth": map[string]string{"selectedType": "gemini-api-key"},
+
+			// Write settings.json under QWEN_HOME. qwen-code (a gemini-cli fork)
+			// does not honor GEMINI_CLI_CUSTOM_HEADERS; it only reads
+			// customHeaders from its settings.json.
+			qwenHome := resolveAgentHome("QWEN_HOME", "qwen", cfg.AppDataDir)
+			if err := os.MkdirAll(qwenHome, 0700); err != nil {
+				log.Warn().Err(err).Str("path", qwenHome).Msg("failed to create qwen home")
+			} else {
+				settings := map[string]any{}
+				if cfg.AgentLLM.CustomerID != "" {
+					settings["model"] = map[string]any{
+						"generationConfig": map[string]any{
+							"customHeaders": map[string]string{
+								"x-litellm-customer-id": cfg.AgentLLM.CustomerID,
+							},
 						},
 					}
-					geminiSettingsPath := filepath.Join(geminiHome, "settings.json")
-					if body, err := json.MarshalIndent(geminiSettings, "", "  "); err != nil {
-						log.Warn().Err(err).Msg("failed to marshal gemini settings.json")
-					} else if err := os.WriteFile(geminiSettingsPath, body, 0600); err != nil {
-						log.Warn().Err(err).Str("path", geminiSettingsPath).Msg("failed to write gemini settings.json")
-					}
+				}
+				qwenSettingsPath := filepath.Join(qwenHome, "settings.json")
+				if body, err := json.MarshalIndent(settings, "", "  "); err != nil {
+					log.Warn().Err(err).Msg("failed to marshal qwen settings.json")
+				} else if err := os.WriteFile(qwenSettingsPath, body, 0600); err != nil {
+					log.Warn().Err(err).Str("path", qwenSettingsPath).Msg("failed to write qwen settings.json")
 				}
 			}
 
-			// Write ~/.qwen/settings.json. qwen-code (a gemini-cli fork) does not
-			// honor GEMINI_CLI_CUSTOM_HEADERS; it only reads customHeaders from
-			// its settings.json. MyLifeDB fully owns this file.
-			// Respect $QWEN_HOME if set, same escape hatch as codex.
-			qwenHome := os.Getenv("QWEN_HOME")
-			if qwenHome == "" {
-				if home, err := os.UserHomeDir(); err == nil {
-					qwenHome = filepath.Join(home, ".qwen")
-				}
-			}
-			if qwenHome != "" {
-				if err := os.MkdirAll(qwenHome, 0700); err != nil {
-					log.Warn().Err(err).Str("path", qwenHome).Msg("failed to create qwen home")
-				} else {
-					settings := map[string]any{}
-					if cfg.AgentLLM.CustomerID != "" {
-						settings["model"] = map[string]any{
-							"generationConfig": map[string]any{
-								"customHeaders": map[string]string{
-									"x-litellm-customer-id": cfg.AgentLLM.CustomerID,
-								},
-							},
-						}
-					}
-					qwenSettingsPath := filepath.Join(qwenHome, "settings.json")
-					if body, err := json.MarshalIndent(settings, "", "  "); err != nil {
-						log.Warn().Err(err).Msg("failed to marshal qwen settings.json")
-					} else if err := os.WriteFile(qwenSettingsPath, body, 0600); err != nil {
-						log.Warn().Err(err).Str("path", qwenSettingsPath).Msg("failed to write qwen settings.json")
-					}
-				}
-			}
-
-			// Write ~/.config/opencode/opencode.json. opencode has no env-var
+			// Write opencode.json under OPENCODE_CONFIG. opencode has no env-var
 			// path for provider options; the provider block (baseURL, apiKey,
-			// headers, models) lives in JSON. MyLifeDB fully owns this file.
-			// Respect $OPENCODE_CONFIG if set (opencode reads it when present).
+			// headers, models) lives in JSON. Unlike the other agents,
+			// OPENCODE_CONFIG points at the file itself, not a directory.
 			opencodeConfigPath := os.Getenv("OPENCODE_CONFIG")
 			if opencodeConfigPath == "" {
-				if home, err := os.UserHomeDir(); err == nil {
-					opencodeConfigPath = filepath.Join(home, ".config", "opencode", "opencode.json")
-				}
+				opencodeConfigPath = filepath.Join(cfg.AppDataDir, "agents", "opencode", "opencode.json")
 			}
-			if opencodeConfigPath != "" {
-				if err := os.MkdirAll(filepath.Dir(opencodeConfigPath), 0755); err != nil {
-					log.Warn().Err(err).Str("path", opencodeConfigPath).Msg("failed to create opencode config dir")
-				} else {
-					providerOptions := map[string]any{
-						"baseURL": cfg.AgentLLM.BaseURL,
-						"apiKey":  cfg.AgentLLM.APIKey,
+			os.Setenv("OPENCODE_CONFIG", opencodeConfigPath)
+			if err := os.MkdirAll(filepath.Dir(opencodeConfigPath), 0755); err != nil {
+				log.Warn().Err(err).Str("path", opencodeConfigPath).Msg("failed to create opencode config dir")
+			} else {
+				providerOptions := map[string]any{
+					"baseURL": cfg.AgentLLM.BaseURL,
+					"apiKey":  cfg.AgentLLM.APIKey,
+				}
+				if cfg.AgentLLM.CustomerID != "" {
+					providerOptions["headers"] = map[string]string{
+						"x-litellm-customer-id": cfg.AgentLLM.CustomerID,
 					}
-					if cfg.AgentLLM.CustomerID != "" {
-						providerOptions["headers"] = map[string]string{
-							"x-litellm-customer-id": cfg.AgentLLM.CustomerID,
-						}
-					}
-					models := map[string]any{}
-					for _, m := range FilterModelsForAgent(cfg.AgentLLM.Models, "opencode") {
-						models[m.Value] = map[string]string{"name": m.Name}
-					}
-					opencodeCfg := map[string]any{
-						"$schema": "https://opencode.ai/config.json",
-						"provider": map[string]any{
-							"litellm": map[string]any{
-								"npm":     "@ai-sdk/openai-compatible",
-								"name":    "LiteLLM",
-								"options": providerOptions,
-								"models":  models,
-							},
+				}
+				models := map[string]any{}
+				for _, m := range FilterModelsForAgent(cfg.AgentLLM.Models, "opencode") {
+					models[m.Value] = map[string]string{"name": m.Name}
+				}
+				opencodeCfg := map[string]any{
+					"$schema": "https://opencode.ai/config.json",
+					"provider": map[string]any{
+						"litellm": map[string]any{
+							"npm":     "@ai-sdk/openai-compatible",
+							"name":    "LiteLLM",
+							"options": providerOptions,
+							"models":  models,
 						},
-					}
-					if body, err := json.MarshalIndent(opencodeCfg, "", "  "); err != nil {
-						log.Warn().Err(err).Msg("failed to marshal opencode.json")
-					} else if err := os.WriteFile(opencodeConfigPath, body, 0600); err != nil {
-						log.Warn().Err(err).Str("path", opencodeConfigPath).Msg("failed to write opencode.json")
-					}
+					},
+				}
+				if body, err := json.MarshalIndent(opencodeCfg, "", "  "); err != nil {
+					log.Warn().Err(err).Msg("failed to marshal opencode.json")
+				} else if err := os.WriteFile(opencodeConfigPath, body, 0600); err != nil {
+					log.Warn().Err(err).Str("path", opencodeConfigPath).Msg("failed to write opencode.json")
 				}
 			}
 		}
