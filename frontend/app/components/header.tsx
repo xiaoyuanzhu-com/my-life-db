@@ -54,7 +54,7 @@ export function Header() {
             })}
             {!isAuthenticated && (
               <button
-                onClick={login}
+                onClick={() => login()}
                 className="px-4 py-2 rounded-lg bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity"
               >
                 {t('auth.signIn')}
@@ -66,7 +66,7 @@ export function Header() {
           <div className="md:hidden">
             {!isAuthenticated && (
               <button
-                onClick={login}
+                onClick={() => login()}
                 className="px-4 py-2 rounded-lg bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity"
               >
                 {t('auth.signIn')}

@@ -1,17 +1,16 @@
 /**
  * Settings → Integrations tab.
  *
- * Owner-only management of long-lived credentials for non-OAuth ingestion
- * surfaces (HTTP webhook, WebDAV, S3-compatible). Sister to the Connected
- * Apps tab — same conceptual category (third-party access management),
- * different auth model.
+ * Owner-only management of basic legacy credentials for non-OAuth ingestion
+ * surfaces (HTTP webhook, WebDAV, S3-compatible).
  *
  * For each credential:
- *   - shows protocol badge + name + scope + secret-prefix + last-used time
+ *   - shows protocol badge + name + secret-prefix + last-used time
  *   - lets the owner revoke (soft-delete; the credential stops working immediately)
  *
- * The "Create" dialog mints a new credential and reveals the raw secret
- * exactly once — captured-on-screen, never recoverable.
+ * The setup dialog mints a full-data credential and reveals the raw secret
+ * exactly once — captured-on-screen, never recoverable. Scope remains an
+ * internal backend guardrail, not a user-facing legacy integration option.
  *
  * Backed by:
  *   GET    /api/connect/credentials
@@ -19,11 +18,12 @@
  *   DELETE /api/connect/credentials/:id
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
+import { Switch } from "~/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -76,6 +76,7 @@ const PROTOCOL_META: Record<Protocol, { label: string; icon: typeof Webhook }> =
   webdav: { label: "WebDAV", icon: FolderOpen },
   s3: { label: "S3-compatible", icon: Database },
 };
+const PROTOCOLS: Protocol[] = ["webhook", "webdav", "s3"];
 
 function fmtTs(ts: number | null): string {
   if (!ts) return "—";
@@ -84,11 +85,37 @@ function fmtTs(ts: number | null): string {
 
 export function IntegrationsTab() {
   const { t } = useTranslation("settings");
+  const { settings, setSettings, saveSettings, isSaving } = useSettingsContext();
   const [credentials, setCredentials] = useState<Credential[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [issued, setIssued] = useState<IssuedCredential | null>(null);
   const [auditOpen, setAuditOpen] = useState<Credential | null>(null);
+  const configuredProtocols = useMemo(
+    () => new Set((credentials || []).map((c) => c.protocol)),
+    [credentials],
+  );
+  const canCreateCredential =
+    credentials !== null && PROTOCOLS.some((protocol) => !configuredProtocols.has(protocol));
+  const surfaces = settings?.integrations?.surfaces ?? { webhook: false, webdav: false, s3: false };
+
+  const updateSurface = useCallback(
+    (key: Protocol, value: boolean) => {
+      if (!settings) return;
+      const integrations = {
+        surfaces: {
+          ...surfaces,
+          [key]: value,
+        },
+      };
+      setSettings({
+        ...settings,
+        integrations,
+      });
+      void saveSettings({ integrations });
+    },
+    [saveSettings, setSettings, settings, surfaces],
+  );
 
   const reload = useCallback(async () => {
     try {
@@ -131,26 +158,69 @@ export function IntegrationsTab() {
       <CardHeader>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <CardTitle>{t("integrations.title", "Integrations")}</CardTitle>
+            <CardTitle>{t("integrations.title", "Legacy integrations")}</CardTitle>
             <p className="text-sm text-muted-foreground mt-2">
               {t(
                 "integrations.subtitle",
-                "Long-lived credentials for apps that push data to MyLifeDB over webhook, WebDAV, or S3. Each credential is bound to one folder.",
+                "Basic credentials for older apps that connect over webhook, WebDAV, or S3.",
               )}
             </p>
           </div>
-          <Button size="sm" onClick={() => setCreateOpen(true)} className="gap-2 shrink-0">
+          <Button
+            size="sm"
+            onClick={() => setCreateOpen(true)}
+            disabled={!canCreateCredential}
+            className="gap-2 shrink-0"
+          >
             <Plus className="h-4 w-4" />
-            {t("integrations.new", "New")}
+            {t("integrations.new", "Set up")}
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-6">
         {error && (
           <div className="text-sm text-destructive bg-destructive/10 rounded-md p-2">
             {error}
           </div>
         )}
+
+        <div className="space-y-2">
+          {PROTOCOLS.map((protocol) => {
+            const meta = PROTOCOL_META[protocol];
+            const Icon = meta.icon;
+            return (
+              <label
+                key={protocol}
+                className="flex items-center justify-between gap-4 rounded-lg bg-muted/40 p-3"
+              >
+                <span className="flex items-center gap-3">
+                  <span className="h-9 w-9 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0">
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <span className="text-sm font-medium">{meta.label}</span>
+                </span>
+                <Switch
+                  checked={surfaces[protocol]}
+                  disabled={isSaving}
+                  onCheckedChange={(v) => updateSurface(protocol, v)}
+                />
+              </label>
+            );
+          })}
+        </div>
+
+        <div className="border-t pt-4 space-y-4">
+          <div>
+            <h3 className="text-sm font-medium">
+              {t("integrations.credentialsTitle", "Credentials")}
+            </h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              {t(
+                "integrations.credentialsHint",
+                "Generate these only when a legacy client needs a token, username, or access key.",
+              )}
+            </p>
+          </div>
 
         {credentials === null ? (
           <div className="flex justify-center py-6">
@@ -158,7 +228,7 @@ export function IntegrationsTab() {
           </div>
         ) : credentials.length === 0 ? (
           <p className="text-sm text-muted-foreground py-6 text-center">
-            {t("integrations.empty", "No credentials yet. Click \u201CNew\u201D to mint one.")}
+            {t("integrations.empty", "No legacy integrations are set up yet.")}
           </p>
         ) : (
           <ul className="space-y-3">
@@ -183,7 +253,7 @@ export function IntegrationsTab() {
                       </p>
                       <div className="mt-2 flex flex-wrap gap-1">
                         <code className="text-xs rounded bg-background px-1.5 py-0.5">
-                          {c.scope}
+                          {t("integrations.fullAccess", "Full data access")}
                         </code>
                         <code className="text-xs rounded bg-background px-1.5 py-0.5 text-muted-foreground">
                           {c.secretPrefix}…
@@ -224,10 +294,12 @@ export function IntegrationsTab() {
             })}
           </ul>
         )}
+        </div>
       </CardContent>
 
       <CreateCredentialDialog
         open={createOpen}
+        existingCredentials={credentials || []}
         onClose={() => setCreateOpen(false)}
         onCreated={(c) => {
           setIssued(c);
@@ -385,24 +457,29 @@ function AuditDialog({
 
 function CreateCredentialDialog({
   open,
+  existingCredentials,
   onClose,
   onCreated,
 }: {
   open: boolean;
+  existingCredentials: Credential[];
   onClose: () => void;
   onCreated: (c: IssuedCredential) => void;
 }) {
   const { t } = useTranslation("settings");
   const { settings } = useSettingsContext();
-  const [name, setName] = useState("");
   const [protocol, setProtocol] = useState<Protocol>("webhook");
-  const [scopeFamily, setScopeFamily] = useState<"files.write" | "files.read">("files.write");
-  const [scopePath, setScopePath] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const availableProtocols = useMemo(
+    () => PROTOCOLS.filter(
+      (candidate) => !existingCredentials.some((c) => c.protocol === candidate),
+    ),
+    [existingCredentials],
+  );
 
-  // If the chosen protocol's surface is currently disabled in Settings →
-  // General, the credential will mint successfully but the surface route
+  // If the chosen protocol's surface is currently disabled, the credential
+  // will mint successfully but the surface route
   // won't be mounted until the toggle is flipped + server restarted. Warn
   // inline so the owner is not surprised by a 404 from the freshly-issued URL.
   const surfaces = settings?.integrations?.surfaces;
@@ -415,31 +492,23 @@ function CreateCredentialDialog({
   // Reset form when reopening.
   useEffect(() => {
     if (open) {
-      setName("");
-      setProtocol("webhook");
-      setScopeFamily("files.write");
-      setScopePath("");
+      setProtocol(availableProtocols[0] || "webhook");
       setError(null);
     }
-  }, [open]);
+  }, [availableProtocols, open]);
 
   const submit = useCallback(async () => {
     setError(null);
-    if (!name.trim()) {
-      setError(t("integrations.errors.nameRequired", "Name is required."));
+    if (!availableProtocols.includes(protocol)) {
+      setError(t("integrations.errors.alreadyConfigured", "This protocol is already set up."));
       return;
     }
-    if (!scopePath.trim()) {
-      setError(t("integrations.errors.scopeRequired", "Folder path is required."));
-      return;
-    }
-    const path = scopePath.startsWith("/") ? scopePath : `/${scopePath}`;
     setSubmitting(true);
     try {
       const res = await api.post("/api/connect/credentials", {
-        name: name.trim(),
+        name: `${PROTOCOL_META[protocol].label} legacy access`,
         protocol,
-        scope: `${scopeFamily}:${path}`,
+        scope: "files.write:/",
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null);
@@ -452,37 +521,22 @@ function CreateCredentialDialog({
     } finally {
       setSubmitting(false);
     }
-  }, [name, protocol, scopeFamily, scopePath, onCreated, t]);
+  }, [availableProtocols, protocol, onCreated, t]);
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{t("integrations.create.title", "New credential")}</DialogTitle>
+          <DialogTitle>{t("integrations.create.title", "Set up legacy access")}</DialogTitle>
           <DialogDescription>
             {t(
               "integrations.create.description",
-              "Mint a credential bound to one folder. The raw secret is shown once \u2014 capture it now.",
+              "Create one full-access credential for an older app or client. The secret is shown once.",
             )}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3 py-2">
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">
-              {t("integrations.create.nameLabel", "Name")}
-            </label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t(
-                "integrations.create.namePlaceholder",
-                "Apple Health Shortcut",
-              )}
-              autoFocus
-            />
-          </div>
-
           <div className="space-y-1.5">
             <label className="text-sm font-medium">
               {t("integrations.create.protocolLabel", "Protocol")}
@@ -491,7 +545,7 @@ function CreateCredentialDialog({
               <div className="text-xs rounded-md bg-muted/60 text-muted-foreground p-2">
                 {t(
                   "integrations.create.surfaceDisabled",
-                  "This protocol is currently disabled in Settings \u2192 General. The credential will mint, but requests to its URL will 404 until you enable the toggle.",
+                  "This protocol is currently disabled. The credential will mint, but requests to its URL will 404 until you enable the toggle above.",
                 )}
               </div>
             )}
@@ -500,41 +554,17 @@ function CreateCredentialDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="webhook">HTTP webhook</SelectItem>
-                <SelectItem value="webdav">WebDAV</SelectItem>
-                <SelectItem value="s3">S3-compatible</SelectItem>
+                {availableProtocols.map((candidate) => (
+                  <SelectItem key={candidate} value={candidate}>
+                    {PROTOCOL_META[candidate].label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">
-              {t("integrations.create.scopeLabel", "Scope")}
-            </label>
-            <div className="flex gap-2">
-              <Select
-                value={scopeFamily}
-                onValueChange={(v) => setScopeFamily(v as typeof scopeFamily)}
-              >
-                <SelectTrigger className="w-40 shrink-0">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="files.write">files.write</SelectItem>
-                  <SelectItem value="files.read">files.read</SelectItem>
-                </SelectContent>
-              </Select>
-              <Input
-                value={scopePath}
-                onChange={(e) => setScopePath(e.target.value)}
-                placeholder="/health/apple/raw"
-                className="font-mono"
-              />
-            </div>
             <p className="text-xs text-muted-foreground">
               {t(
-                "integrations.create.scopeHint",
-                "Folder under your data root. The credential will only see this subtree.",
+                "integrations.create.fullAccessHint",
+                "Legacy credentials can read and write your data root.",
               )}
             </p>
           </div>
@@ -550,9 +580,13 @@ function CreateCredentialDialog({
           <Button variant="ghost" onClick={onClose} disabled={submitting}>
             {t("actions.cancel", "Cancel")}
           </Button>
-          <Button onClick={submit} disabled={submitting} className="gap-2">
+          <Button
+            onClick={submit}
+            disabled={submitting || availableProtocols.length === 0}
+            className="gap-2"
+          >
             {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-            {t("integrations.create.submit", "Create")}
+            {t("integrations.create.submit", "Set up")}
           </Button>
         </DialogFooter>
       </DialogContent>

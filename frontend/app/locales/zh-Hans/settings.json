@@ -21,10 +21,13 @@
     "done": "完成"
   },
   "integrations": {
-    "title": "集成",
-    "subtitle": "用于通过 webhook、WebDAV 或 S3 向 MyLifeDB 推送数据的长期凭据。每个凭据绑定到一个文件夹。",
-    "new": "新建",
-    "empty": "暂无凭据。点击「新建」来生成一个。",
+    "title": "旧版集成",
+    "subtitle": "用于旧应用通过 webhook、WebDAV 或 S3 连接的基础凭据。",
+    "new": "设置",
+    "empty": "尚未设置旧版集成。",
+    "fullAccess": "完整数据访问",
+    "credentialsTitle": "凭据",
+    "credentialsHint": "仅在旧客户端需要令牌、用户名或访问密钥时生成。",
     "created": "创建于",
     "lastUsed": "最后使用",
     "fromIp": "来自 {{ip}}",
@@ -42,18 +45,20 @@
     "confirmRevoke": "撤销凭据「{{name}}」？任何使用它的应用将立即停止工作。",
     "errors": {
       "nameRequired": "需要填写名称。",
-      "scopeRequired": "需要填写文件夹路径。"
+      "scopeRequired": "需要填写文件夹路径。",
+      "alreadyConfigured": "此协议已设置。"
     },
     "create": {
-      "title": "新建凭据",
-      "description": "生成一个绑定到指定文件夹的凭据。原始密钥仅显示一次——请立即复制。",
+      "title": "设置旧版访问",
+      "description": "为旧应用或客户端创建一个完整访问凭据。密钥仅显示一次。",
       "nameLabel": "名称",
       "namePlaceholder": "Apple Health 快捷指令",
       "protocolLabel": "协议",
       "scopeLabel": "范围",
       "scopeHint": "数据根目录下的文件夹。该凭据只能看到这棵子树。",
-      "surfaceDisabled": "此协议当前在「设置 → 通用」中已禁用。凭据可以生成，但在打开开关之前，对应的请求都会返回 404。",
-      "submit": "创建"
+      "fullAccessHint": "旧版凭据可以读写你的数据根目录。",
+      "surfaceDisabled": "此协议当前已禁用。凭据可以生成，但在打开上方开关之前，对应的请求都会返回 404。",
+      "submit": "设置"
     },
     "reveal": {
       "title": "保存你的凭据",

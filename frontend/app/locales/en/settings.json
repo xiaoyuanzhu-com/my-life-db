@@ -21,10 +21,13 @@
     "done": "Done"
   },
   "integrations": {
-    "title": "Integrations",
-    "subtitle": "Long-lived credentials for apps that push data to MyLifeDB over webhook, WebDAV, or S3. Each credential is bound to one folder.",
-    "new": "New",
-    "empty": "No credentials yet. Click \u201CNew\u201D to mint one.",
+    "title": "Legacy integrations",
+    "subtitle": "Basic credentials for older apps that connect over webhook, WebDAV, or S3.",
+    "new": "Set up",
+    "empty": "No legacy integrations are set up yet.",
+    "fullAccess": "Full data access",
+    "credentialsTitle": "Credentials",
+    "credentialsHint": "Generate these only when a legacy client needs a token, username, or access key.",
     "created": "Created",
     "lastUsed": "Last used",
     "fromIp": "from {{ip}}",
@@ -42,18 +45,20 @@
     "confirmRevoke": "Revoke credential \"{{name}}\"? Any apps using it will stop working immediately.",
     "errors": {
       "nameRequired": "Name is required.",
-      "scopeRequired": "Folder path is required."
+      "scopeRequired": "Folder path is required.",
+      "alreadyConfigured": "This protocol is already set up."
     },
     "create": {
-      "title": "New credential",
-      "description": "Mint a credential bound to one folder. The raw secret is shown once \u2014 capture it now.",
+      "title": "Set up legacy access",
+      "description": "Create one full-access credential for an older app or client. The secret is shown once.",
       "nameLabel": "Name",
       "namePlaceholder": "Apple Health Shortcut",
       "protocolLabel": "Protocol",
       "scopeLabel": "Scope",
       "scopeHint": "Folder under your data root. The credential will only see this subtree.",
-      "surfaceDisabled": "This protocol is currently disabled in Settings \u2192 General. The credential will mint, but requests to its URL will 404 until you enable the toggle.",
-      "submit": "Create"
+      "fullAccessHint": "Legacy credentials can read and write your data root.",
+      "surfaceDisabled": "This protocol is currently disabled. The credential will mint, but requests to its URL will 404 until you enable the toggle above.",
+      "submit": "Set up"
     },
     "reveal": {
       "title": "Save your credentials",
