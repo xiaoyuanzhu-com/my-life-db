@@ -542,6 +542,10 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 				Int("resultCount", newResultCount).
 				Str("source", params.Source+"-prompt-complete").
 				Msg("[diag] turn complete: ResultCount++")
+			// Persist the new count so the unread dot survives a server restart.
+			if err := m.srv.AppDB().UpdateAgentSessionResultCount(context.Background(), sessionID, newResultCount); err != nil {
+				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist result count")
+			}
 			m.notifService.NotifyAgentSessionUpdated(sessionID, "result")
 		}(sess, params.Message)
 	}

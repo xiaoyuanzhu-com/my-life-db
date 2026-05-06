@@ -300,6 +300,49 @@ func (d *DB) GetAllSessionReadStates() (map[string]int, error) {
 	return result, nil
 }
 
+// UpdateAgentSessionResultCount records the total number of completed turns
+// (results) for a session. Uses MAX upsert so a stale value can never regress
+// the persisted count (defensive against out-of-order goroutines).
+func (d *DB) UpdateAgentSessionResultCount(ctx context.Context, sessionID string, resultCount int) error {
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(
+			`UPDATE agent_sessions
+			 SET result_count = MAX(?, result_count)
+			 WHERE session_id = ?`,
+			resultCount, sessionID,
+		)
+		return err
+	})
+}
+
+// GetAllSessionResultCounts returns the persisted result_count for all sessions
+// where result_count > 0, as a session_id -> count map.
+// Used to reconstruct unread-state after a server restart wipes the in-memory
+// ResultCount counter.
+func (d *DB) GetAllSessionResultCounts() (map[string]int, error) {
+	rows, err := d.conn.Query(
+		`SELECT session_id, result_count FROM agent_sessions WHERE result_count > 0`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]int)
+	for rows.Next() {
+		var sessionID string
+		var count int
+		if err := rows.Scan(&sessionID, &count); err != nil {
+			return nil, err
+		}
+		result[sessionID] = count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 // ── Session preferences (permission mode + always-allowed tools) ─────────────
 
 // SaveAgentSessionPermissionMode persists the permission mode for a session.

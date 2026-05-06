@@ -160,14 +160,17 @@ func (h *Handlers) GetAgentSessions(c *gin.Context) {
 		sessions = sessions[:limit]
 	}
 
-	// Load read states and runtime states for sessionState computation
+	// Load read states, runtime states, and persisted result counts for
+	// sessionState computation. Persisted counts let the unread (green) dot
+	// survive a server restart.
 	readStates, _ := h.server.AppDB().GetAllSessionReadStates()
 	runtimeStates := h.agentMgr.AllRuntimeStates()
+	persistedResultCounts, _ := h.server.AppDB().GetAllSessionResultCounts()
 
 	// Convert to response format matching what the frontend expects
 	result := make([]map[string]any, 0, len(sessions))
 	for _, s := range sessions {
-		state := computeSessionState(s.SessionID, s.ArchivedAt != nil, readStates, runtimeStates)
+		state := computeSessionState(s.SessionID, s.ArchivedAt != nil, readStates, runtimeStates, persistedResultCounts)
 
 		entry := map[string]any{
 			"id":           s.SessionID,
@@ -238,7 +241,8 @@ func (h *Handlers) GetAgentSession(c *gin.Context) {
 	// Compute state using same logic as list endpoint
 	readStates, _ := h.server.AppDB().GetAllSessionReadStates()
 	runtimeStates := h.agentMgr.AllRuntimeStates()
-	state := computeSessionState(session.SessionID, session.ArchivedAt != nil, readStates, runtimeStates)
+	persistedResultCounts, _ := h.server.AppDB().GetAllSessionResultCounts()
+	state := computeSessionState(session.SessionID, session.ArchivedAt != nil, readStates, runtimeStates, persistedResultCounts)
 
 	resp := gin.H{
 		"id":           session.SessionID,
@@ -453,18 +457,23 @@ func (h *Handlers) RestartAgentSession(c *gin.Context) {
 }
 
 // computeSessionState derives a unified session state string from archived flag,
-// DB read state, and in-memory runtime state.
+// DB read state, in-memory runtime state, and persisted result counts.
 //
 // Priority: archived > working > unread > idle
 //   - "archived": session is archived
-//   - "working":  agent is actively processing (IsProcessing=true)
-//   - "unread":   agent finished but user hasn't viewed results (ResultCount > lastReadCount)
+//   - "working":  agent is actively processing (IsProcessing=true) — in-memory only,
+//     never survives a server restart
+//   - "unread":   agent finished but user hasn't viewed results
+//     (effective ResultCount > lastReadCount). Effective ResultCount prefers
+//     the in-memory counter and falls back to the persisted result_count from
+//     DB so the dot survives a restart.
 //   - "idle":     all caught up
 func computeSessionState(
 	sessionID string,
 	isArchived bool,
 	readStates map[string]int,
 	runtimeStates map[string]SessionRuntimeState,
+	persistedResultCounts map[string]int,
 ) string {
 	if isArchived {
 		return "archived"
@@ -475,26 +484,31 @@ func computeSessionState(
 		return "working"
 	}
 
-	// Check for unread results: ResultCount (in-memory) > last_read_count (DB)
-	if hasRuntime && rt.ResultCount > 0 {
+	// Effective result count: in-memory wins (most up-to-date), falls back to
+	// the persisted value from DB so unread state survives a server restart.
+	effectiveCount := 0
+	if hasRuntime {
+		effectiveCount = rt.ResultCount
+	}
+	if effectiveCount == 0 {
+		effectiveCount = persistedResultCounts[sessionID]
+	}
+
+	if effectiveCount > 0 {
 		lastRead := readStates[sessionID] // 0 if not found
-		if rt.ResultCount > lastRead {
+		if effectiveCount > lastRead {
 			log.Info().
 				Str("sessionId", sessionID).
-				Int("resultCount", rt.ResultCount).
+				Int("resultCount", effectiveCount).
 				Int("lastRead", lastRead).
+				Bool("hasRuntime", hasRuntime).
 				Msg("computeSessionState: unread")
 			return "unread"
 		}
-	}
-
-	// Log non-trivial idle transitions (had runtime state but not unread)
-	if hasRuntime && rt.ResultCount > 0 {
-		lastRead := readStates[sessionID]
 		log.Info().
 			Str("sessionId", sessionID).
-			Bool("isProcessing", rt.IsProcessing).
-			Int("resultCount", rt.ResultCount).
+			Bool("isProcessing", hasRuntime && rt.IsProcessing).
+			Int("resultCount", effectiveCount).
 			Int("lastRead", lastRead).
 			Msg("computeSessionState: idle (results already read)")
 	}

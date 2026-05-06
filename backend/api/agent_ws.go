@@ -595,6 +595,10 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 					if err := h.server.AppDB().ClearPromptInFlight(context.Background(), sessionID); err != nil {
 						log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to clear prompt in-flight in DB")
 					}
+					// Persist the new count so the unread dot survives a server restart.
+					if err := h.server.AppDB().UpdateAgentSessionResultCount(context.Background(), sessionID, newResultCount); err != nil {
+						log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist result count")
+					}
 					h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "result")
 				}
 			}(acpSession, promptText, promptCtx, pCancel)
