@@ -438,6 +438,30 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				if len(gatewayModels) > 0 {
 					defaultModel = gatewayModels[0].Value
 				}
+
+				// If this session already has prior frames (rehydrated from disk
+				// frame_store, or carried over from a cancelled/dead-process
+				// turn), the fresh ACP subprocess won't share Claude Code's
+				// in-session conversation memory. Call LoadSession to make the
+				// agent inherit history from CC's own session storage.
+				//
+				// We install a noop OnFrame for the duration of LoadSession so
+				// the replayed frames don't dupe rawMessages or the on-disk
+				// JSONL — both already contain them. SetupACP below replaces
+				// the handler with the real broadcasting one, so SetMode /
+				// SetModel frames it triggers are still captured.
+				//
+				// LoadSession failure is non-fatal: log and proceed with a
+				// fresh-memory session (same degradation as before this fix).
+				if workDir != "" && sessionState.MessageCount() > 0 {
+					sess.SetOnFrame(func(_ []byte) {})
+					if err := sess.LoadSession(h.server.ShutdownContext(), sessionID, workDir); err != nil {
+						log.Warn().Err(err).Str("sessionId", sessionID).Msg("LoadSession failed on lazy create — agent will start with empty memory")
+					} else {
+						log.Info().Str("sessionId", sessionID).Msg("LoadSession succeeded on lazy create — agent memory restored")
+					}
+				}
+
 				h.agentMgr.SetupACP(sess, sessionID, mode, defaultModel)
 				acpSession = sess
 			}
@@ -615,14 +639,11 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			// Cost of this workaround:
 			//   - Spawns a fresh claude-agent-acp subprocess (~few-hundred-ms
 			//     startup) on the next prompt after every stop.
-			//   - Resets Claude Code's in-session conversation memory: the
-			//     agent doesn't remember previous turns within this session.
-			//     UI history is unaffected (preserved in rawMessages); only
-			//     the agent's working memory is fresh.
-			//   - LoadSession is NOT called on the recreated session. ACP
-			//     LoadSession is unreliable (see agentsdk/client.go), and
-			//     the existing lazy-create path doesn't call it either, so
-			//     this matches restart-recovery behavior.
+			//   - The lazy-create path on the next prompt now calls
+			//     LoadSession (see "if workDir != "" && sessionState.MessageCount() > 0"
+			//     branch above), so Claude Code's in-session conversation
+			//     memory IS restored on the recreated subprocess. UI history
+			//     is preserved in rawMessages.
 			//
 			// Migration path to a proper implementation:
 			//   1. Try removing pc() and letting conn.Prompt() return
