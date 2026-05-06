@@ -1,0 +1,25 @@
+name: GHCR Cleanup
+
+on:
+  schedule:
+    # Daily at 04:00 UTC.
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    permissions:
+      # `actions/delete-package-versions` works with the default GITHUB_TOKEN
+      # because this workflow lives in the same repo that publishes the package.
+      packages: write
+    steps:
+      - name: Delete old container versions
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: my-life-db
+          package-type: container
+          # Kept under the GitHub Packages REST API page max (100) so the
+          # gateway's single-page fetch always returns the full retained set,
+          # plus headroom for versions added between weekly cleanup runs.
+          min-versions-to-keep: 64
