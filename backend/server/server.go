@@ -236,6 +236,7 @@ func New(cfg *Config) (*Server, error) {
 		codexEnv := map[string]string{}
 		qwenEnv := map[string]string{}
 		geminiEnv := map[string]string{}
+		opencodeEnv := map[string]string{}
 		if cfg.AgentLLM.HasAgentLLM() {
 			// Start a loopback reverse-proxy that holds the real upstream key
 			// in-process and injects it on outgoing requests. The Claude Code
@@ -313,6 +314,7 @@ func New(cfg *Config) (*Server, error) {
 			// process env so spawned ACP subprocesses inherit it. An explicit
 			// env override still wins as an escape hatch.
 			codexHome := resolveAgentHome("CODEX_HOME", "codex", cfg.AppDataDir)
+			codexEnv["CODEX_HOME"] = codexHome
 			if err := os.MkdirAll(codexHome, 0700); err != nil {
 				log.Warn().Err(err).Str("path", codexHome).Msg("failed to create codex home")
 			} else {
@@ -357,6 +359,7 @@ http_headers = { "x-litellm-customer-id" = %q }
 			// Without this, gemini-cli defaults to oauth-personal and hits the
 			// ineligible-tier geo check even when GEMINI_API_KEY is set.
 			geminiHome := resolveAgentHome("GEMINI_HOME", "gemini", cfg.AppDataDir)
+			geminiEnv["GEMINI_HOME"] = geminiHome
 			if err := os.MkdirAll(geminiHome, 0700); err != nil {
 				log.Warn().Err(err).Str("path", geminiHome).Msg("failed to create gemini home")
 			} else {
@@ -377,6 +380,7 @@ http_headers = { "x-litellm-customer-id" = %q }
 			// does not honor GEMINI_CLI_CUSTOM_HEADERS; it only reads
 			// customHeaders from its settings.json.
 			qwenHome := resolveAgentHome("QWEN_HOME", "qwen", cfg.AppDataDir)
+			qwenEnv["QWEN_HOME"] = qwenHome
 			if err := os.MkdirAll(qwenHome, 0700); err != nil {
 				log.Warn().Err(err).Str("path", qwenHome).Msg("failed to create qwen home")
 			} else {
@@ -407,6 +411,7 @@ http_headers = { "x-litellm-customer-id" = %q }
 				opencodeConfigPath = filepath.Join(cfg.AppDataDir, "agents", "opencode", "opencode.json")
 			}
 			os.Setenv("OPENCODE_CONFIG", opencodeConfigPath)
+			opencodeEnv["OPENCODE_CONFIG"] = opencodeConfigPath
 			if err := os.MkdirAll(filepath.Dir(opencodeConfigPath), 0755); err != nil {
 				log.Warn().Err(err).Str("path", opencodeConfigPath).Msg("failed to create opencode config dir")
 			} else {
@@ -471,13 +476,15 @@ http_headers = { "x-litellm-customer-id" = %q }
 			Env:     geminiEnv,
 		}
 
-		// opencode reads its provider config from ~/.config/opencode/opencode.json,
-		// provisioned manually on the host. No env vars needed.
+		// opencode reads its provider config from the path in OPENCODE_CONFIG
+		// (provisioned above). The Env map carries OPENCODE_CONFIG explicitly
+		// so it survives config.ClearEnvVars and reaches the spawned subprocess.
 		opencodeAgent := agentsdk.AgentConfig{
 			Type:    agentsdk.AgentOpencode,
 			Name:    "opencode",
 			Command: "opencode",
 			Args:    []string{"acp"},
+			Env:     opencodeEnv,
 		}
 
 		// SystemPrompt and McpServers are intentionally empty here — both are
