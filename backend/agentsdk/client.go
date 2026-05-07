@@ -3,11 +3,21 @@ package agentsdk
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
+
+// createSessionMaxAttempts caps how many times CreateSession retries when an
+// ACP agent process crashes mid-handshake. The original failure ("Query closed
+// before response received" from session/new) is racy: a warm pool conn can
+// die between Acquire and NewSession, and a freshly-spawned process can crash
+// during init for transient reasons. One retry recovers most cases; we go up
+// to 3 to ride out a brief window where a buggy agent build kills its first
+// few sessions before stabilizing.
+const createSessionMaxAttempts = 3
 
 // Client is the entry point for all agent interactions.
 // It wraps ACP connections with MyLifeDB-specific concerns.
@@ -94,30 +104,21 @@ func (c *Client) CreateSession(ctx context.Context, config SessionConfig) (Sessi
 		config.McpServers = c.defaults.McpServers
 	}
 
-	var session *acpSession
-
 	// Use the pre-warmed pool only when there is no per-session env override.
 	// Pool processes are spawned once with a fixed env (from AgentConfig.Env),
 	// so a session that needs different env vars (e.g. ANTHROPIC_MODEL tied to
 	// a specific user-selected gateway model) must spawn fresh.
 	canUsePool := c.pool != nil && config.Agent == c.pool.cfg.AgentType && len(config.Env) == 0
-	if canUsePool {
-		warm, err := c.pool.Acquire(ctx)
-		if err != nil {
-			return nil, err
-		}
-		session, err = newSessionFromWarm(ctx, warm, agentCfg, config)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		// No pool, different agent type, or per-session env override — spawn synchronously
-		env := c.MergeEnv(agentCfg, config)
-		var err error
-		session, err = spawnACPSession(ctx, agentCfg, config, env)
-		if err != nil {
-			return nil, err
-		}
+
+	// Retry transparently on agent_crash. The pool's dead-conn check is racy
+	// (a warm conn can die between Acquire and NewSession); a buggy agent build
+	// can also kill its first few subprocesses before stabilizing. Both surface
+	// to the user as "Query closed before response received" otherwise. Only
+	// agent_crash is retried — quota/credentials/not-found errors are terminal
+	// and shouldn't be retried.
+	session, err := c.createSessionWithRetry(ctx, agentCfg, config, canUsePool)
+	if err != nil {
+		return nil, err
 	}
 
 	// Track active session
@@ -133,6 +134,67 @@ func (c *Client) CreateSession(ctx context.Context, config SessionConfig) (Sessi
 	}()
 
 	return session, nil
+}
+
+// createSessionWithRetry attempts to create an ACP session, retrying on
+// agent_crash up to createSessionMaxAttempts times. Each attempt either pulls
+// a fresh warm conn from the pool (preferred) or spawns a new process. The
+// pool path falls through to a fresh spawn on the final attempt to avoid an
+// infinite loop if every warm conn in the pool is dying for the same reason.
+func (c *Client) createSessionWithRetry(
+	ctx context.Context,
+	agentCfg AgentConfig,
+	config SessionConfig,
+	canUsePool bool,
+) (*acpSession, error) {
+	var lastErr error
+	for attempt := 1; attempt <= createSessionMaxAttempts; attempt++ {
+		// On the last attempt, bypass the pool — if pool conns keep crashing,
+		// a fresh spawn isolates the failure (still uses the same agent binary,
+		// but rules out a stale-pool race).
+		usePool := canUsePool && attempt < createSessionMaxAttempts
+
+		var session *acpSession
+		var err error
+		if usePool {
+			var warm *warmConn
+			warm, err = c.pool.Acquire(ctx)
+			if err == nil {
+				session, err = newSessionFromWarm(ctx, warm, agentCfg, config)
+			}
+		} else {
+			env := c.MergeEnv(agentCfg, config)
+			session, err = spawnACPSession(ctx, agentCfg, config, env)
+		}
+
+		if err == nil {
+			if attempt > 1 {
+				log.Info().
+					Int("attempt", attempt).
+					Str("agent", string(agentCfg.Type)).
+					Msg("agent session created after retry")
+			}
+			return session, nil
+		}
+
+		// Only retry on agent_crash; quota/credentials/not-found are terminal.
+		var ae *AgentError
+		isCrash := errors.As(err, &ae) && ae.Type == ErrAgentCrash
+		lastErr = err
+
+		if !isCrash || ctx.Err() != nil || attempt == createSessionMaxAttempts {
+			return nil, err
+		}
+
+		log.Warn().
+			Err(err).
+			Int("attempt", attempt).
+			Int("maxAttempts", createSessionMaxAttempts).
+			Str("agent", string(agentCfg.Type)).
+			Bool("usedPool", usePool).
+			Msg("agent session create failed (agent_crash); retrying")
+	}
+	return nil, lastErr
 }
 
 // ResumeSession resumes an existing session by ID via ACP.

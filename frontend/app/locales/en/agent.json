@@ -85,5 +85,8 @@
     "publicLink": "Public link",
     "copyLink": "Copy link",
     "copied": "Copied"
+  },
+  "errors": {
+    "createSessionFailed": "Failed to create session: {{error}}"
   }
 }

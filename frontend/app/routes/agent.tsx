@@ -32,6 +32,7 @@ import { useIsMobile } from '~/hooks/use-is-mobile'
 import { api } from '~/lib/api'
 import { isNativeApp } from '~/lib/native-bridge'
 import { fetchWithRefresh } from '~/lib/fetch-with-refresh'
+import { toast } from 'sonner'
 import '@fontsource/jetbrains-mono'
 
 interface Session {
@@ -858,7 +859,19 @@ export default function AgentPage() {
       })
 
       if (!response.ok) {
-        throw new Error(`Failed to create session: ${response.status}`)
+        // Surface the backend's error message verbatim so the user sees
+        // *why* it failed (e.g. agent_crash, no_credentials) rather than a
+        // bare HTTP status. The backend's CreateAgentSession handler returns
+        // {"error": "..."} on every failure path; falling back to status
+        // text covers network-level errors that never reach the handler.
+        let detail = `HTTP ${response.status}`
+        try {
+          const body = await response.json() as { error?: string }
+          if (body?.error) detail = body.error
+        } catch {
+          // body wasn't JSON — keep the HTTP status
+        }
+        throw new Error(detail)
       }
 
       const session = await response.json()
@@ -885,6 +898,11 @@ export default function AgentPage() {
       localStorage.removeItem('agent-input:new-session')
     } catch (error) {
       console.error('Failed to create session:', error)
+      // Surface to the user. Until now this only logged to console, so a new
+      // user hitting an agent_crash from the ACP subprocess would see their
+      // composer text vanish with no explanation.
+      const detail = error instanceof Error ? error.message : String(error)
+      toast.error(t('agent:errors.createSessionFailed', { error: detail }))
       throw error // Re-throw so the runtime can restore composer text
     } finally {
       setIsCreatingSession(false)

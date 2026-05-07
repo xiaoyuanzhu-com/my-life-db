@@ -85,5 +85,8 @@
     "publicLink": "公开链接",
     "copyLink": "复制链接",
     "copied": "已复制"
+  },
+  "errors": {
+    "createSessionFailed": "创建会话失败：{{error}}"
   }
 }

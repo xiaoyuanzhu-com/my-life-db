@@ -73,13 +73,16 @@ RUN pip3 install --break-system-packages "screenitshot>=0.7.2" && \
     playwright install-deps chromium
 
 # ACP agent binaries (installed as root for global npm path).
-#   - @zed-industries/claude-agent-acp → `claude-agent-acp` (Claude Code ACP wrapper)
-#   - @zed-industries/codex-acp        → `codex-acp`        (OpenAI Codex ACP wrapper)
-#   - @google/gemini-cli               → `gemini`           (runs ACP via `gemini --acp`)
-#   - @qwen-code/qwen-code             → `qwen`             (runs ACP via `qwen --acp`)
-#   - opencode-ai                      → `opencode`         (runs ACP via `opencode acp`)
+#   - @agentclientprotocol/claude-agent-acp → `claude-agent-acp` (Claude Code ACP wrapper;
+#       new home for the package — @zed-industries/claude-agent-acp was deprecated at 0.23.1
+#       and stopped receiving fixes. 0.23.x had a session/new crash that surfaced as
+#       "Query closed before response received"; resolved on the new package in 0.24.2+).
+#   - @zed-industries/codex-acp             → `codex-acp`        (OpenAI Codex ACP wrapper)
+#   - @google/gemini-cli                    → `gemini`           (runs ACP via `gemini --acp`)
+#   - @qwen-code/qwen-code                  → `qwen`             (runs ACP via `qwen --acp`)
+#   - opencode-ai                           → `opencode`         (runs ACP via `opencode acp`)
 RUN npm install -g \
-    @zed-industries/claude-agent-acp \
+    @agentclientprotocol/claude-agent-acp \
     @zed-industries/codex-acp \
     @google/gemini-cli \
     @qwen-code/qwen-code \
