@@ -34,7 +34,7 @@ export function ConfigOptionSelector({
           disabled={disabled}
           className={cn(
             'flex items-center gap-1 sm:gap-1.5 rounded-lg',
-            'text-[11px] sm:text-xs text-muted-foreground',
+            'text-xs text-muted-foreground',
             'hover:text-foreground hover:bg-foreground/10',
             'cursor-pointer transition-colors',
             'disabled:opacity-50 disabled:cursor-not-allowed',

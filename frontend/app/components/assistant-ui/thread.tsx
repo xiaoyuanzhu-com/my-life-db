@@ -568,7 +568,7 @@ const MCPServerRow: FC<{
         <div className="flex flex-col min-w-0 flex-1">
           <span className="text-xs text-foreground truncate">{server.name}</span>
           {(server.url || server.command) && (
-            <span className="text-[10px] text-muted-foreground/70 truncate">
+            <span className="text-xs text-muted-foreground/70 truncate">
               {server.url ?? server.command}
             </span>
           )}
@@ -586,23 +586,23 @@ const MCPServerRow: FC<{
         <DropdownMenuSeparator className="mx-2" />
         <div className="px-2 py-1.5">
           {isLoading && (
-            <div className="text-[11px] text-muted-foreground/70">Loading tools…</div>
+            <div className="text-xs text-muted-foreground/70">Loading tools…</div>
           )}
           {!isLoading && data?.error && (
-            <div className="text-[11px] text-destructive/80 break-words">{data.error}</div>
+            <div className="text-xs text-destructive/80 break-words">{data.error}</div>
           )}
           {!isLoading && !data?.error && tools.length === 0 && (
-            <div className="text-[11px] text-muted-foreground/70">No tools advertised.</div>
+            <div className="text-xs text-muted-foreground/70">No tools advertised.</div>
           )}
           {!isLoading && !data?.error && tools.length > 0 && (
             <div className="flex flex-col gap-1.5">
               {tools.map((t) => (
                 <div key={t.name} className="flex flex-col gap-0.5">
-                  <span className="text-[11px] font-mono text-foreground/80 break-all">
+                  <span className="text-xs font-mono text-foreground/80 break-all">
                     {t.name}
                   </span>
                   {t.description && (
-                    <span className="text-[10px] text-muted-foreground/70 line-clamp-2">
+                    <span className="text-xs text-muted-foreground/70 line-clamp-2">
                       {t.description}
                     </span>
                   )}
@@ -684,12 +684,12 @@ const SkillsSubMenu: FC<{ onSelectSkill: (name: string) => void }> = ({ onSelect
           >
             <div className="flex items-center justify-between gap-2 w-full">
               <span className="text-xs text-foreground truncate">{s.name}</span>
-              <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70 shrink-0">
+              <span className="text-xs uppercase tracking-wide text-muted-foreground/70 shrink-0">
                 {s.source}
               </span>
             </div>
             {s.description && (
-              <span className="text-[11px] text-muted-foreground line-clamp-2">
+              <span className="text-xs text-muted-foreground line-clamp-2">
                 {s.description}
               </span>
             )}
