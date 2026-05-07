@@ -27,18 +27,18 @@ function ComposerWiring({ sessionId }: { sessionId: string }) {
 
   // Composer-driven signals
   ob.setDraft(text)                              // every keystroke
-  const clientId = ob.submit({ text })           // user hits Send
+  const messageId = ob.submit({ text })           // user hits Send
   ob.discardDraft()                              // user-driven clear
 
   // Network-driven signals (call from WS hook / onFrame)
   ob.notifyConnection('open' | 'closed' | 'reconnecting')
-  ob.notifyAcked(clientId)
-  ob.notifyRejected(clientId, reason)
-  ob.notifyTransportFailure(clientId, reason)
+  ob.notifyAcked(messageId)
+  ob.notifyRejected(messageId, reason)
+  ob.notifyTransportFailure(messageId, reason)
 
   // Outbox UI actions
-  ob.retry(clientId)
-  ob.discardOutboxItem(clientId)
+  ob.retry(messageId)
+  ob.discardOutboxItem(messageId)
 
   // WS hook subscribes to drain pending items
   useEffect(() => ob.subscribeFlush((item) => ws.send(...)), [ob])
@@ -53,10 +53,10 @@ that tag if a user reports lost input.
 ```
 [draft-outbox] mountSession sessionId=abc draft.len=42 outbox.len=2
 [draft-outbox] userTyped sessionId=abc text.len=43
-[draft-outbox] userSubmitted sessionId=abc clientId=xyz outbox.len=3
+[draft-outbox] userSubmitted sessionId=abc messageId=xyz outbox.len=3
 [draft-outbox] connectionChanged sessionId=abc prev=closed state=open
-[draft-outbox] flushItem sessionId=abc clientId=xyz attempt=1
-[draft-outbox] serverAcked sessionId=abc clientId=xyz outbox.len=2
+[draft-outbox] flushItem sessionId=abc messageId=xyz attempt=1
+[draft-outbox] serverAcked sessionId=abc messageId=xyz outbox.len=2
 ```
 
 ## Invariants (failures = bugs in this module)

@@ -60,6 +60,12 @@ export interface AgentToolCallUpdateFrame extends AcpFrame {
 export interface UserMessageChunkFrame extends AcpFrame {
   sessionUpdate: "user_message_chunk"
   content: ContentBlock
+  /**
+   * Optional id echoed back from the prompt that produced this chunk.
+   * Present only when the originating session.prompt carried one — historical
+   * sessions replayed via LoadSession predate this and won't have it.
+   */
+  messageId?: string
 }
 
 export interface PlanFrame extends AcpFrame {
@@ -184,9 +190,20 @@ export function useAgentWebSocket({
     return false
   }, [sessionId])
 
-  const sendPrompt = useCallback((text: string): boolean => {
-    return send({ type: "session.prompt", content: [{ type: "text", text }] })
-  }, [send])
+  const sendPrompt = useCallback(
+    (text: string, messageId?: string): boolean => {
+      const msg: Record<string, unknown> = {
+        type: "session.prompt",
+        content: [{ type: "text", text }],
+      }
+      // Wire-frame field is optional: not all callers carry an outbox-issued
+      // id (e.g. legacy paths), and historical frames replayed by LoadSession
+      // won't have one either.
+      if (messageId) msg.messageId = messageId
+      return send(msg)
+    },
+    [send],
+  )
 
   const sendCancel = useCallback(() => {
     send({ type: "session.cancel" })

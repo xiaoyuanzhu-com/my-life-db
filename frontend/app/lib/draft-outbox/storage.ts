@@ -13,8 +13,13 @@
 import type { OutboxItem } from "./types"
 import { logger } from "./logger"
 
-const NS = "draft-outbox:v1"
+const NS = "draft-outbox:v2"
 const META_KEY = `${NS}:meta`
+const SCHEMA_VERSION = 2
+
+// Legacy namespaces — purged on init so v1 OutboxItem objects (with `clientId`
+// instead of `messageId`) don't get loaded by v2 code.
+const LEGACY_NAMESPACES = ["draft-outbox:v1"]
 
 interface MetaShape {
   schemaVersion: number
@@ -32,15 +37,32 @@ function outboxKey(sessionId: string): string {
 export function initStorage(): void {
   if (typeof window === "undefined") return
   try {
+    // One-shot purge of legacy namespaces. Drafts in v1 are rare (most users
+    // submit within minutes) and the schema change to OutboxItem.messageId
+    // makes a parse-time migration not worth its weight. Discarding any
+    // surviving v1 outbox items means at worst a user re-types a prompt they
+    // typed but never submitted before the upgrade.
+    for (const legacy of LEGACY_NAMESPACES) {
+      const purged: string[] = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i)
+        if (k && k.startsWith(`${legacy}:`)) purged.push(k)
+      }
+      for (const k of purged) localStorage.removeItem(k)
+      if (purged.length > 0) {
+        logger.info("purged legacy namespace", { ns: legacy, keys: purged.length })
+      }
+    }
+
     const raw = localStorage.getItem(META_KEY)
     if (!raw) {
-      const meta: MetaShape = { schemaVersion: 1 }
+      const meta: MetaShape = { schemaVersion: SCHEMA_VERSION }
       localStorage.setItem(META_KEY, JSON.stringify(meta))
       return
     }
     const meta = JSON.parse(raw) as MetaShape
-    if (meta.schemaVersion !== 1) {
-      // Future migrations branch here. v1 → v2 etc.
+    if (meta.schemaVersion !== SCHEMA_VERSION) {
+      // Future migrations branch here. v2 → v3 etc.
       logger.warn("unknown schema version, leaving as-is", {
         version: meta.schemaVersion,
       })
@@ -91,7 +113,7 @@ export function loadOutbox(sessionId: string): OutboxItem[] {
     if (!Array.isArray(parsed)) return []
     // Trust the shape — we wrote it ourselves. Coerce inflight→pending on
     // load: an item that was inflight when the page closed is unproven, and
-    // server-side clientId dedup will swallow a duplicate if the original
+    // server-side messageId dedup will swallow a duplicate if the original
     // actually landed.
     return parsed.map((item: OutboxItem) =>
       item.state === "inflight" ? { ...item, state: "pending" as const } : item,

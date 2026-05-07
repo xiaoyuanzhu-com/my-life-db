@@ -477,7 +477,10 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 	var promptDone chan struct{}
 	if params.Message != "" {
 		promptDone = make(chan struct{})
-		sessionState.AppendAndBroadcast(agentsdk.SynthUserMessageChunk(params.Message))
+		// Auto-run / REST-initiated prompts have no client-minted messageId
+		// (no outbox round-trip on this path); pass "" so the synthesized
+		// chunk carries no messageId field.
+		sessionState.AppendAndBroadcast(agentsdk.SynthUserMessageChunk(params.Message, ""))
 
 		go func(acpSess agentsdk.Session, prompt string) {
 			defer close(promptDone)

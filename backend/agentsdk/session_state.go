@@ -52,7 +52,25 @@ type SessionState struct {
 	// Optional frame persistence. When non-nil, every frame appended via
 	// AppendAndBroadcast is also written to disk. Nil = no persistence.
 	frameStore *FrameStore
+
+	// Per-session ring buffer of recently-seen message IDs (the
+	// client-minted ids carried on session.prompt). Used to drop
+	// duplicate prompts that the frontend retransmits after a
+	// connection flap or page refresh — without this, the outbox's
+	// "treat inflight-on-refresh as pending" rule would re-send a
+	// prompt the server already accepted.
+	//
+	// 64 is enough for many turns of bursty typing without growing
+	// the buffer; older ids fall off naturally. In-memory only —
+	// after a server restart the LRU is empty, but rawMessages on
+	// disk already contains the original chunk so a re-send produces
+	// a second user message at worst (rare and recoverable).
+	recentMsgIDs    [recentMsgIDsCap]string
+	recentMsgIDsLen int // number of valid entries (≤ cap)
+	recentMsgIDsIdx int // next write position (mod cap)
 }
+
+const recentMsgIDsCap = 64
 
 // NewSessionState creates a new SessionState.
 func NewSessionState(sessionID string) *SessionState {
@@ -252,6 +270,33 @@ func (s *SessionState) GetRecentMessages(n int) [][]byte {
 	result := make([][]byte, n)
 	copy(result, s.rawMessages[start:])
 	return result
+}
+
+// CheckAndRememberMessageID is the per-session dedup primitive for
+// client-minted prompt ids. If id has been seen recently it returns true
+// (caller should drop the prompt as a duplicate). If id is new it is
+// recorded in the ring buffer and the function returns false.
+//
+// id == "" is treated as "no id" — never a duplicate, never recorded.
+// Older clients (and historical replays) lack the field entirely and
+// must keep working.
+func (s *SessionState) CheckAndRememberMessageID(id string) bool {
+	if id == "" {
+		return false
+	}
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	for i := 0; i < s.recentMsgIDsLen; i++ {
+		if s.recentMsgIDs[i] == id {
+			return true
+		}
+	}
+	s.recentMsgIDs[s.recentMsgIDsIdx] = id
+	s.recentMsgIDsIdx = (s.recentMsgIDsIdx + 1) % recentMsgIDsCap
+	if s.recentMsgIDsLen < recentMsgIDsCap {
+		s.recentMsgIDsLen++
+	}
+	return false
 }
 
 // GetMessagePage returns a page of messages from the buffer.

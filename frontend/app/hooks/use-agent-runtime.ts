@@ -297,6 +297,10 @@ export function useAgentRuntime(options: {
           // ACP native: content is a single content block, not an array
           const f = frame as UserMessageChunkFrame
           const text = f.content?.type === "text" ? f.content.text || "" : ""
+          // Server echoes the messageId the client minted on session.prompt.
+          // Absent on historical chunks replayed by LoadSession (predate the
+          // round-trip) — those just render as fresh messages, no ack work.
+          const echoedMessageId = f.messageId
 
           // Skip empty/whitespace-only messages (e.g., non-text content blocks,
           // system-injected messages with no visible text) and system-injected
@@ -305,35 +309,20 @@ export function useAgentRuntime(options: {
             break
           }
 
-          // Check if this reconciles an optimistic message — if so, the
-          // server confirmed receipt. Heuristic ack for v1: find the
-          // oldest inflight outbox item with matching text and clear it.
-          // (The proper fix is server-echoed clientId; see DESIGN.md.)
-          {
-            const hasOptimistic = messagesRef.current.some(
-              (m) =>
-                m.role === "user" &&
-                m.isOptimistic &&
-                m.content.some((p) => p.type === "text" && p.text === text)
-            )
-            if (hasOptimistic && outbox) {
-              const match = outbox.outbox.find(
-                (it) => it.state === "inflight" && it.text === text,
-              ) ?? outbox.outbox.find(
-                (it) => it.state === "pending" && it.text === text,
-              )
-              if (match) outbox.notifyAcked(match.clientId)
-            }
+          // Server confirmed receipt: ack the matching outbox item by id.
+          if (echoedMessageId && outbox) {
+            outbox.notifyAcked(echoedMessageId)
           }
 
           setMessages((prev) => {
-            // Check if there's an optimistic user message with matching text
-            const optimisticIdx = prev.findIndex(
-              (m) =>
-                m.role === "user" &&
-                m.isOptimistic &&
-                m.content.some((p) => p.type === "text" && p.text === text)
-            )
+            // Reconcile by id when the server echoed one. Falls back to text
+            // match (covers the new-session HTTP path where the optimistic
+            // message gets a fresh id, not an outbox-issued one).
+            const optimisticIdx = prev.findIndex((m) => {
+              if (m.role !== "user" || !m.isOptimistic) return false
+              if (echoedMessageId && m.id === echoedMessageId) return true
+              return m.content.some((p) => p.type === "text" && p.text === text)
+            })
             if (optimisticIdx !== -1) {
               const updated = [...prev]
               updated[optimisticIdx] = {
@@ -982,16 +971,16 @@ export function useAgentRuntime(options: {
   //
   // The outbox emits flushItem when an item should be transmitted (right
   // after userSubmitted while WS is open, OR on reconnect for items that
-  // were queued while WS was down). We forward to sendPrompt and signal
-  // back so the outbox can transition state. Acks are heuristic for v1
-  // (matched in the user_message_chunk handler); see DESIGN.md "Backend
-  // changes required" for the proper clientId round-trip.
+  // were queued while WS was down). We forward both the text and the
+  // messageId so the backend can echo it back on the resulting
+  // user_message_chunk; the user_message_chunk handler then ack-matches
+  // by id (no heuristics).
   useEffect(() => {
     if (!outbox) return
     return outbox.subscribeFlush((item) => {
-      const sent = sendPrompt(item.text)
+      const sent = sendPrompt(item.text, item.messageId)
       if (!sent) {
-        outbox.notifyTransportFailure(item.clientId, "ws-not-open")
+        outbox.notifyTransportFailure(item.messageId, "ws-not-open")
       }
     })
   }, [outbox, sendPrompt])
@@ -1096,19 +1085,22 @@ export function useAgentRuntime(options: {
           })
         } else {
           // Existing-session path: hand the prompt to the outbox. It
-          // persists, generates a clientId, clears the draft, and emits
-          // a flushItem event our subscription forwards to sendPrompt.
-          // If WS is closed at this moment the item stays pending and
-          // the outbox will flush it on connectionChanged('open').
-          // Either way the user sees an optimistic message right now —
-          // their mental model is "input is simply safe".
-          if (outbox) {
-            outbox.submit({ text })
-          }
+          // persists, mints a messageId, clears the draft, and emits a
+          // flushItem event our subscription forwards to sendPrompt.
+          // If WS is closed right now the item stays pending and the
+          // outbox flushes it on connectionChanged('open'). Either way
+          // the user sees an optimistic message immediately — their
+          // mental model is "input is simply safe".
+          //
+          // Use the outbox-issued messageId as the optimistic message's
+          // id. When the server echoes it on user_message_chunk, the
+          // chunk handler reconciles the same row by id (no text
+          // heuristics, no duplicates on burst sends).
+          const optimisticId = outbox ? outbox.submit({ text }) : nextId()
           setMessages((prev) => [
             ...prev,
             {
-              id: nextId(),
+              id: optimisticId,
               role: "user",
               content: [{ type: "text", text }],
               createdAt: new Date(),

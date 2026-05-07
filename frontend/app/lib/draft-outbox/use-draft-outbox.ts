@@ -34,20 +34,20 @@ export interface UseDraftOutboxResult {
 
   // ── Network-driven signals (called from WS hook / onFrame) ──
   notifyConnection: (state: ConnState) => void
-  notifyAcked: (clientId: string) => void
-  notifyRejected: (clientId: string, reason: string) => void
-  notifyTransportFailure: (clientId: string, reason: string) => void
+  notifyAcked: (messageId: string) => void
+  notifyRejected: (messageId: string, reason: string) => void
+  notifyTransportFailure: (messageId: string, reason: string) => void
 
   // ── Outbox UI actions ──
-  retry: (clientId: string) => void
-  discardOutboxItem: (clientId: string) => void
+  retry: (messageId: string) => void
+  discardOutboxItem: (messageId: string) => void
 
   /** Subscribe to flushItem events (the WS hook uses this to send). */
   subscribeFlush: (handler: (item: OutboxItem) => void) => () => void
 
   /** Subscribe to itemFailed events (toast/banner). */
   subscribeItemFailed: (
-    handler: (e: { clientId: string; reason: string; retryable: boolean }) => void,
+    handler: (e: { messageId: string; reason: string; retryable: boolean }) => void,
   ) => () => void
 }
 
@@ -77,7 +77,7 @@ export function useDraftOutbox(sessionId: string): UseDraftOutboxResult {
   // cost of one outbox.subscribe per consumer.
   const flushSubsRef = useRef<Set<(item: OutboxItem) => void>>(new Set())
   const failSubsRef = useRef<
-    Set<(e: { clientId: string; reason: string; retryable: boolean }) => void>
+    Set<(e: { messageId: string; reason: string; retryable: boolean }) => void>
   >(new Set())
 
   useEffect(() => {
@@ -108,7 +108,7 @@ export function useDraftOutbox(sessionId: string): UseDraftOutboxResult {
         case "itemFailed":
           for (const h of failSubsRef.current)
             h({
-              clientId: event.clientId,
+              messageId: event.messageId,
               reason: event.reason,
               retryable: event.retryable,
             })
@@ -153,27 +153,27 @@ export function useDraftOutbox(sessionId: string): UseDraftOutboxResult {
     outboxRef.current?.connectionChanged(state)
   }, [])
 
-  const notifyAcked = useCallback((clientId: string) => {
-    outboxRef.current?.serverAcked(clientId)
+  const notifyAcked = useCallback((messageId: string) => {
+    outboxRef.current?.serverAcked(messageId)
   }, [])
 
-  const notifyRejected = useCallback((clientId: string, reason: string) => {
-    outboxRef.current?.serverRejected(clientId, reason)
+  const notifyRejected = useCallback((messageId: string, reason: string) => {
+    outboxRef.current?.serverRejected(messageId, reason)
   }, [])
 
   const notifyTransportFailure = useCallback(
-    (clientId: string, reason: string) => {
-      outboxRef.current?.transportFailed(clientId, reason)
+    (messageId: string, reason: string) => {
+      outboxRef.current?.transportFailed(messageId, reason)
     },
     [],
   )
 
-  const retry = useCallback((clientId: string) => {
-    outboxRef.current?.retry(clientId)
+  const retry = useCallback((messageId: string) => {
+    outboxRef.current?.retry(messageId)
   }, [])
 
-  const discardOutboxItem = useCallback((clientId: string) => {
-    outboxRef.current?.discardOutboxItem(clientId)
+  const discardOutboxItem = useCallback((messageId: string) => {
+    outboxRef.current?.discardOutboxItem(messageId)
   }, [])
 
   const subscribeFlush = useCallback(
@@ -186,7 +186,7 @@ export function useDraftOutbox(sessionId: string): UseDraftOutboxResult {
 
   const subscribeItemFailed = useCallback(
     (
-      handler: (e: { clientId: string; reason: string; retryable: boolean }) => void,
+      handler: (e: { messageId: string; reason: string; retryable: boolean }) => void,
     ): (() => void) => {
       failSubsRef.current.add(handler)
       return () => failSubsRef.current.delete(handler)

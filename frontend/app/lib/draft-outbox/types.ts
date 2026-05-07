@@ -21,8 +21,13 @@ export interface AttachmentRef {
 
 /** A single prompt the user submitted, awaiting server acknowledgement. */
 export interface OutboxItem {
-  /** Client-generated id. Used for ack matching and server-side dedup. */
-  clientId: string
+  /**
+   * Client-generated id. Doubles as the message id rendered by the UI:
+   * the frontend mints it, sends it on `session.prompt`, the backend echoes
+   * it back on `user_message_chunk`, and the same string identifies the
+   * rendered ThreadMessageLike. Used for ack matching and server-side dedup.
+   */
+  messageId: string
   sessionId: string
   text: string
   attachments: AttachmentRef[]
@@ -53,7 +58,7 @@ export type OutboxEvent =
   | { type: "outboxStateChanged"; state: OutboxAggregateState }
   | {
       type: "itemFailed"
-      clientId: string
+      messageId: string
       reason: string
       retryable: boolean
     }

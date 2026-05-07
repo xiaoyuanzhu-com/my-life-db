@@ -55,14 +55,14 @@ interface SubmitPayload {
 export interface DraftOutbox {
   // ── Signals IN ──
   userTyped(text: string): void
-  userSubmitted(payload: SubmitPayload): string // returns clientId
+  userSubmitted(payload: SubmitPayload): string // returns messageId (= the message's id end-to-end)
   userDiscardedDraft(): void
   connectionChanged(state: ConnState): void
-  serverAcked(clientId: string): void
-  serverRejected(clientId: string, reason: string): void
-  transportFailed(clientId: string, reason: string): void
-  retry(clientId: string): void
-  discardOutboxItem(clientId: string): void
+  serverAcked(messageId: string): void
+  serverRejected(messageId: string, reason: string): void
+  transportFailed(messageId: string, reason: string): void
+  retry(messageId: string): void
+  discardOutboxItem(messageId: string): void
 
   // ── Read state (for views; mutate only via signals) ──
   getDraft(): string
@@ -149,8 +149,8 @@ export function createDraftOutbox(opts: CreateOptions): DraftOutbox {
     saveOutbox(sessionId, outbox)
   }
 
-  function findItem(clientId: string): OutboxItem | undefined {
-    return outbox.find((it) => it.clientId === clientId)
+  function findItem(messageId: string): OutboxItem | undefined {
+    return outbox.find((it) => it.messageId === messageId)
   }
 
   function flushPending(): void {
@@ -161,7 +161,7 @@ export function createDraftOutbox(opts: CreateOptions): DraftOutbox {
       item.attempts += 1
       logger.info("flushItem", {
         sessionId,
-        clientId: item.clientId,
+        messageId: item.messageId,
         attempt: item.attempts,
       })
       emit({ type: "flushItem", item: { ...item } })
@@ -203,9 +203,9 @@ export function createDraftOutbox(opts: CreateOptions): DraftOutbox {
     userSubmitted(payload: SubmitPayload): string {
       tickIn("userSubmitted")
       const text = payload.text
-      const clientId = uuid()
+      const messageId = uuid()
       const item: OutboxItem = {
-        clientId,
+        messageId,
         sessionId,
         text,
         attachments: payload.attachments ?? [],
@@ -223,14 +223,14 @@ export function createDraftOutbox(opts: CreateOptions): DraftOutbox {
       diag.drafts.cleared += 1
       logger.info("userSubmitted", {
         sessionId,
-        clientId,
+        messageId,
         "outbox.len": outbox.length,
       })
       emit({ type: "draftCleared", sessionId })
       emitAggregate()
       // Try to send immediately if connected.
       if (connState === "open") flushPending()
-      return clientId
+      return messageId
     },
 
     userDiscardedDraft(): void {
@@ -252,7 +252,7 @@ export function createDraftOutbox(opts: CreateOptions): DraftOutbox {
         flushPending()
       } else if (state === "closed" || state === "reconnecting") {
         // Revert anything that was inflight: we don't know if the bytes
-        // landed. Server-side clientId dedup makes a re-send safe.
+        // landed. Server-side messageId dedup makes a re-send safe.
         let touched = false
         for (const item of outbox) {
           if (item.state === "inflight") {
@@ -268,33 +268,33 @@ export function createDraftOutbox(opts: CreateOptions): DraftOutbox {
       }
     },
 
-    serverAcked(clientId: string): void {
+    serverAcked(messageId: string): void {
       tickIn("serverAcked")
       const before = outbox.length
-      outbox = outbox.filter((it) => it.clientId !== clientId)
+      outbox = outbox.filter((it) => it.messageId !== messageId)
       if (outbox.length === before) {
         // No matching item — could be a duplicate ack, or an ack for a
         // session this instance doesn't own. Log + ignore.
-        logger.warn("serverAcked but no matching item", { sessionId, clientId })
+        logger.warn("serverAcked but no matching item", { sessionId, messageId })
         return
       }
       persistOutbox()
       diag.outbox.acked += 1
       logger.info("serverAcked", {
         sessionId,
-        clientId,
+        messageId,
         "outbox.len": outbox.length,
       })
       emitAggregate()
     },
 
-    serverRejected(clientId: string, reason: string): void {
+    serverRejected(messageId: string, reason: string): void {
       tickIn("serverRejected")
-      const item = findItem(clientId)
+      const item = findItem(messageId)
       if (!item) {
         logger.warn("serverRejected but no matching item", {
           sessionId,
-          clientId,
+          messageId,
         })
         return
       }
@@ -302,18 +302,18 @@ export function createDraftOutbox(opts: CreateOptions): DraftOutbox {
       item.lastError = reason
       persistOutbox()
       diag.outbox.failed += 1
-      logger.error("serverRejected", { sessionId, clientId, reason })
-      emit({ type: "itemFailed", clientId, reason, retryable: true })
+      logger.error("serverRejected", { sessionId, messageId, reason })
+      emit({ type: "itemFailed", messageId, reason, retryable: true })
       emitAggregate()
     },
 
-    transportFailed(clientId: string, reason: string): void {
+    transportFailed(messageId: string, reason: string): void {
       tickIn("transportFailed")
-      const item = findItem(clientId)
+      const item = findItem(messageId)
       if (!item) {
         logger.warn("transportFailed but no matching item", {
           sessionId,
-          clientId,
+          messageId,
         })
         return
       }
@@ -322,31 +322,31 @@ export function createDraftOutbox(opts: CreateOptions): DraftOutbox {
       item.lastError = reason
       persistOutbox()
       diag.outbox.requeued += 1
-      logger.warn("transportFailed", { sessionId, clientId, reason })
+      logger.warn("transportFailed", { sessionId, messageId, reason })
       emitAggregate()
     },
 
-    retry(clientId: string): void {
+    retry(messageId: string): void {
       tickIn("retry")
-      const item = findItem(clientId)
+      const item = findItem(messageId)
       if (!item) return
       item.state = "pending"
       item.lastError = undefined
       persistOutbox()
-      logger.info("retry", { sessionId, clientId })
+      logger.info("retry", { sessionId, messageId })
       emitAggregate()
       if (connState === "open") flushPending()
     },
 
-    discardOutboxItem(clientId: string): void {
+    discardOutboxItem(messageId: string): void {
       tickIn("discardOutboxItem")
       const before = outbox.length
-      outbox = outbox.filter((it) => it.clientId !== clientId)
+      outbox = outbox.filter((it) => it.messageId !== messageId)
       if (outbox.length === before) return
       persistOutbox()
       logger.info("discardOutboxItem", {
         sessionId,
-        clientId,
+        messageId,
         "outbox.len": outbox.length,
       })
       emitAggregate()

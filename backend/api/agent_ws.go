@@ -346,6 +346,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			Type        string          `json:"type"`
 			SessionID   string          `json:"sessionId"`
 			Content     json.RawMessage `json:"content,omitempty"`
+			MessageID   string          `json:"messageId,omitempty"`
 			ModeID      string          `json:"modeId,omitempty"`
 			ModelID     string          `json:"modelId,omitempty"`
 			ToolCallID  string          `json:"toolCallId,omitempty"`
@@ -362,6 +363,20 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 
 		switch inMsg.Type {
 		case "session.prompt":
+			// Per-session dedup of client-minted message IDs. Drops
+			// duplicate retransmits from the frontend outbox after a
+			// connection flap or page refresh — without this, an
+			// outbox item that was inflight when the WS died would
+			// land twice (once on the original send, once on the
+			// flush after reconnect). No-op when the field is absent.
+			if inMsg.MessageID != "" && sessionState.CheckAndRememberMessageID(inMsg.MessageID) {
+				log.Info().
+					Str("sessionId", sessionID).
+					Str("messageId", inMsg.MessageID).
+					Msg("dropping duplicate session.prompt (already seen)")
+				continue
+			}
+
 			// Extract text from content blocks
 			var contentBlocks []map[string]any
 			if err := json.Unmarshal(inMsg.Content, &contentBlocks); err != nil {
@@ -473,8 +488,10 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			}
 
 			// Synthesize user_message_chunk BEFORE Send() so the user's message
-			// is in rawMessages for burst replay on page refresh.
-			sessionState.AppendAndBroadcast(agentsdk.SynthUserMessageChunk(promptText))
+			// is in rawMessages for burst replay on page refresh. Echo the
+			// client-minted messageId (when present) so the frontend can
+			// ack-match the originating outbox item by id.
+			sessionState.AppendAndBroadcast(agentsdk.SynthUserMessageChunk(promptText, inMsg.MessageID))
 
 			// Serialize prompts: wait for any in-flight prompt goroutine to finish
 			// before starting a new one. This prevents concurrent conn.Prompt()

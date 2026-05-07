@@ -60,7 +60,7 @@ asserted in dev builds:
   explicitly clears it, or (b) the corresponding outbox item has been
   acknowledged by the server.
 - **I3** — An outbox item is removed only after the server acks it with a
-  matching `clientId`. Never on `ws.send()` returning truthy. Never on
+  matching `messageId`. Never on `ws.send()` returning truthy. Never on
   composer auto-clear. Never on disconnect.
 - **I4** — On mount, if storage holds a draft for the current session, the
   composer is restored to it before any keystroke can be lost.
@@ -68,7 +68,7 @@ asserted in dev builds:
   they are either auto-flushed (when WS opens) or surfaced to the user.
   They are never silently dropped.
 - **I6** — Every state transition is logged with `[draft-outbox]` tag, the
-  session id, and the clientId (if any).
+  session id, and the messageId (if any).
 
 If any of these is violated, treat it as a P0 bug in this module.
 
@@ -84,12 +84,12 @@ to it only through these signals — no direct state access.
 | `mountSession(sessionId)` | agent route | session route mounts | loads draft + outbox for session, emits `draftRestored` if any |
 | `unmountSession(sessionId)` | agent route | session route unmounts | flushes any pending storage writes, stops listeners |
 | `userTyped(text)` | composer onChange | every keystroke | writes draft to storage (debounced ~50ms, flushed on visibilitychange) |
-| `userSubmitted(payload)` | composer onSubmit | user hits Send | enqueues outbox item, generates `clientId`, clears draft, returns `clientId`; triggers flush if WS open |
+| `userSubmitted(payload)` | composer onSubmit | user hits Send | enqueues outbox item, generates `messageId`, clears draft, returns `messageId`; triggers flush if WS open |
 | `userDiscardedDraft()` | "clear" button | explicit clear | removes draft from storage |
 | `connectionChanged(state)` | WS hook | WS state change | `'open'` triggers flush; `'closed'` marks inflight items as pending |
-| `serverAcked(clientId)` | onFrame handler | server confirms receipt | removes matching outbox item |
-| `serverRejected(clientId, reason)` | onFrame handler | server explicit failure | marks outbox item as failed; surfaces to UI; keeps in storage |
-| `transportFailed(clientId, reason)` | WS hook | `ws.send()` threw or returned false mid-flight | reverts inflight → pending |
+| `serverAcked(messageId)` | onFrame handler | server confirms receipt | removes matching outbox item |
+| `serverRejected(messageId, reason)` | onFrame handler | server explicit failure | marks outbox item as failed; surfaces to UI; keeps in storage |
+| `transportFailed(messageId, reason)` | WS hook | `ws.send()` threw or returned false mid-flight | reverts inflight → pending |
 
 ### Signals OUT (this module emits)
 
@@ -99,9 +99,9 @@ Subscribers register via `outbox.subscribe(handler)` and react to events.
 |---|---|---|---|
 | `draftRestored` | composer | `{ sessionId, text }` | composer should display this text |
 | `draftCleared` | composer | `{ sessionId }` | composer should empty its text |
-| `flushItem` | WS hook | `{ clientId, text, attachments }` | transport should send this now |
+| `flushItem` | WS hook | `{ messageId, text, attachments }` | transport should send this now |
 | `outboxStateChanged` | dev tools / diagnostics | `{ sessionId, pending: number, inflight: number, failed: number }` | counters for diagnostics; **not for user-visible UI** (see "Composer behavior" below) |
-| `itemFailed` | toast / banner | `{ clientId, reason, retryable: boolean }` | only fires on **non-retryable** server rejection — the one user-visible failure surface |
+| `itemFailed` | toast / banner | `{ messageId, reason, retryable: boolean }` | only fires on **non-retryable** server rejection — the one user-visible failure surface |
 | `log` | dev console / telemetry | `{ level, msg, fields }` | structured log line |
 
 ### Signals that DO NOT exist (intentionally)
@@ -140,7 +140,7 @@ Subscribers register via `outbox.subscribe(handler)` and react to events.
 ```
 
 States are persisted. After page refresh, an `inflight` item is treated as
-`pending` (we don't know if the server got it; idempotency by `clientId`
+`pending` (we don't know if the server got it; idempotency by `messageId`
 makes a re-send safe — see Backend changes below).
 
 ## State machine — draft
@@ -172,12 +172,12 @@ outbox item (waiting to send) and a fresh draft typed afterwards.
 
 ## Persistence schema
 
-LocalStorage. Key namespace: `draft-outbox:v1:`.
+LocalStorage. Key namespace: `draft-outbox:v2:`.
 
 ```
-draft-outbox:v1:draft:<sessionId>      → string (raw text)
-draft-outbox:v1:outbox:<sessionId>     → JSON OutboxItem[]
-draft-outbox:v1:meta                   → JSON { schemaVersion: 1 }
+draft-outbox:v2:draft:<sessionId>      → string (raw text)
+draft-outbox:v2:outbox:<sessionId>     → JSON OutboxItem[]
+draft-outbox:v2:meta                   → JSON { schemaVersion: 2 }
 ```
 
 `<sessionId>` is `"new-session"` for the pre-session empty state, otherwise
@@ -185,7 +185,11 @@ the agent session UUID.
 
 ```ts
 type OutboxItem = {
-  clientId: string          // UUIDv7 or similar, generated client-side
+  /** Client-generated id. Doubles as the message id rendered by the UI:
+   *  the frontend mints it, sends it on `session.prompt`, the backend
+   *  echoes it back on `user_message_chunk`, and the same string
+   *  identifies the rendered ThreadMessageLike. */
+  messageId: string          // UUIDv4, generated client-side
   sessionId: string
   text: string
   attachments: AttachmentRef[]   // references only — blobs go to send-queue
@@ -196,15 +200,22 @@ type OutboxItem = {
 }
 ```
 
+**v1 → v2 migration.** v1 used `clientId` and v2 unifies it with the
+rendered message id under `messageId`. The on-disk shape is incompatible,
+and drafts are short-lived in practice (most users submit within minutes
+of typing), so init runs a one-shot purge of any `draft-outbox:v1:*`
+keys. The cost is at most a re-typed prompt the user typed but never
+submitted before the upgrade — much cheaper than a parse-time migration.
+
 **Why localStorage and not IndexedDB?** Drafts + outbox metadata are
 small, sync-write semantics are easier to reason about, and we have no
 binary data here (attachments are just refs to send-queue items, which
 already use IndexedDB). If the outbox ever needs to hold large media
 inline, we revisit.
 
-**Schema versioning** — `:v1:` in the key namespace lets us migrate
-without colliding with old data. On schema bump, write a one-shot
-migration in the module init.
+**Schema versioning** — the `:v<N>:` segment in the key namespace lets
+us migrate without colliding with old data. On schema bump, write a
+one-shot migration (or purge, as in v1 → v2) in the module init.
 
 **Multi-tab** — out of scope for v1. If the user types in two tabs at
 once, last write wins. Document and live with it. (Storage events could
@@ -217,11 +228,11 @@ Every state transition emits a `log` signal:
 ```
 [draft-outbox] mountSession sessionId=abc draft.len=42 outbox.len=2
 [draft-outbox] userTyped sessionId=abc text.len=43
-[draft-outbox] userSubmitted sessionId=abc clientId=xyz outbox.len=3
+[draft-outbox] userSubmitted sessionId=abc messageId=xyz outbox.len=3
 [draft-outbox] connectionChanged state=open  → flushing 3 items
-[draft-outbox] flushItem clientId=xyz attempt=1
-[draft-outbox] serverAcked clientId=xyz outbox.len=2
-[draft-outbox] transportFailed clientId=xyz reason=ws-not-open → reverting to pending
+[draft-outbox] flushItem messageId=xyz attempt=1
+[draft-outbox] serverAcked messageId=xyz outbox.len=2
+[draft-outbox] transportFailed messageId=xyz reason=ws-not-open → reverting to pending
 [draft-outbox] mountSession sessionId=abc draft.len=0 outbox.len=2 (recovering)
 ```
 
@@ -239,18 +250,28 @@ If a user reports "I lost my input", the first thing we ask for is the
 
 ## Backend changes required (small, but necessary)
 
-For the outbox to *actually* be safe end-to-end, the server must echo the
-client-generated id so we know which prompt was acked.
+The id is **one** end-to-end value: the frontend mints `messageId`,
+sends it on `session.prompt`, the backend echoes it on
+`user_message_chunk`, the frontend uses it for outbox ack matching
+*and* as the rendered message's id. There is no separate `clientId`.
 
-1. `session.prompt` accepts an optional `clientId` field.
-2. `user_message_chunk` frames carry `clientId` back to the client.
-3. Backend dedupes by `clientId` per session (keeps last N seen, drops
-   duplicates) — makes re-sends after refresh idempotent.
+1. `session.prompt` accepts an optional `messageId` field. Optional —
+   not all clients (or replayed historical sessions) carry one.
+2. `user_message_chunk` frames carry `messageId` back to the client when
+   the inbound prompt had one. Historical chunks (loaded via
+   `LoadSession`, predating this change) won't have it; the frontend
+   falls back to a fresh local id for those — they are not ackable
+   anyway since their outbox item, if any, is long gone.
+3. Backend dedupes by `messageId` per session: a small in-memory LRU
+   (last 64 ids per `SessionState`) of `messageId`s the server has
+   already broadcast. A second prompt with a `messageId` already in the
+   LRU is dropped at the WS layer — neither rebroadcast nor re-sent to
+   the agent. This makes re-sends after refresh / connection flap
+   idempotent and is the **only** reason outbox replay is safe.
 
-Without this, the outbox can ack on best-effort heuristics (next
-`user_message_chunk` frame seen for this session ≈ ack of oldest
-inflight item), which works in practice but not under burst sends.
-v1 ships with the heuristic; backend change lands soon after.
+The optional-on-the-wire shape is what makes this rollout safe: a v1
+client sending a prompt without `messageId` still works (no dedup, but
+nothing breaks); a v2 backend serving a v1 client likewise works.
 
 ## Module shape (file layout)
 
@@ -280,16 +301,16 @@ export type { OutboxItem, OutboxState, OutboxSignals } from './types'
 {
   draft: string
   setDraft: (text: string) => void           // = userTyped
-  submit: (payload) => string                // = userSubmitted, returns clientId
+  submit: (payload) => string                // = userSubmitted, returns messageId
   discardDraft: () => void                   // = userDiscardedDraft
   outbox: OutboxItem[]                       // observable state
-  retry: (clientId: string) => void
-  discardOutboxItem: (clientId: string) => void
+  retry: (messageId: string) => void
+  discardOutboxItem: (messageId: string) => void
   // signals to call from the WS layer:
   onConnectionChanged: (state: ConnState) => void
-  onServerAcked: (clientId: string) => void
-  onServerRejected: (clientId: string, reason: string) => void
-  onTransportFailed: (clientId: string, reason: string) => void
+  onServerAcked: (messageId: string) => void
+  onServerRejected: (messageId: string, reason: string) => void
+  onTransportFailed: (messageId: string, reason: string) => void
   // for the WS layer to subscribe to flushItem events:
   subscribeFlush: (handler: (item: OutboxItem) => void) => () => void
 }
@@ -342,9 +363,9 @@ onNew: async (message) => {
 | 1 | low | **Hotfix**: `DraftPersistenceSync` never `removeItem` based on text-empty alone; only when `userDiscardedDraft` or `serverAcked` paths run. One-file change. | hotfix branch |
 | 2 | low | Build `draft-outbox/` module + tests, but don't wire it in yet | parallel branch |
 | 3 | medium | Wire composer + `use-agent-runtime` to use the module; remove `pendingComposerText`, remove `DraftPersistenceSync`, remove `useDraftPersistence` | when step 2 has tests passing |
-| 4 | medium | Backend `clientId` round-trip + dedup | independent timing |
+| 4 | medium | Backend `messageId` round-trip + per-session LRU dedup | bundled with step 3 |
 
-Step 1 alone defuses the 12-hour-bug. Steps 2–3 are the proper fix and
+Step 1 alone defuses the 12-hour-bug. Steps 2–4 are the proper fix and
 make this module the single thing to blame. There is no UI step —
 "input is simply safe" is invisible by design.
 
@@ -376,10 +397,6 @@ Race tests:
 2. **Multi-session interaction.** When user is on session A and sends to
    session B somehow (deep link? unlikely), whose outbox? Per-session is
    the answer; the module doesn't try to be smart about cross-session.
-3. **What counts as "acked"** before backend `clientId` echo lands?
-   Heuristic: first `user_message_chunk` for the session after `flushItem`
-   acks the oldest inflight item with matching text prefix. Acceptable
-   for v1; remove the moment backend echoes `clientId`.
-4. **Encryption at rest.** localStorage is not encrypted. Drafts may
+3. **Encryption at rest.** localStorage is not encrypted. Drafts may
    contain sensitive prompt content. Out of scope for v1; flag if user
    raises it.
