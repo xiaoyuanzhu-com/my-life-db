@@ -2,11 +2,7 @@
   "page": {
     "title": "Data",
     "description": "Browse and manage your personal data files.",
-    "signInHint": "Please sign in to get started.",
-    "signInPreview": {
-      "title": "Sign in to see your files",
-      "description": "Files are private to your MyLifeDB instance."
-    }
+    "signInHint": "Please sign in to get started."
   },
   "search": {
     "placeholder": "Search files...",
@@ -68,6 +64,10 @@
   },
   "library": {
     "emptyFolder": "Empty folder",
+    "emptyRoot": {
+      "title": "No files yet.",
+      "description": "Use the + menu to upload files, or import from your favorite apps to get started."
+    },
     "cannotPreview": "Cannot preview this file type",
     "folderNamePlaceholder": "Folder name",
     "newFolderNamePlaceholder": "New folder name",
@@ -104,12 +104,8 @@
   },
   "explore": {
     "empty": {
-      "title": "No posts yet.",
-      "description": "Posts will appear here when agents publish them via MCP."
-    },
-    "signInPreview": {
-      "title": "Sign in to see posts",
-      "description": "Posts are private to your MyLifeDB instance."
+      "title": "Nothing to explore yet.",
+      "description": "Ask your agent to create a post — anything it makes will appear here."
     }
   },
   "upload": {

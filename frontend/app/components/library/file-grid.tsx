@@ -360,9 +360,16 @@ export function FileGrid({
             {t('common:states.loading')}
           </div>
         ) : allNodes.length === 0 && !isCreatingFolder ? (
-          <div className="flex flex-col items-center justify-center h-32 gap-2 text-sm text-muted-foreground">
-            <p>{t('data:library.emptyFolder')}</p>
-          </div>
+          currentPath ? (
+            <div className="flex flex-col items-center justify-center h-32 gap-2 text-sm text-muted-foreground">
+              <p>{t('data:library.emptyFolder')}</p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-20 gap-2 text-center px-4">
+              <p className="text-muted-foreground text-sm">{t('data:library.emptyRoot.title')}</p>
+              <p className="text-muted-foreground text-xs max-w-md">{t('data:library.emptyRoot.description')}</p>
+            </div>
+          )
         ) : (
           <div
             className={

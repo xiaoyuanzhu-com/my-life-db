@@ -22,7 +22,7 @@ interface ExploreFeedProps {
 export function ExploreFeed({ onPostClick }: ExploreFeedProps) {
   const { t: tCommon } = useTranslation('common');
   const { t: tData } = useTranslation('data');
-  const { isAuthenticated, isLoading: authLoading, login } = useAuth();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [posts, setPosts] = useState<ExplorePost[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -93,24 +93,6 @@ export function ExploreFeed({ onPostClick }: ExploreFeedProps) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="text-muted-foreground text-sm">{tCommon('states.loading')}</div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 gap-4">
-        <div className="flex flex-col items-center gap-1">
-          <p className="text-muted-foreground text-sm">{tData('explore.signInPreview.title')}</p>
-          <p className="text-muted-foreground text-xs">{tData('explore.signInPreview.description')}</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => login('/explore')}
-          className="text-sm px-3 py-1.5 rounded-md border border-border hover:bg-accent transition-colors"
-        >
-          {tCommon('auth.signIn')}
-        </button>
       </div>
     );
   }

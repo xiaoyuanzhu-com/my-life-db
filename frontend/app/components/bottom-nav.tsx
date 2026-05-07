@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router';
 import { Database, Bot, User, Compass } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '~/contexts/auth-context';
 import { cn } from '~/lib/utils';
 
 const navItems = [
@@ -14,12 +15,14 @@ export function BottomNav() {
   const location = useLocation();
   const pathname = location.pathname;
   const { t } = useTranslation('common');
+  const { isAuthenticated } = useAuth();
 
   return (
     <nav data-mld-bottom-nav className="fixed bottom-0 left-0 right-0 z-50 bg-card border-t md:hidden">
       <div className="pb-safe">
         <div className="flex items-center justify-around">
           {navItems.map((item) => {
+            if (!isAuthenticated && item.href === '/me') return null;
             const isActive = item.href === '/'
               ? pathname === '/' || pathname.startsWith('/file/') || pathname.startsWith('/data/')
               : pathname.startsWith(item.href);

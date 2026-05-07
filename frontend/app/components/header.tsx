@@ -34,7 +34,8 @@ export function Header() {
 
           {/* Desktop navigation - hidden on mobile */}
           <nav className="hidden md:flex gap-6 items-center">
-            {isAuthenticated && navLinks.map((link) => {
+            {navLinks.map((link) => {
+              if (!isAuthenticated && link.href === '/me') return null;
               const isActive = link.href === '/'
                 ? pathname === '/' || pathname.startsWith('/file/') || pathname.startsWith('/data/')
                 : pathname.startsWith(link.href);

@@ -534,13 +534,12 @@ function DataContent() {
 
 function DataPreview() {
   const { t } = useTranslation('data');
-  const { t: tCommon } = useTranslation('common');
   const { login } = useAuth();
   const navigate = useNavigate();
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-      {/* Top bar — same chrome as authenticated Data, with disabled actions */}
+      {/* Top bar — same chrome as authenticated Data; actions trigger login */}
       <div className="shrink-0 px-4 py-3 flex items-center gap-2 md:px-[10%]">
         <div className="flex-1 min-w-0">
           <BreadcrumbNav currentPath="" onNavigate={() => {}} />
@@ -580,20 +579,11 @@ function DataPreview() {
         </DropdownMenu>
       </div>
 
-      {/* Body — sign-in CTA in place of the file grid */}
+      {/* Body — same empty-root intro that authenticated zero-content users see */}
       <div className="flex-1 overflow-y-auto md:px-[10%]">
-        <div className="flex flex-col items-center justify-center py-20 gap-4 px-4 text-center">
-          <div className="flex flex-col items-center gap-1">
-            <p className="text-muted-foreground text-sm">{t('page.signInPreview.title', 'Sign in to see your files')}</p>
-            <p className="text-muted-foreground text-xs max-w-md">{t('page.signInPreview.description', 'Files are private to your MyLifeDB instance.')}</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => login('/')}
-            className="text-sm px-3 py-1.5 rounded-md border border-border hover:bg-accent transition-colors"
-          >
-            {tCommon('auth.signIn')}
-          </button>
+        <div className="flex flex-col items-center justify-center py-20 gap-2 text-center px-4">
+          <p className="text-muted-foreground text-sm">{t('library.emptyRoot.title')}</p>
+          <p className="text-muted-foreground text-xs max-w-md">{t('library.emptyRoot.description')}</p>
         </div>
       </div>
     </div>
