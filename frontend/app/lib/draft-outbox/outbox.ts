@@ -155,6 +155,7 @@ export function createDraftOutbox(opts: CreateOptions): DraftOutbox {
 
   function flushPending(): void {
     if (connState !== "open") return
+    let touched = false
     for (const item of outbox) {
       if (item.state !== "pending") continue
       item.state = "inflight"
@@ -165,9 +166,12 @@ export function createDraftOutbox(opts: CreateOptions): DraftOutbox {
         attempt: item.attempts,
       })
       emit({ type: "flushItem", item: { ...item } })
+      touched = true
     }
-    persistOutbox()
-    emitAggregate()
+    if (touched) {
+      persistOutbox()
+      emitAggregate()
+    }
   }
 
   // ── Initial mount ────────────────────────────────────────────────────
@@ -245,6 +249,11 @@ export function createDraftOutbox(opts: CreateOptions): DraftOutbox {
 
     connectionChanged(state: ConnState): void {
       tickIn("connectionChanged")
+      // Idempotent: callers (e.g. effects keyed off both `connected` and a
+      // memoized outbox handle) may invoke this with the same state on every
+      // render. Emitting on no-ops would re-fire outboxStateChanged → new
+      // aggregate ref → new memo result → effect re-runs → infinite loop.
+      if (state === connState) return
       const prev = connState
       connState = state
       logger.info("connectionChanged", { sessionId, prev, state })
