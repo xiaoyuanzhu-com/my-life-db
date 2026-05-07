@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createDraftOutbox, type DraftOutbox } from "./outbox"
+import { initStorage, loadDraft, loadOutbox } from "./storage"
 import type {
   AttachmentRef,
   ConnState,
@@ -61,16 +62,66 @@ export function useDraftOutbox(sessionId: string): UseDraftOutboxResult {
   // UI reads; we mirror outbox internals into it on every event.
   const outboxRef = useRef<DraftOutbox | null>(null)
 
-  const [draft, setDraftState] = useState<string>("")
-  const [items, setItems] = useState<readonly OutboxItem[]>([])
-  const [aggregate, setAggregate] = useState<OutboxAggregateState>({
-    sessionId,
-    pending: 0,
-    inflight: 0,
-    failed: 0,
-    total: 0,
+  // Lazy init from storage so the very first render of this hook returns the
+  // correct draft for `sessionId` — without this, consumers like
+  // DraftPersistenceSync read `""` on mount, persist that empty back, and
+  // overwrite the saved draft.
+  //
+  // initStorage() is idempotent and safe to call here; it primes the legacy
+  // purge + meta key before the first read.
+  const [draft, setDraftState] = useState<string>(() => {
+    initStorage()
+    return loadDraft(sessionId)
+  })
+  const [items, setItems] = useState<readonly OutboxItem[]>(() =>
+    loadOutbox(sessionId),
+  )
+  const [aggregate, setAggregate] = useState<OutboxAggregateState>(() => {
+    const initial = loadOutbox(sessionId)
+    let pending = 0,
+      inflight = 0,
+      failed = 0
+    for (const it of initial) {
+      if (it.state === "pending") pending++
+      else if (it.state === "inflight") inflight++
+      else if (it.state === "failed") failed++
+    }
+    return { sessionId, pending, inflight, failed, total: initial.length }
   })
   const [connState, setConnState] = useState<ConnState>("closed")
+
+  // Synchronously reset state when sessionId changes — React's "adjust state
+  // on prop change" pattern. The useEffect below also runs (and swaps the
+  // outbox instance), but its setStates land in the *next* render, which is
+  // too late: consumers reading `outbox.draft` during the first render after
+  // a session switch would see the previous session's value, restore the
+  // composer to it, then the persist effect would write that stale text
+  // back into the new session's storage. Doing the reset here makes the
+  // first render after a switch already show the correct per-session draft.
+  const lastSessionIdRef = useRef(sessionId)
+  if (lastSessionIdRef.current !== sessionId) {
+    lastSessionIdRef.current = sessionId
+    const nextDraft = loadDraft(sessionId)
+    const nextItems = loadOutbox(sessionId)
+    let pending = 0,
+      inflight = 0,
+      failed = 0
+    for (const it of nextItems) {
+      if (it.state === "pending") pending++
+      else if (it.state === "inflight") inflight++
+      else if (it.state === "failed") failed++
+    }
+    setDraftState(nextDraft)
+    setItems(nextItems)
+    setAggregate({
+      sessionId,
+      pending,
+      inflight,
+      failed,
+      total: nextItems.length,
+    })
+    setConnState("closed")
+  }
 
   // External subscribers (flush, itemFailed). We multiplex through here so
   // a single outbox subscription serves all consumers and we don't pay the
