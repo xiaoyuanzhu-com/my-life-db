@@ -111,10 +111,12 @@ func TestInstallClientConfig_Idempotent(t *testing.T) {
 }
 
 func TestInstall_WritesToAllUserHomeRoots(t *testing.T) {
-	// Install must land the skill in every active user-home root. Claude Code,
-	// Codex (native), Gemini (alias), and opencode (alias) all read
-	// ~/.agents/skills/, so we don't write a separate ~/.claude/skills/ copy —
-	// it would surface as a duplicate skill entry in Claude Code.
+	// Install must land the skill in every active user-home root. We write to
+	// ~/.claude/skills/ explicitly because the Claude Code builds users run
+	// today do not resolve skills via the ~/.agents/skills/ alias — only the
+	// native ~/.claude/skills/ path is discovered. The ~/.agents/skills/ copy
+	// covers Codex (native), Gemini (alias), opencode (alias), and any future
+	// Claude Code build that picks up the alias.
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -122,6 +124,7 @@ func TestInstall_WritesToAllUserHomeRoots(t *testing.T) {
 	Install(dataDir)
 
 	wantPaths := []string{
+		filepath.Join(home, ".claude/skills/create-auto-agent/SKILL.md"),
 		filepath.Join(home, ".agents/skills/create-auto-agent/SKILL.md"),
 		filepath.Join(home, ".qwen/skills/create-auto-agent/SKILL.md"),
 	}
@@ -130,39 +133,36 @@ func TestInstall_WritesToAllUserHomeRoots(t *testing.T) {
 			t.Errorf("expected skill at %s, got error: %v", p, err)
 		}
 	}
-
-	// Belt-and-suspenders: ~/.claude/skills/ must NOT be written to.
-	notWanted := filepath.Join(home, ".claude/skills/create-auto-agent/SKILL.md")
-	if _, err := os.Stat(notWanted); !os.IsNotExist(err) {
-		t.Errorf("~/.claude/skills/ should not be written to (Claude Code reads ~/.agents/skills/), but %s exists; err = %v", notWanted, err)
-	}
 }
 
-func TestInstall_WipesLegacyClaudeUserHomeRoot(t *testing.T) {
-	// Past installs wrote ~/.claude/skills/<bundled>/. Install must remove the
-	// current bundled name (and the renamed predecessor) from there so Claude
-	// Code stops listing the same skill twice once it picks it up via the
-	// agent-skills alias.
+func TestInstall_WipesRenamedFolderFromClaudeUserHomeRoot(t *testing.T) {
+	// ~/.claude/skills/ is an active install root, so renamed predecessors
+	// must still be cleaned up there — otherwise Claude Code would list both
+	// the old name (e.g. "create-agent") and the current bundled name
+	// ("create-auto-agent") side by side after a rename.
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	for _, name := range []string{"create-auto-agent", "create-agent"} {
-		seedDir := filepath.Join(home, ".claude/skills", name)
-		if err := os.MkdirAll(seedDir, 0755); err != nil {
-			t.Fatalf("seed mkdir: %v", err)
-		}
-		if err := os.WriteFile(filepath.Join(seedDir, "SKILL.md"), []byte("stale"), 0644); err != nil {
-			t.Fatalf("seed write: %v", err)
-		}
+	// Seed only the renamed predecessor; the current bundled name will be
+	// (re)written by Install and must remain.
+	renamedDir := filepath.Join(home, ".claude/skills/create-agent")
+	if err := os.MkdirAll(renamedDir, 0755); err != nil {
+		t.Fatalf("seed mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(renamedDir, "SKILL.md"), []byte("stale"), 0644); err != nil {
+		t.Fatalf("seed write: %v", err)
 	}
 
 	Install(t.TempDir())
 
-	for _, name := range []string{"create-auto-agent", "create-agent"} {
-		path := filepath.Join(home, ".claude/skills", name)
-		if _, err := os.Stat(path); !os.IsNotExist(err) {
-			t.Errorf("legacy claude-home skill folder %s should have been removed; stat err = %v", path, err)
-		}
+	// Renamed predecessor must be gone.
+	if _, err := os.Stat(renamedDir); !os.IsNotExist(err) {
+		t.Errorf("renamed skill folder %s should have been removed; stat err = %v", renamedDir, err)
+	}
+	// Current bundled name must be present.
+	current := filepath.Join(home, ".claude/skills/create-auto-agent/SKILL.md")
+	if _, err := os.Stat(current); err != nil {
+		t.Errorf("current bundled skill %s should be installed, got: %v", current, err)
 	}
 }
 

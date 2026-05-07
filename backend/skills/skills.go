@@ -42,28 +42,37 @@ var renamedSkillFolders = []string{
 //   - <dataDir>/.agents/skills — replaced by the user-home install set; the
 //     data dir varies per deployment, so workspace-level install never
 //     covered the user's interactive sessions.
-//   - ~/.claude/skills — Claude Code reads ~/.agents/skills/ as well
-//     (verified empirically — it lists skills found there with no `agent`
-//     key, the same way the agentskills.io alias works for Codex/Gemini).
-//     Writing the same skill to both made every Claude Code session show
-//     two identical entries.
 func legacyInstallRoots(dataDir string) []string {
-	roots := []string{
+	return []string{
 		filepath.Join(dataDir, ".agents/skills"),
 	}
-	if home, err := os.UserHomeDir(); err == nil {
-		roots = append(roots, filepath.Join(home, ".claude/skills"))
-	}
-	return roots
 }
 
 // Install writes all bundled skills to user-home discovery directories so that
 // every supported agent CLI finds them regardless of CWD.
 //
-// Two roots cover all five agents MyLifeDB spawns:
-//   - ~/.agents/skills — Claude Code, Codex (native), Gemini (alias),
-//     opencode (alias)
-//   - ~/.qwen/skills   — Qwen Code (no alias support)
+// Three roots cover all five agents MyLifeDB spawns:
+//   - ~/.claude/skills — Claude Code (native discovery path; see note below).
+//   - ~/.agents/skills — Codex (native), Gemini (alias), opencode (alias),
+//     and any future Claude Code build that picks up the agent-skills alias.
+//   - ~/.qwen/skills   — Qwen Code (no alias support).
+//
+// Why both ~/.claude/skills and ~/.agents/skills for Claude Code:
+//
+// We previously installed only to ~/.agents/skills/ on the assumption that
+// Claude Code resolves skills there via the agent-skills.io alias (the same
+// mechanism Codex/Gemini use). That assumption was wrong for the Claude Code
+// versions actual users run — bundled skills written only to ~/.agents/skills/
+// were not discovered, and the create-auto-agent skill was missing from
+// sessions, breaking the in-app "create an auto agent" flow.
+//
+// The defensive install (writing to BOTH paths) restores discovery on every
+// Claude Code build we have seen in the wild. If a future Claude Code build
+// dedupes cross-root skills and surfaces a duplicate "create-auto-agent"
+// entry, the fix is to drop the ~/.agents copy at that point — but until then,
+// visibility wins over the cosmetic duplicate-entry risk: a missing skill
+// silently breaks user workflows, while a duplicate entry is at worst a
+// harmless extra row in the skill picker.
 //
 // Existing files are overwritten to keep skills up to date.
 func Install(dataDir string) {
@@ -73,6 +82,7 @@ func Install(dataDir string) {
 		return
 	}
 	roots := []string{
+		filepath.Join(home, ".claude/skills"),
 		filepath.Join(home, ".agents/skills"),
 		filepath.Join(home, ".qwen/skills"),
 	}
