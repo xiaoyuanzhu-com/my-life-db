@@ -11,6 +11,8 @@ import { AgentContextProvider } from '~/components/agent/agent-context'
 import { AutoAgentTree } from '~/components/agent/auto-agent-tree'
 import { AutoAgentEditor } from '~/components/agent/auto-agent-editor'
 import { useAgentRuntime } from '~/hooks/use-agent-runtime'
+import { useDraftOutbox } from '~/lib/draft-outbox'
+import type { UseDraftOutboxResult } from '~/lib/draft-outbox'
 import { Button } from '~/components/ui/button'
 import { Plus, PanelLeftClose, PanelLeftOpen, ChevronDown, ArrowLeft, Share2, Link, Check, Globe, Loader2 } from 'lucide-react'
 import {
@@ -258,6 +260,9 @@ type ChatRuntimeShellProps = {
   setNewSessionDefaults: React.Dispatch<React.SetStateAction<Record<string, Record<string, string>>>>
   resultCount: number
 
+  // Draft + outbox handle (single owner of composer input safety)
+  outbox: UseDraftOutboxResult
+
   children: React.ReactNode
 }
 
@@ -281,6 +286,7 @@ function ChatRuntimeShell({
   newSessionConfigOptions,
   setNewSessionDefaults,
   resultCount,
+  outbox,
   children,
 }: ChatRuntimeShellProps) {
   const {
@@ -294,8 +300,6 @@ function ChatRuntimeShell({
     historyLoadError,
     sessionError,
     subagentChildrenMap,
-    pendingComposerText,
-    clearPendingComposerText,
     reconnect,
     interruptedAt,
     lastPromptText,
@@ -314,7 +318,14 @@ function ChatRuntimeShell({
     onArchiveThread,
     onUnarchiveThread,
     onDeleteThread: () => {},
+    outbox,
   })
+
+  // Mirror WS connection state into the outbox so it can flush pending
+  // items on reconnect. The outbox itself stays passive otherwise.
+  useEffect(() => {
+    outbox.notifyConnection(connected ? 'open' : 'closed')
+  }, [connected, outbox])
 
   const handleRestartSession = useCallback(async () => {
     if (!activeSessionId) return
@@ -372,8 +383,7 @@ function ChatRuntimeShell({
     historyLoadError,
     sessionError,
     subagentChildrenMap,
-    pendingComposerText,
-    clearPendingComposerText,
+    outbox,
     resultCount,
     onRestart: hasActiveSession ? handleRestartSession : undefined,
     interruptedAt: hasActiveSession ? interruptedAt : null,
@@ -1239,6 +1249,12 @@ export default function AgentPage() {
   })()
   const onSendForRuntime = !hasActiveSession ? createSessionWithMessage : undefined
 
+  // Draft + outbox — single owner of composer input safety. Per-session (or
+  // 'new-session' before a session exists). The composer reads from this and
+  // the runtime submits through it; if input is ever lost the bug is here.
+  // See `~/lib/draft-outbox/DESIGN.md`.
+  const outbox = useDraftOutbox(activeSessionId || 'new-session')
+
   // Build effective configOptions for new sessions: backend defaults with user-preferred overrides
   const newSessionConfigOptions = useMemo(() => {
     const defaults = defaultConfigOptions[newSessionAgentType] ?? []
@@ -1279,6 +1295,7 @@ export default function AgentPage() {
     activeSessionAgentType,
     newSessionConfigOptions,
     setNewSessionDefaults,
+    outbox,
     resultCount,
   }
 

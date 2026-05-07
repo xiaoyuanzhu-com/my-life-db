@@ -7,6 +7,7 @@ import { createContext, useContext } from "react"
 import type { ThreadMessageLike } from "@assistant-ui/react"
 import type { PermissionOption } from "~/hooks/use-agent-websocket"
 import type { PlanEntry, ConfigOption } from "~/hooks/use-agent-runtime"
+import type { UseDraftOutboxResult } from "~/lib/draft-outbox"
 
 export interface PendingPermissionEntry {
   toolName: string
@@ -44,10 +45,13 @@ export interface AgentContextValue {
   sessionError?: string | null
   /** Map from toolCallId to child messages for subagent tool calls */
   subagentChildrenMap?: Map<string, ThreadMessageLike[]>
-  /** Text to restore into the composer after a failed send */
-  pendingComposerText?: string | null
-  /** Clear the pending composer text after it's been restored */
-  clearPendingComposerText?: () => void
+  /**
+   * Draft + outbox handle. Source of truth for composer text safety —
+   * if any input is ever lost, the bug is in `~/lib/draft-outbox/`.
+   * The composer reads `outbox.draft` and writes via `outbox.setDraft`.
+   * The runtime calls `outbox.submit` instead of clearing localStorage by hand.
+   */
+  outbox?: UseDraftOutboxResult
   /** Counter that increments on each agent result, used as refreshKey for changed files */
   resultCount?: number
   /** Restart the current session (kill process + reconnect) */

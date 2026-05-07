@@ -356,43 +356,42 @@ const SendButton: FC<{
 };
 
 /**
- * DraftPersistenceSync — bidirectional sync between composer text and localStorage.
+ * DraftOutboxBridge — bridges the composer to the draft-outbox module.
  *
- * Saves: persists composer text as-you-type so it survives refresh/navigation.
- * Restores: on mount, restores from localStorage; on failed send, restores from
- *           pendingComposerText signalled by the runtime.
- * Clears: localStorage is cleared immediately on send (in onNew) and again
- *         when user_message_chunk confirms receipt (belt-and-suspenders).
+ * The module owns: where drafts live, when they're cleared, what's pending.
+ * This component owns: shoveling text between assistant-ui's composer state
+ * and `outbox.{draft,setDraft}`. It deliberately does no localStorage work
+ * of its own — the module's storage layer is the only writer to durable state.
  *
- * IMPORTANT: composerRuntime is accessed via a ref (not as an effect dependency)
- * to prevent the restore effect from re-firing when the ExternalStoreAdapter
- * rebuilds. The adapter rebuilds on every message/isRunning change, which would
- * cause the restore to read a stale localStorage value and overwrite the
- * composer text the user is actively typing.
+ * Restore on mount/session-change is deferred via setTimeout so it runs AFTER
+ * assistant-ui's internal thread-switch reset, which would otherwise overwrite
+ * our setText with empty.
+ *
+ * If user input is ever lost in the composer, the bug is in `~/lib/draft-outbox/`.
  */
 const DraftPersistenceSync: FC = () => {
   const composerRuntime = useComposerRuntime();
   const text = useComposer((s) => s.text);
-  const { sessionId, pendingComposerText, clearPendingComposerText } = useAgentContext();
-
-  const storageKey = sessionId ? `agent-input:${sessionId}` : "agent-input:new-session";
+  const { sessionId, outbox } = useAgentContext();
 
   // Stable ref to composerRuntime — avoids triggering restore when the
   // runtime reference changes (which happens when the adapter rebuilds).
   const composerRef = useRef(composerRuntime);
   composerRef.current = composerRuntime;
 
-  // Whether the initial restore for the current storageKey has completed.
-  // While false the persist effect is suppressed so it cannot wipe the
-  // draft from localStorage before the deferred setTimeout restores it.
+  // Whether the initial restore for the current sessionId has completed.
+  // While false the persist effect is suppressed so it cannot push stale
+  // empty text into the outbox before the deferred setTimeout restores it.
   const hasRestoredRef = useRef(false);
 
-  // Restore from localStorage when session changes (mount, navigation).
-  // Deferred via setTimeout so it runs AFTER assistant-ui's internal
-  // thread-switch reset, which would otherwise overwrite our setText.
+  // Restore from the outbox when session changes (mount, navigation).
   useEffect(() => {
     hasRestoredRef.current = false;
-    const draft = localStorage.getItem(storageKey);
+    if (!outbox) {
+      hasRestoredRef.current = true;
+      return;
+    }
+    const draft = outbox.draft;
     if (draft) {
       const timer = setTimeout(() => {
         composerRef.current.setText(draft);
@@ -405,31 +404,34 @@ const DraftPersistenceSync: FC = () => {
     } else {
       hasRestoredRef.current = true;
     }
-  }, [storageKey]);
+    // Intentionally only depends on sessionId so we don't re-run on every
+    // outbox.draft change (that would fight the user's typing).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
 
-  // Persist as-you-type. Suppressed until the restore phase completes and
-  // when storageKey just changed (text may be stale from the previous session).
-  const activeKeyRef = useRef(storageKey);
+  // Persist as-you-type by forwarding into the outbox. Suppressed until the
+  // restore phase completes (so we don't immediately overwrite the restored
+  // draft with assistant-ui's transient initial empty text).
+  const activeSessionRef = useRef(sessionId);
   useEffect(() => {
     if (!hasRestoredRef.current) return;
-    if (activeKeyRef.current !== storageKey) {
-      activeKeyRef.current = storageKey;
+    if (!outbox) return;
+    if (activeSessionRef.current !== sessionId) {
+      activeSessionRef.current = sessionId;
       return;
     }
+    // The outbox owns "is this a transient empty?" deduping; we just forward.
+    // On real user clears the runtime calls outbox.discardDraft() explicitly.
     if (text) {
-      localStorage.setItem(storageKey, text);
-    } else {
-      localStorage.removeItem(storageKey);
+      outbox.setDraft(text);
     }
-  }, [text, storageKey]);
+  }, [text, sessionId, outbox]);
 
-  // Restore from failed send (runtime signals via pendingComposerText)
-  useEffect(() => {
-    if (pendingComposerText && clearPendingComposerText) {
-      composerRef.current.setText(pendingComposerText);
-      clearPendingComposerText();
-    }
-  }, [pendingComposerText, clearPendingComposerText]);
+  // Note: the legacy `pendingComposerText` failed-send restore path has been
+  // removed. The outbox now handles the same case durably: on a failed send
+  // the draft is never cleared (because the outbox only clears on
+  // `userDiscardedDraft` or after the corresponding outbox item is acked),
+  // so a remount/refresh re-restores it via the effect above.
 
   return null;
 };

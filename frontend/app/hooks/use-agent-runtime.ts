@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useExternalStoreRuntime } from "@assistant-ui/react"
 import type {
   ThreadMessageLike,
@@ -21,6 +21,7 @@ import {
 } from "./use-agent-websocket"
 import { isSkippedXmlContent } from "~/lib/session-message-utils"
 import { generateUUID } from "~/lib/uuid"
+import type { UseDraftOutboxResult } from "~/lib/draft-outbox"
 
 // ── Internal State Types ──────────────────────────────────────────────
 
@@ -127,6 +128,12 @@ export function useAgentRuntime(options: {
   onArchiveThread?: (id: string) => void
   onUnarchiveThread?: (id: string) => void
   onDeleteThread?: (id: string) => void
+  /**
+   * Draft + outbox handle. When provided, the runtime delegates submit
+   * persistence and failure recovery to it instead of touching localStorage
+   * directly. See `~/lib/draft-outbox/DESIGN.md`.
+   */
+  outbox?: UseDraftOutboxResult
 }) {
   const {
     sessionId,
@@ -141,6 +148,7 @@ export function useAgentRuntime(options: {
     onArchiveThread,
     onUnarchiveThread,
     onDeleteThread,
+    outbox,
   } = options
 
   const [messages, setMessages] = useState<InternalMessage[]>([])
@@ -165,9 +173,6 @@ export function useAgentRuntime(options: {
   // Optimistic message text that should survive the session ID reset
   // when transitioning from "no session" → "new session created"
   const pendingOptimisticRef = useRef<string | null>(null)
-
-  // Text to restore into the composer after a failed send
-  const [pendingComposerText, setPendingComposerText] = useState<string | null>(null)
 
 
   // Generate globally unique message IDs to avoid collisions in
@@ -301,7 +306,9 @@ export function useAgentRuntime(options: {
           }
 
           // Check if this reconciles an optimistic message — if so, the
-          // message was confirmed sent and we can clear the persisted draft.
+          // server confirmed receipt. Heuristic ack for v1: find the
+          // oldest inflight outbox item with matching text and clear it.
+          // (The proper fix is server-echoed clientId; see DESIGN.md.)
           {
             const hasOptimistic = messagesRef.current.some(
               (m) =>
@@ -309,9 +316,13 @@ export function useAgentRuntime(options: {
                 m.isOptimistic &&
                 m.content.some((p) => p.type === "text" && p.text === text)
             )
-            if (hasOptimistic) {
-              localStorage.removeItem(`agent-input:${sessionId}`)
-              localStorage.removeItem("agent-input:new-session")
+            if (hasOptimistic && outbox) {
+              const match = outbox.outbox.find(
+                (it) => it.state === "inflight" && it.text === text,
+              ) ?? outbox.outbox.find(
+                (it) => it.state === "pending" && it.text === text,
+              )
+              if (match) outbox.notifyAcked(match.clientId)
             }
           }
 
@@ -951,7 +962,7 @@ export function useAgentRuntime(options: {
           break
       }
     },
-    [nextId, sessionId]
+    [nextId, outbox]
   )
 
   // ── WebSocket Connection ──────────────────────────────────────────
@@ -966,6 +977,24 @@ export function useAgentRuntime(options: {
 
   // isActiveRef is populated from session.info frame sent by backend on WS connect.
   // No separate API fetch needed — the frame arrives before burst/replay.
+
+  // ── Outbox flush subscription ─────────────────────────────────────
+  //
+  // The outbox emits flushItem when an item should be transmitted (right
+  // after userSubmitted while WS is open, OR on reconnect for items that
+  // were queued while WS was down). We forward to sendPrompt and signal
+  // back so the outbox can transition state. Acks are heuristic for v1
+  // (matched in the user_message_chunk handler); see DESIGN.md "Backend
+  // changes required" for the proper clientId round-trip.
+  useEffect(() => {
+    if (!outbox) return
+    return outbox.subscribeFlush((item) => {
+      const sent = sendPrompt(item.text)
+      if (!sent) {
+        outbox.notifyTransportFailure(item.clientId, "ws-not-open")
+      }
+    })
+  }, [outbox, sendPrompt])
 
   // ── Build ThreadMessageLike Array ─────────────────────────────────
 
@@ -1037,66 +1066,57 @@ export function useAgentRuntime(options: {
         )
         const text = textParts.map((p) => p.text).join("\n")
         if (!text.trim()) return
-        if (text.trim()) {
-          if (onSend) {
-            // Persist to localStorage so the text survives failures / page refresh.
-            localStorage.setItem("agent-input:new-session", text)
-            // Show optimistic user message + working indicator immediately,
-            // then route to parent handler to create the session via API.
-            // The text is stashed in pendingOptimisticRef so the session ID
-            // reset (when the new session is created) preserves it.
-            pendingOptimisticRef.current = text
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: nextId(),
-                role: "user",
-                content: [{ type: "text", text }],
-                createdAt: new Date(),
-                isOptimistic: true,
-              },
-            ])
-            setIsRunning(true)
-            // Clear draft now — failure recovery uses pendingComposerText,
-            // not localStorage. Without this the DraftPersistenceSync restore
-            // effect can race (composerRuntime ref changes when the adapter
-            // rebuilds) and put the just-sent text back into the composer.
-            localStorage.removeItem("agent-input:new-session")
-            // Fire and handle failure — if session creation fails, restore
-            // the text back into the composer so the user doesn't lose it.
-            Promise.resolve(onSend(text))
-              .catch(() => {
-                pendingOptimisticRef.current = null
-                setMessages([])
-                setIsRunning(false)
-                setPendingComposerText(text)
-              })
-          } else {
-            // Persist to localStorage before sending
-            localStorage.setItem(`agent-input:${sessionId}`, text)
-            // Try to send via WS — if not connected, restore to composer
-            const sent = sendPrompt(text)
-            if (!sent) {
-              setPendingComposerText(text)
-              return
-            }
-            // Clear draft now — ws.send() accepted the bytes, and failure
-            // recovery uses pendingComposerText, not localStorage.
-            localStorage.removeItem(`agent-input:${sessionId}`)
-            // Add optimistic user message immediately
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: nextId(),
-                role: "user",
-                content: [{ type: "text", text }],
-                createdAt: new Date(),
-                isOptimistic: true,
-              },
-            ])
-            setIsRunning(true)
-            isActiveRef.current = true
+
+        if (onSend) {
+          // New-session path: prompt is delivered via HTTP session-create,
+          // not WS. The outbox owns the draft; we just discard it (the
+          // optimistic message holds the text for the user) and on failure
+          // restore it. No outbox enqueue here — the prompt isn't a WS
+          // send and a stuck 'new-session' outbox item would have nowhere
+          // to ack from.
+          outbox?.discardDraft()
+          pendingOptimisticRef.current = text
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: nextId(),
+              role: "user",
+              content: [{ type: "text", text }],
+              createdAt: new Date(),
+              isOptimistic: true,
+            },
+          ])
+          setIsRunning(true)
+          Promise.resolve(onSend(text)).catch(() => {
+            pendingOptimisticRef.current = null
+            setMessages([])
+            setIsRunning(false)
+            // Restore draft so the user's text reappears in the composer.
+            outbox?.setDraft(text)
+          })
+        } else {
+          // Existing-session path: hand the prompt to the outbox. It
+          // persists, generates a clientId, clears the draft, and emits
+          // a flushItem event our subscription forwards to sendPrompt.
+          // If WS is closed at this moment the item stays pending and
+          // the outbox will flush it on connectionChanged('open').
+          // Either way the user sees an optimistic message right now —
+          // their mental model is "input is simply safe".
+          if (outbox) {
+            outbox.submit({ text })
           }
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: nextId(),
+              role: "user",
+              content: [{ type: "text", text }],
+              createdAt: new Date(),
+              isOptimistic: true,
+            },
+          ])
+          setIsRunning(true)
+          isActiveRef.current = true
         }
       },
       onCancel: async () => {
@@ -1154,7 +1174,7 @@ export function useAgentRuntime(options: {
         },
       } : {}),
     }),
-    [rootMessages, isRunning, sendPrompt, sendCancel, onSend, sessions, activeSessionId, onSwitchToThread, onSwitchToNewThread, onRenameThread, onArchiveThread, onUnarchiveThread, onDeleteThread, nextId, sessionId]
+    [rootMessages, isRunning, sendCancel, onSend, sessions, activeSessionId, onSwitchToThread, onSwitchToNewThread, onRenameThread, onArchiveThread, onUnarchiveThread, onDeleteThread, nextId, outbox]
   )
 
   // ── Runtime ───────────────────────────────────────────────────────
@@ -1174,10 +1194,6 @@ export function useAgentRuntime(options: {
     [sendPermissionResponse]
   )
 
-  const clearPendingComposerText = useCallback(() => {
-    setPendingComposerText(null)
-  }, [])
-
   return {
     runtime,
     connected,
@@ -1191,8 +1207,6 @@ export function useAgentRuntime(options: {
     historyLoadError,
     sessionError,
     subagentChildrenMap,
-    pendingComposerText,
-    clearPendingComposerText,
     reconnect,
     interruptedAt,
     lastPromptText,
