@@ -458,7 +458,6 @@ export async function markUploaded(id: string, serverPath: string): Promise<void
  */
 export async function markFailed(id: string, errorMessage: string): Promise<void> {
   const db = await openDatabase();
-  const now = Date.now();
 
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -477,7 +476,6 @@ export async function markFailed(id: string, errorMessage: string): Promise<void
         ...item,
         status: 'failed',
         errorMessage,
-        failedAt: now,
         nextRetryAt: undefined,
         uploadingBy: undefined,
         uploadingAt: undefined,
@@ -491,32 +489,31 @@ export async function markFailed(id: string, errorMessage: string): Promise<void
 }
 
 /**
- * On startup, transition stale retry zombies to terminal `failed` and purge
- * old failed items.
+ * On startup, hard-delete failures from prior sessions so the queue is a
+ * clean slate on every page load.
  *
- * "Stale retry zombie" = an item with status='uploading' that has an
- * errorMessage and nextRetryAt set. These were mid-retry-cycle when the tab
- * closed; resuming them silently is what made failures pile up across
- * sessions. Now they show as `failed` until the user dismisses them.
+ * Two cases get purged:
+ *   - status='failed' — already terminal from a previous session
+ *   - status='uploading' + errorMessage + nextRetryAt — zombie retry item
+ *     that was mid-backoff when the tab closed
  *
- * "Old failed" = an item with status='failed' whose `failedAt` is older than
- * `purgeOlderThanMs`. These get hard-deleted so the queue self-cleans.
+ * A failure the user can't act on (file is no longer in the OS picker, all
+ * they can do is dismiss) is just clutter. Failures that happen during the
+ * *current* session still surface — those are recoverable in context.
  *
- * Returns counts for logging.
+ * In-flight uploads (status='uploading' with no error) are left alone so
+ * cross-tab handoff still works.
+ *
+ * Returns the number of items purged.
  */
-export async function sweepStaleAndPurgeFailed(
-  purgeOlderThanMs: number
-): Promise<{ markedFailed: number; purged: number }> {
+export async function purgePriorFailures(): Promise<number> {
   const db = await openDatabase();
-  const now = Date.now();
-  const purgeThreshold = now - purgeOlderThanMs;
 
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
     const getAllRequest = store.getAll();
 
-    let markedFailed = 0;
     let purged = 0;
 
     getAllRequest.onerror = () =>
@@ -524,33 +521,18 @@ export async function sweepStaleAndPurgeFailed(
     getAllRequest.onsuccess = () => {
       const items: PendingInboxItem[] = getAllRequest.result || [];
       for (const item of items) {
-        // Purge old terminal failures
-        if (item.status === 'failed') {
-          const ts = item.failedAt ?? item.lastAttemptAt ?? item.createdAt;
-          if (ts < purgeThreshold) {
-            store.delete(item.id);
-            purged++;
-          }
-          continue;
-        }
+        const isTerminalFailed = item.status === 'failed';
+        const isZombieRetry =
+          item.status === 'uploading' && !!item.errorMessage && !!item.nextRetryAt;
 
-        // Convert stale retry zombies to terminal failed
-        if (item.status === 'uploading' && item.errorMessage && item.nextRetryAt) {
-          const updated: PendingInboxItem = {
-            ...item,
-            status: 'failed',
-            failedAt: now,
-            nextRetryAt: undefined,
-            uploadingBy: undefined,
-            uploadingAt: undefined,
-          };
-          store.put(updated);
-          markedFailed++;
+        if (isTerminalFailed || isZombieRetry) {
+          store.delete(item.id);
+          purged++;
         }
       }
 
-      tx.oncomplete = () => resolve({ markedFailed, purged });
-      tx.onerror = () => reject(new Error(`Failed to sweep: ${tx.error?.message}`));
+      tx.oncomplete = () => resolve(purged);
+      tx.onerror = () => reject(new Error(`Failed to purge: ${tx.error?.message}`));
     };
   });
 }

@@ -24,7 +24,7 @@ import {
   updateProgress,
   markUploaded,
   markFailed,
-  sweepStaleAndPurgeFailed,
+  purgePriorFailures,
   deleteCompletedByPaths,
   requestPersistentStorage,
 } from './db';
@@ -39,7 +39,6 @@ const {
   UPLOAD_TIMEOUT_MS,
   RETRY_JITTER_PERCENT,
   MAX_RETRY_ATTEMPTS,
-  FAILED_PURGE_AGE_MS,
 } = QUEUE_CONSTANTS;
 
 
@@ -102,17 +101,17 @@ export class UploadQueueManager {
     // Request persistent storage
     await requestPersistentStorage();
 
-    // Sweep stale retry zombies → terminal `failed`, and purge old failed
-    // items. Without this, items that failed in a previous session would
-    // resume retrying silently and pile up under whatever the user is
-    // actively uploading now.
+    // Hard-purge failures from prior sessions: terminal `failed` items and
+    // zombie retry items (uploading + errorMessage + nextRetryAt). A failure
+    // the user can no longer act on (file is gone from the OS picker) is
+    // just clutter on next page load. In-session failures still surface.
     try {
-      const { markedFailed, purged } = await sweepStaleAndPurgeFailed(FAILED_PURGE_AGE_MS);
-      if (markedFailed > 0 || purged > 0) {
-        console.log('[UploadQueue] Init sweep:', { markedFailed, purged });
+      const purged = await purgePriorFailures();
+      if (purged > 0) {
+        console.log(`[UploadQueue] Purged ${purged} prior failure(s) on init`);
       }
     } catch (err) {
-      console.error('[UploadQueue] Init sweep failed:', err);
+      console.error('[UploadQueue] Init purge failed:', err);
     }
 
     // Listen for online events

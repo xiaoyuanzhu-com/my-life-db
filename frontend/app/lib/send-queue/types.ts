@@ -69,9 +69,6 @@ export interface PendingInboxItem {
   serverPath?: string;
   /** Epoch ms timestamp when uploaded */
   uploadedAt?: number;
-
-  /** Epoch ms timestamp when the item was marked terminally `failed` (used for auto-purge) */
-  failedAt?: number;
 }
 
 /**
@@ -114,6 +111,4 @@ export const QUEUE_CONSTANTS = {
   RETRY_JITTER_PERCENT: 0.1,
   /** Max retry attempts before marking item as terminally failed */
   MAX_RETRY_ATTEMPTS: 5,
-  /** Auto-purge `failed` items older than this on init (24h) */
-  FAILED_PURGE_AGE_MS: 24 * 60 * 60 * 1000,
 } as const;
