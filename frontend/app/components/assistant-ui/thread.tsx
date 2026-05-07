@@ -745,7 +745,7 @@ const ComposerOptionsMenu: FC<{
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="bottom" sideOffset={4}>
         {agentType !== undefined && (
-          <div className="flex items-center justify-between px-2 py-1.5 gap-4">
+          <div className="flex items-center justify-between pl-2 pr-1 gap-4">
             <span className="text-xs text-muted-foreground shrink-0">Agent</span>
             <AgentTypeSelector
               value={agentType as AgentType}
@@ -756,7 +756,7 @@ const ComposerOptionsMenu: FC<{
           </div>
         )}
         {sortedOptions.map((opt) => (
-          <div key={opt.id} className="flex items-center justify-between px-2 py-1.5 gap-4">
+          <div key={opt.id} className="flex items-center justify-between pl-2 pr-1 gap-4">
             <span className="text-xs text-muted-foreground shrink-0">{opt.name}</span>
             <ConfigOptionSelector
               option={opt}
