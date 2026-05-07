@@ -197,6 +197,10 @@ func (w *watcher) handleEvent(event fsnotify.Event) {
 		if isCreate {
 			// Add new directory to watcher
 			w.watcher.Add(event.Name)
+			// Notify clients so the parent folder view picks up the new
+			// directory. Files inside it will arrive via their own CREATE
+			// events and trigger their own refetches.
+			w.service.notifyLibraryChange(relPath, "create")
 		}
 		return // Don't process directory events further
 	}
@@ -311,6 +315,10 @@ func (w *watcher) handleDelete(path string) {
 			Msg("failed to delete file from database")
 	}
 
+	// Publish library-changed so connected clients (web Data page,
+	// iOS folder view) refetch and drop the deleted file.
+	w.service.notifyLibraryChange(path, "delete")
+
 	// Release lock (garbage collection)
 	w.service.fileLock.releaseFileLock(path)
 }
@@ -403,6 +411,15 @@ func (w *watcher) processExternalFile(path string, trigger string) {
 		Bool("hashComputed", true).
 		Str("trigger", trigger).
 		Msg("external file processed successfully")
+
+	// Publish library-changed so the web Data page and iOS folder view
+	// refetch their tree. Use "create" for new files, "write" for in-place
+	// modifications — the client treats both as "refetch this folder".
+	op := "write"
+	if isNew {
+		op = "create"
+	}
+	w.service.notifyLibraryChange(path, op)
 }
 
 // processMove handles an external file move/rename operation.
@@ -475,4 +492,9 @@ func (w *watcher) processMove(oldPath, newPath string) {
 		Str("oldPath", oldPath).
 		Str("newPath", newPath).
 		Msg("external file move processed successfully")
+
+	// Publish library-changed for the new path. Folder views below the move
+	// destination will refetch; the web hook also clears any cached entry at
+	// oldPath when its parent folder reloads.
+	w.service.notifyLibraryChange(newPath, "move")
 }

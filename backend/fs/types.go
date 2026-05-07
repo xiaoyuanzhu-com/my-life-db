@@ -52,7 +52,19 @@ type Config struct {
 
 	// Preview notification callback (optional, for SSE)
 	PreviewNotifier PreviewNotifier
+
+	// Library notification callback (optional, for SSE).
+	// Fired when the watcher detects external file create/write/move/delete
+	// — i.e., changes that did NOT originate from an API handler. Lets the
+	// notifications service publish library-changed without fs/ depending
+	// on the notifications package.
+	LibraryNotifier LibraryNotifier
 }
+
+// LibraryNotifier is called after the watcher reconciles an external
+// filesystem change. `operation` is one of "create", "write", "move", "delete".
+// For "move", `path` is the new path.
+type LibraryNotifier func(path string, operation string)
 
 // Database interface defines required database operations
 // This allows for easier testing and decoupling

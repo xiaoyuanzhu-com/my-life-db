@@ -145,6 +145,15 @@ func (s *Service) notifyFileChange(event FileChangeEvent) {
 	}
 }
 
+// notifyLibraryChange invokes the optional LibraryNotifier, if configured.
+// Used by the watcher to publish SSE events for filesystem changes that did
+// not originate from an API handler.
+func (s *Service) notifyLibraryChange(path string, operation string) {
+	if s.cfg.LibraryNotifier != nil {
+		s.cfg.LibraryNotifier(path, operation)
+	}
+}
+
 // changeNotificationWorker processes file change events sequentially.
 // This prevents unbounded goroutine creation during batch imports.
 func (s *Service) changeNotificationWorker() {

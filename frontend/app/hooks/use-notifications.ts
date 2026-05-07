@@ -229,7 +229,11 @@ interface UseLibraryNotificationsOptions {
 }
 
 /**
- * Hook for library change notifications (create, delete, rename, move, upload)
+ * Hook for library change notifications (create, delete, rename, move, upload).
+ *
+ * Also triggers on SSE reconnection (sse-reconnected) — events may have been
+ * missed during a network drop, sleep/wake, or buffer overflow. Mirrors the
+ * agent-session hook's behavior.
  */
 export function useLibraryNotifications(options: UseLibraryNotificationsOptions) {
   const { onLibraryChange, enabled = true } = options;
@@ -258,6 +262,12 @@ export function useLibraryNotifications(options: UseLibraryNotificationsOptions)
           const path = data.path || '';
           const operation = data.data?.operation || 'unknown';
           debouncedOnChange(path, operation);
+          return;
+        }
+
+        // Re-fetch on reconnect to catch up on any missed events
+        if (data.type === 'sse-reconnected') {
+          debouncedOnChange('', 'reconnect');
         }
       } catch {
         // Silently ignore parse errors

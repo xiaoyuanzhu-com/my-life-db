@@ -576,6 +576,9 @@ http_headers = { "x-litellm-customer-id" = %q }
 	fsCfg.PreviewNotifier = func(filePath, previewType string) {
 		s.notifService.NotifyPreviewUpdated(filePath, previewType)
 	}
+	fsCfg.LibraryNotifier = func(filePath, operation string) {
+		s.notifService.NotifyLibraryChanged(filePath, operation)
+	}
 	s.fsService = fs.NewService(fsCfg)
 
 	// 5. Create text indexer (writes synchronously to SQLite FTS5 files_fts
