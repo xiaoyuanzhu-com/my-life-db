@@ -9,8 +9,29 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
+	"github.com/xiaoyuanzhu-com/my-life-db/skills"
 	"gopkg.in/yaml.v3"
 )
+
+// bundledSkillNames returns the set of skill folder names MyLifeDB ships and
+// installs to multiple discovery roots (~/.claude/skills, ~/.agents/skills,
+// ~/.qwen/skills). The composer uses this to dedupe its skill list — the
+// bundled skill is shown once under its vendor-neutral entry from
+// ~/.agents/skills/, and the agent-specific copies (which exist only as a
+// compatibility shim so each agent CLI's native discovery path finds the
+// skill) are suppressed so they don't surface as a second row.
+func bundledSkillNames() map[string]struct{} {
+	names := map[string]struct{}{}
+	for _, s := range skills.All() {
+		// Skill paths look like "<folder>/SKILL.md"; the folder name is the
+		// skill name from the agent CLI's perspective.
+		folder := filepath.Dir(s.Path)
+		if folder != "" && folder != "." {
+			names[folder] = struct{}{}
+		}
+	}
+	return names
+}
 
 // skillEntry is the wire shape for a single discovered skill.
 type skillEntry struct {
@@ -50,6 +71,7 @@ func (h *Handlers) ListSkills(c *gin.Context) {
 	dataDir := h.server.Cfg().UserDataDir
 	workingDir := strings.TrimSpace(c.Query("workingDir"))
 	roots := skillRoots(dataDir, workingDir)
+	bundled := bundledSkillNames()
 
 	// Dedup key is (name, agent) — a vendor-neutral "commit" and a
 	// claude_code-specific "commit" are distinct skills the runtime would treat
@@ -67,6 +89,22 @@ func (h *Handlers) ListSkills(c *gin.Context) {
 		for _, ent := range entries {
 			if !ent.IsDir() {
 				continue
+			}
+			// Suppress the agent-specific copy of a bundled skill. The same
+			// SKILL.md is installed by backend/skills to ~/.agents/skills/
+			// (vendor-neutral) AND to each agent's native root (e.g.
+			// ~/.claude/skills/) so every agent CLI's discovery path finds
+			// it. Without this filter the composer would show two rows per
+			// bundled skill — one tagged "any agent", one tagged
+			// "claude_code" — even though they're the same file. The
+			// vendor-neutral entry from ~/.agents/skills/ is kept as the
+			// canonical row; project- and user-supplied skills with the
+			// same folder name are still surfaced because they don't share
+			// this vendor-neutral root.
+			if r.agent != "" && r.source == "user" {
+				if _, isBundled := bundled[ent.Name()]; isBundled {
+					continue
+				}
 			}
 			skillPath := filepath.Join(r.dir, ent.Name(), "SKILL.md")
 			data, err := os.ReadFile(skillPath)
