@@ -281,6 +281,7 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 
 		agentRoutes.GET("/sessions", h.GetAgentSessions)
 		agentRoutes.GET("/sessions/all", h.GetAgentSessions)
+		agentRoutes.GET("/sessions/search", h.SearchAgentSessions)
 		agentRoutes.POST("/sessions", h.CreateAgentSession)
 		agentRoutes.GET("/sessions/:id", h.GetAgentSession)
 		agentRoutes.PATCH("/sessions/:id", h.UpdateAgentSession)

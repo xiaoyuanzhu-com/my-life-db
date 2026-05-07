@@ -31,6 +31,7 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/mcptools"
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 	"github.com/xiaoyuanzhu-com/my-life-db/skills"
+	"github.com/xiaoyuanzhu-com/my-life-db/workers/sessionindex"
 	"github.com/xiaoyuanzhu-com/my-life-db/workers/textindex"
 )
 
@@ -43,6 +44,7 @@ type Server struct {
 	appDB        *db.DB // persistent user data: pins, settings, sessions, agent_*, explore_*
 	fsService    *fs.Service
 	textIndexer  *textindex.Indexer
+	sessionIndexer *sessionindex.Indexer
 	notifService *notifications.Service
 	agentClient  *agentsdk.Client
 	agentProxy   *agentproxy.Server   // loopback HTTP proxy that injects upstream LLM creds
@@ -586,6 +588,12 @@ http_headers = { "x-litellm-customer-id" = %q }
 	log.Info().Msg("initializing text indexer")
 	s.textIndexer = textindex.NewIndexer(s.fsService.DataRoot(), s.indexDB)
 
+	// 5.5. Create session indexer (periodic sweep: extracts text from
+	// persisted ACP frames and upserts into agent_sessions_fts on the index
+	// DB). Eventually consistent — sweep interval is 5m.
+	log.Info().Msg("initializing session indexer")
+	s.sessionIndexer = sessionindex.New(s.appDB, s.indexDB, s.frameStore, 0)
+
 	// 7.5. MyLifeDB Connect store — third-party app authorization (OAuth 2.1
 	// + PKCE). Schema is owned by db/migration_026_connect.go (app DB).
 	s.connectStore = connect.NewStore(s.appDB.Conn())
@@ -752,6 +760,13 @@ func (s *Server) Start() error {
 
 	// Backfill the FTS5 index for any files that aren't yet indexed.
 	go s.textIndexer.Backfill()
+
+	// Start the periodic session-transcript indexer (writes into
+	// agent_sessions_fts). Runs an immediate catch-up sweep on startup, then
+	// sweeps every 5 minutes until shutdownCtx is cancelled.
+	if s.sessionIndexer != nil {
+		go s.sessionIndexer.Start(s.shutdownCtx)
+	}
 
 	// Start hooks registry
 	if err := s.hookRegistry.Start(s.shutdownCtx); err != nil {

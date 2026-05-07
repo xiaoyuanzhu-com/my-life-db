@@ -598,14 +598,17 @@ func (d *DB) GetAllShareTokens() (map[string]string, error) {
 
 // SetPromptInFlight records that a prompt is now being processed.
 // Called just before Send() so the DB tracks the in-flight prompt.
+//
+// Bumps last_message_at so the session-search sweep picks up the new prompt
+// text on its next tick.
 func (d *DB) SetPromptInFlight(ctx context.Context, sessionID, promptText string) error {
 	now := NowMs()
 	return d.Write(ctx, func(tx *sql.Tx) error {
 		_, err := tx.Exec(
 			`UPDATE agent_sessions
-			 SET last_prompt_text = ?, last_prompt_at = ?, is_processing = 1, interrupted_at = NULL, updated_at = ?
+			 SET last_prompt_text = ?, last_prompt_at = ?, is_processing = 1, interrupted_at = NULL, updated_at = ?, last_message_at = ?
 			 WHERE session_id = ?`,
-			promptText, now, now, sessionID,
+			promptText, now, now, now, sessionID,
 		)
 		return err
 	})
@@ -613,14 +616,50 @@ func (d *DB) SetPromptInFlight(ctx context.Context, sessionID, promptText string
 
 // ClearPromptInFlight marks a prompt as completed (clears is_processing).
 // Called when the events channel closes normally (turn complete).
+//
+// Bumps last_message_at — by the time a turn completes the assistant has
+// produced new text the search index needs to see.
 func (d *DB) ClearPromptInFlight(ctx context.Context, sessionID string) error {
 	return d.Write(ctx, func(tx *sql.Tx) error {
 		_, err := tx.Exec(
-			`UPDATE agent_sessions SET is_processing = 0, interrupted_at = NULL WHERE session_id = ?`,
-			sessionID,
+			`UPDATE agent_sessions SET is_processing = 0, interrupted_at = NULL, last_message_at = ? WHERE session_id = ?`,
+			NowMs(), sessionID,
 		)
 		return err
 	})
+}
+
+// AgentSessionForIndex is the minimal session view used by the search-index
+// sweep: just the identifiers and the last-message timestamp.
+type AgentSessionForIndex struct {
+	SessionID     string
+	StorageID     string
+	LastMessageAt int64
+}
+
+// ListAgentSessionsForIndex returns every session's id, storage id, and
+// last_message_at. Used by the sweep to compare against the index DB's
+// per-session last_indexed_at and decide what needs re-indexing. Includes
+// archived sessions — archived transcripts are still searchable.
+func (d *DB) ListAgentSessionsForIndex() ([]AgentSessionForIndex, error) {
+	rows, err := d.conn.Query(`SELECT session_id, storage_id, last_message_at FROM agent_sessions`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []AgentSessionForIndex
+	for rows.Next() {
+		var r AgentSessionForIndex
+		if err := rows.Scan(&r.SessionID, &r.StorageID, &r.LastMessageAt); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // MarkInterrupted sets interrupted_at and clears is_processing.
