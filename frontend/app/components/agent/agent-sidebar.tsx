@@ -60,6 +60,7 @@ export interface SidebarSession {
 export interface AgentSidebarProps {
   sessions: SidebarSession[]
   activeSessionId?: string | null
+  recentlyVisitedSessionId?: string | null
 
   // Per-row maps (parity with ThreadList props)
   sessionStates?: Record<string, SessionState>
@@ -112,6 +113,7 @@ function bucketFor(activity: number, now: number): TimeBucket {
 export const AgentSidebar: FC<AgentSidebarProps> = ({
   sessions,
   activeSessionId,
+  recentlyVisitedSessionId,
   sessionStates,
   sessionSources,
   sessionAgentNames,
@@ -170,6 +172,7 @@ export const AgentSidebar: FC<AgentSidebarProps> = ({
               key={s.id}
               session={s}
               activeSessionId={activeSessionId}
+              recentlyVisitedSessionId={recentlyVisitedSessionId}
               sessionStates={sessionStates}
               sessionSources={sessionSources}
               sessionAgentNames={sessionAgentNames}
@@ -194,6 +197,7 @@ export const AgentSidebar: FC<AgentSidebarProps> = ({
                 key={s.id}
                 session={s}
                 activeSessionId={activeSessionId}
+                recentlyVisitedSessionId={recentlyVisitedSessionId}
                 sessionStates={sessionStates}
                 sessionSources={sessionSources}
                 sessionAgentNames={sessionAgentNames}
@@ -235,6 +239,7 @@ const Section: FC<{ title: string; children: React.ReactNode }> = ({ title, chil
 interface SessionRowProps {
   session: SidebarSession
   activeSessionId?: string | null
+  recentlyVisitedSessionId?: string | null
   sessionStates?: Record<string, SessionState>
   sessionSources?: Record<string, string>
   sessionAgentNames?: Record<string, string>
@@ -249,6 +254,7 @@ interface SessionRowProps {
 const SessionRow: FC<SessionRowProps> = ({
   session,
   activeSessionId,
+  recentlyVisitedSessionId,
   sessionStates,
   sessionSources,
   sessionAgentNames,
@@ -261,6 +267,8 @@ const SessionRow: FC<SessionRowProps> = ({
 }) => {
   const { t } = useTranslation('agent');
   const isActive = session.id === activeSessionId
+  const isRecentlyVisited =
+    !isActive && session.id === recentlyVisitedSessionId
   const sessionState = sessionStates?.[session.id]
   const isArchived = sessionState === 'archived'
   const showDot = !isActive && (sessionState === 'working' || sessionState === 'unread')
@@ -285,7 +293,8 @@ const SessionRow: FC<SessionRowProps> = ({
   return (
     <div
       {...(isActive ? { 'data-active': 'true' } : {})}
-      className="group relative flex h-8 items-center gap-1 rounded-md transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none data-active:bg-muted"
+      {...(isRecentlyVisited ? { 'data-recently-visited': 'true' } : {})}
+      className="group relative flex h-8 items-center gap-1 rounded-md transition-colors duration-300 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none data-active:bg-muted data-[recently-visited=true]:bg-muted"
     >
       {renaming ? (
         <div className="flex h-full min-w-0 flex-1 items-center px-2.5">

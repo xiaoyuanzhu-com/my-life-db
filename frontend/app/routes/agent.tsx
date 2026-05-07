@@ -430,6 +430,20 @@ export default function AgentPage() {
   const handleAttachmentsStorageIdChange = useCallback((storageId: string | null) => {
     draftStorageIdRef.current = storageId
   }, [])
+  // On mobile, briefly highlight the just-visited session row when the user
+  // returns to the list — a "you were just here" cue. The 200ms hold runs
+  // here; the fade itself is CSS on the row (see SessionRow).
+  const [recentlyVisitedSessionId, setRecentlyVisitedSessionId] = useState<
+    string | null
+  >(null)
+  useEffect(() => {
+    const prev = prevActiveSessionIdRef.current
+    if (isMobile && prev != null && activeSessionId == null) {
+      setRecentlyVisitedSessionId(prev)
+      const t = setTimeout(() => setRecentlyVisitedSessionId(null), 200)
+      return () => clearTimeout(t)
+    }
+  }, [activeSessionId, isMobile])
   useEffect(() => {
     prevActiveSessionIdRef.current = activeSessionId
   }, [activeSessionId])
@@ -1640,6 +1654,7 @@ export default function AgentPage() {
               <AgentSidebar
                 sessions={visibleSessions}
                 activeSessionId={activeSessionId}
+                recentlyVisitedSessionId={recentlyVisitedSessionId}
                 sessionStates={sessionStates}
                 sessionSources={sessionSources}
                 sessionAgentNames={sessionAgentNames}
