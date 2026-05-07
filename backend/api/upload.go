@@ -51,7 +51,7 @@ func InitTUSHandler() (http.Handler, error) {
 		store.UseIn(composer)
 
 		handler, err := tusd.NewHandler(tusd.Config{
-			BasePath:                "/api/upload/tus/",
+			BasePath:                "/api/data/uploads/tus/",
 			StoreComposer:           composer,
 			RespectForwardedHeaders: true,
 			MaxSize:                 10 * 1024 * 1024 * 1024, // 10GB
@@ -85,11 +85,11 @@ func (h *Handlers) TUSHandler(c *gin.Context) {
 		Str("path", c.Request.URL.Path).
 		Msg("TUS request received")
 
-	// Manually strip the /api/upload/tus prefix from the request URL
-	// TUS handler expects paths without the base path prefix
-	// We need to manually strip because http.StripPrefix doesn't work well with Gin's wildcard routes
+	// Manually strip the /api/data/uploads/tus prefix from the request URL.
+	// TUS handler expects paths without the base path prefix.
+	// We need to manually strip because http.StripPrefix doesn't work well with Gin's wildcard routes.
 	originalPath := c.Request.URL.Path
-	strippedPath := strings.TrimPrefix(originalPath, "/api/upload/tus")
+	strippedPath := strings.TrimPrefix(originalPath, "/api/data/uploads/tus")
 	c.Request.URL.Path = strippedPath
 
 	handler.ServeHTTP(c.Writer, c.Request)
