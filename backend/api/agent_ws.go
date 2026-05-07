@@ -125,6 +125,23 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 	if rec, err := h.server.AppDB().GetAgentSession(sessionID); err == nil && rec != nil {
 		infoFields["agentType"] = rec.AgentType
 		if opts := buildAgentConfigOptions(rec.AgentType, h.server.Cfg().AgentLLM.Models); len(opts) > 0 {
+			// Overlay persisted per-session preferences so the dropdown opens on
+			// the user's saved value instead of the agent-type default. Mode
+			// lives in its own column for legacy reasons; everything else is in
+			// config_options.
+			persisted, _ := h.server.AppDB().GetAgentSessionConfigOptions(sessionID)
+			persistedMode, _ := h.server.AppDB().GetAgentSessionPermissionMode(sessionID)
+			for i := range opts {
+				if opts[i].ID == "mode" {
+					if persistedMode != "" {
+						opts[i].CurrentValue = persistedMode
+					}
+					continue
+				}
+				if v, ok := persisted[opts[i].ID]; ok && v != "" {
+					opts[i].CurrentValue = v
+				}
+			}
 			infoFields["defaultConfigOptions"] = opts
 		}
 		// Interrupted state: surface to the frontend so it can show the Resume banner.
@@ -226,10 +243,24 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			agentType := parseAgentType(sessionRecord.AgentType)
 			mode, _ := h.server.AppDB().GetAgentSessionPermissionMode(sessionID)
 
+			// Resolve the model to spawn with: per-session preference if set,
+			// else the agent type's gateway default. Env vars from BuildModelEnv
+			// make the process boot directly with the right model.
+			gatewayModels := h.agentMgr.GatewayModels(sessionRecord.AgentType)
+			var defaultModel string
+			if len(gatewayModels) > 0 {
+				defaultModel = gatewayModels[0].Value
+			}
+			persistedOpts, _ := h.server.AppDB().GetAgentSessionConfigOptions(sessionID)
+			if v := persistedOpts["model"]; v != "" {
+				defaultModel = v
+			}
+
 			sess, err := h.server.AgentClient().CreateSession(h.server.ShutdownContext(), agentsdk.SessionConfig{
 				Agent:        agentType,
 				Mode:         mode,
 				WorkingDir:   sessionRecord.WorkingDir,
+				Env:          h.agentMgr.BuildModelEnv(agentType, defaultModel, gatewayModels),
 				McpServers:   h.agentMgr.buildSessionMcpServers(sessionRecord.StorageID),
 				SystemPrompt: server.BuildAgentSystemPrompt(h.server.Cfg().UserDataDir, sessionRecord.StorageID),
 			})
@@ -245,11 +276,6 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				return
 			}
 
-			gatewayModels := h.agentMgr.GatewayModels(sessionRecord.AgentType)
-			var defaultModel string
-			if len(gatewayModels) > 0 {
-				defaultModel = gatewayModels[0].Value
-			}
 			// Pass empty defaultModel here — LoadSession would overwrite it anyway.
 			// We re-apply the model explicitly AFTER LoadSession so legacy sessions
 			// that stored an old (now-unavailable) model get reset to a valid one.
@@ -427,11 +453,29 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				}
 				mode, _ := h.server.AppDB().GetAgentSessionPermissionMode(sessionID)
 
+				agentTypeStr := "claude_code"
+				if agentType == agentsdk.AgentCodex {
+					agentTypeStr = "codex"
+				}
+				gatewayModels := h.agentMgr.GatewayModels(agentTypeStr)
+				var defaultModel string
+				if len(gatewayModels) > 0 {
+					defaultModel = gatewayModels[0].Value
+				}
+				// Honor any per-session model preference saved while no ACP
+				// process was running (e.g. user changed the dropdown on a
+				// historical session before sending this first prompt).
+				persistedOpts, _ := h.server.AppDB().GetAgentSessionConfigOptions(sessionID)
+				if v := persistedOpts["model"]; v != "" {
+					defaultModel = v
+				}
+
 				// Create a new ACP session
 				sess, err := h.server.AgentClient().CreateSession(h.server.ShutdownContext(), agentsdk.SessionConfig{
 					Agent:        agentType,
 					Mode:         mode,
 					WorkingDir:   workDir,
+					Env:          h.agentMgr.BuildModelEnv(agentType, defaultModel, gatewayModels),
 					McpServers:   h.agentMgr.buildSessionMcpServers(lazyStorageID),
 					SystemPrompt: server.BuildAgentSystemPrompt(h.server.Cfg().UserDataDir, lazyStorageID),
 				})
@@ -443,15 +487,6 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 						conn.Write(ctx, websocket.MessageText, errBytes)
 					}
 					continue
-				}
-				agentTypeStr := "claude_code"
-				if agentType == agentsdk.AgentCodex {
-					agentTypeStr = "codex"
-				}
-				gatewayModels := h.agentMgr.GatewayModels(agentTypeStr)
-				var defaultModel string
-				if len(gatewayModels) > 0 {
-					defaultModel = gatewayModels[0].Value
 				}
 
 				// If this session already has prior frames (rehydrated from disk
@@ -752,7 +787,15 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			}
 
 		case "session.setMode":
-			// Mode uses legacy SetSessionMode RPC (only Claude Code has modes)
+			// Mode uses legacy SetSessionMode RPC (only Claude Code has modes).
+			// Persist first so the choice survives even when no ACP process is
+			// alive yet — historical sessions only spawn ACP on the first prompt
+			// or via the history-load fallback. The lazy-spawn paths read
+			// permission_mode back via GetAgentSessionPermissionMode.
+			if err := h.server.AppDB().SaveAgentSessionPermissionMode(ctx, sessionID, inMsg.ModeID); err != nil {
+				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist mode preference")
+			}
+
 			acpSession, exists := h.agentMgr.GetSession(sessionID)
 
 			if exists {
@@ -763,6 +806,11 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 					log.Info().Str("sessionId", sessionID).Str("modeId", inMsg.ModeID).Msg("mode set via WebSocket")
 				}
 				modeCancel()
+			} else {
+				// No live ACP — synthesize a config_option_update frame so the
+				// dropdown reflects the new value. When ACP is later spawned,
+				// it'll emit its own authoritative frame on top of this.
+				h.broadcastConfigOptionsBaseline(sessionID, sessionState)
 			}
 
 		case "session.setModel":
@@ -772,6 +820,20 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			fallthrough
 
 		case "session.setConfigOption":
+			// Persist first so the choice survives across ACP spawns (e.g. on
+			// historical sessions that haven't spawned ACP yet, or after a
+			// process restart). Lazy-spawn paths read these values back via
+			// GetAgentSessionConfigOptions / GetAgentSessionPermissionMode.
+			if inMsg.ConfigID == "mode" {
+				if err := h.server.AppDB().SaveAgentSessionPermissionMode(ctx, sessionID, inMsg.ConfigValue); err != nil {
+					log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist mode preference")
+				}
+			} else {
+				if err := h.server.AppDB().SaveAgentSessionConfigOption(ctx, sessionID, inMsg.ConfigID, inMsg.ConfigValue); err != nil {
+					log.Warn().Err(err).Str("sessionId", sessionID).Str("configId", inMsg.ConfigID).Msg("failed to persist config option")
+				}
+			}
+
 			acpSession, exists := h.agentMgr.GetSession(sessionID)
 
 			if exists {
@@ -809,6 +871,11 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 					}
 				}
 				cfgCancel()
+			} else {
+				// No live ACP — synthesize a config_option_update frame so the
+				// dropdown reflects the new value. When ACP is later spawned,
+				// it'll emit its own authoritative frame on top of this.
+				h.broadcastConfigOptionsBaseline(sessionID, sessionState)
 			}
 
 		case "permission.respond":
@@ -836,5 +903,47 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 
 	<-pollDone
 	<-pingDone
+}
+
+// broadcastConfigOptionsBaseline emits a synthesized config_option_update frame
+// reflecting the session's persisted config (mode + config_options map) on top
+// of the agent-type defaults. Called from the WS handler when the user changes
+// a config option but no live ACP process is around to echo its own frame.
+//
+// Same shape as the ACP-native config_option_update frame, so the existing
+// frontend handler in use-agent-runtime.ts updates sessionMeta directly. When
+// ACP is later spawned, its own config_option_update will arrive and override
+// these values.
+func (h *Handlers) broadcastConfigOptionsBaseline(sessionID string, sessionState *agentsdk.SessionState) {
+	rec, err := h.server.AppDB().GetAgentSession(sessionID)
+	if err != nil || rec == nil {
+		return
+	}
+	opts := buildAgentConfigOptions(rec.AgentType, h.server.Cfg().AgentLLM.Models)
+	if len(opts) == 0 {
+		return
+	}
+	persisted, _ := h.server.AppDB().GetAgentSessionConfigOptions(sessionID)
+	persistedMode, _ := h.server.AppDB().GetAgentSessionPermissionMode(sessionID)
+	for i := range opts {
+		if opts[i].ID == "mode" {
+			if persistedMode != "" {
+				opts[i].CurrentValue = persistedMode
+			}
+			continue
+		}
+		if v, ok := persisted[opts[i].ID]; ok && v != "" {
+			opts[i].CurrentValue = v
+		}
+	}
+	frame, err := json.Marshal(map[string]any{
+		"sessionUpdate": "config_option_update",
+		"configOptions": opts,
+	})
+	if err != nil {
+		log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to marshal synthesized config_option_update")
+		return
+	}
+	sessionState.AppendAndBroadcast(frame)
 }
 

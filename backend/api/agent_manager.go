@@ -70,6 +70,46 @@ func (m *AgentManager) GatewayModels(agentType string) []server.AgentModelInfo {
 	return server.FilterModelsForAgent(m.srv.Cfg().AgentLLM.Models, agentType)
 }
 
+// BuildModelEnv returns the env var overrides needed so a freshly spawned
+// agent process boots with the chosen gateway model. Returns nil when the
+// model matches the agent type's default (gatewayModels[0]) — leaving env
+// untouched lets the agent fall through to the pre-warmed pool.
+//
+// Mirrors the inline env-build in CreateSession, factored out so lazy-spawn
+// paths in the WS handler can apply the same per-session model preference.
+// Opencode is intentionally absent: it reads its model from opencode.json, not
+// env vars.
+func (m *AgentManager) BuildModelEnv(agentType agentsdk.AgentType, model string, gatewayModels []server.AgentModelInfo) map[string]string {
+	if model == "" || len(gatewayModels) == 0 || model == gatewayModels[0].Value {
+		return nil
+	}
+	env := make(map[string]string, 2)
+	switch agentType {
+	case agentsdk.AgentClaudeCode:
+		env["ANTHROPIC_MODEL"] = model
+		smallModel := model
+		for _, mi := range gatewayModels {
+			if mi.Value == model {
+				if mi.ClaudeSmall != "" {
+					smallModel = mi.ClaudeSmall
+				}
+				break
+			}
+		}
+		env["ANTHROPIC_SMALL_FAST_MODEL"] = smallModel
+	case agentsdk.AgentCodex:
+		env["OPENAI_MODEL"] = model
+	case agentsdk.AgentQwen:
+		env["OPENAI_MODEL"] = model
+	case agentsdk.AgentGemini:
+		env["GEMINI_MODEL"] = model
+	}
+	if len(env) == 0 {
+		return nil
+	}
+	return env
+}
+
 // agentTypeString converts the SDK enum to the string used in AGENT_MODELS
 // and DB records.
 func agentTypeString(t agentsdk.AgentType) string {
@@ -400,30 +440,7 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 	// it auto-captures a RuntimeModelSnapshot from env+creds on boot instead.
 	// opencode is missing from the switch because opencode reads its model
 	// from opencode.json, not env vars.
-	var sessionEnv map[string]string
-	if params.DefaultModel != "" && len(gatewayModels) > 0 && params.DefaultModel != gatewayModels[0].Value {
-		sessionEnv = make(map[string]string, 2)
-		switch agentType {
-		case agentsdk.AgentClaudeCode:
-			sessionEnv["ANTHROPIC_MODEL"] = params.DefaultModel
-			smallModel := params.DefaultModel
-			for _, mi := range gatewayModels {
-				if mi.Value == params.DefaultModel {
-					if mi.ClaudeSmall != "" {
-						smallModel = mi.ClaudeSmall
-					}
-					break
-				}
-			}
-			sessionEnv["ANTHROPIC_SMALL_FAST_MODEL"] = smallModel
-		case agentsdk.AgentCodex:
-			sessionEnv["OPENAI_MODEL"] = params.DefaultModel
-		case agentsdk.AgentQwen:
-			sessionEnv["OPENAI_MODEL"] = params.DefaultModel
-		case agentsdk.AgentGemini:
-			sessionEnv["GEMINI_MODEL"] = params.DefaultModel
-		}
-	}
+	sessionEnv := m.BuildModelEnv(agentType, params.DefaultModel, gatewayModels)
 
 	storageID := params.StorageID
 	if storageID == "" {

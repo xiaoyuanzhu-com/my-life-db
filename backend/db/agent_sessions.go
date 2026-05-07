@@ -437,6 +437,66 @@ func (d *DB) GetAgentSessionPermissionMode(sessionID string) (string, error) {
 	return mode, nil
 }
 
+// GetAgentSessionConfigOptions returns the persisted {configId: configValue}
+// map for a session. Returns an empty map (not nil) when the session has no
+// stored options or doesn't exist, so callers can range over the result
+// unconditionally.
+func (d *DB) GetAgentSessionConfigOptions(sessionID string) (map[string]string, error) {
+	var raw string
+	err := d.conn.QueryRow(
+		`SELECT config_options FROM agent_sessions WHERE session_id = ?`,
+		sessionID,
+	).Scan(&raw)
+	if err == sql.ErrNoRows {
+		return map[string]string{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if raw == "" {
+		return map[string]string{}, nil
+	}
+	var out map[string]string
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return map[string]string{}, nil
+	}
+	if out == nil {
+		out = map[string]string{}
+	}
+	return out, nil
+}
+
+// SaveAgentSessionConfigOption merges a single {configId: configValue} entry
+// into the session's persisted config_options map. Read-modify-write happens
+// inside the Write transaction so concurrent calls don't lose updates.
+func (d *DB) SaveAgentSessionConfigOption(ctx context.Context, sessionID, configID, configValue string) error {
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		var raw string
+		err := tx.QueryRow(
+			`SELECT config_options FROM agent_sessions WHERE session_id = ?`,
+			sessionID,
+		).Scan(&raw)
+		if err != nil && err != sql.ErrNoRows {
+			return err
+		}
+		opts := map[string]string{}
+		if raw != "" {
+			_ = json.Unmarshal([]byte(raw), &opts)
+		}
+		opts[configID] = configValue
+		merged, err := json.Marshal(opts)
+		if err != nil {
+			return err
+		}
+		_, err = tx.Exec(
+			`UPDATE agent_sessions SET config_options = ?, updated_at = ?
+			 WHERE session_id = ?`,
+			string(merged), NowMs(), sessionID,
+		)
+		return err
+	})
+}
+
 // ── Share operations ─────────────────────────────────────────────────────────
 
 // ShareAgentSession sets the share token for a session (upsert).
