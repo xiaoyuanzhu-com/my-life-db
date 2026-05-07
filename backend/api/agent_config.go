@@ -40,10 +40,23 @@ var defaultConfigOptions = map[string][]configOption{
 			},
 		},
 		{
+			ID: "effort", Category: "thought_level", Name: "Effort", Type: "select",
+			Description:  "Available effort levels for this model",
+			CurrentValue: "xhigh",
+			Options: []configOptionChoice{
+				{Value: "low", Name: "Low"},
+				{Value: "medium", Name: "Medium"},
+				{Value: "high", Name: "High"},
+				{Value: "xhigh", Name: "Xhigh"},
+				{Value: "max", Name: "Max"},
+			},
+		},
+		{
 			ID: "mode", Category: "mode", Name: "Mode", Type: "select",
 			Description:  "Session permission mode",
 			CurrentValue: "bypassPermissions",
 			Options: []configOptionChoice{
+				{Value: "auto", Name: "Auto", Description: "Use a model classifier to approve/deny permission prompts"},
 				{Value: "default", Name: "Default", Description: "Standard behavior, prompts for dangerous operations"},
 				{Value: "acceptEdits", Name: "Accept Edits", Description: "Auto-accept file edit operations"},
 				{Value: "plan", Name: "Plan Mode", Description: "Planning mode, no actual tool execution"},

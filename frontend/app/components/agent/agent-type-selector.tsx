@@ -19,6 +19,7 @@ export type AgentType = 'claude_code' | 'codex' | 'qwen' | 'gemini' | 'opencode'
 /** Default modes per agent type, shown before ACP reports real modes. */
 export const DEFAULT_MODES: Record<AgentType, AvailableMode[]> = {
   claude_code: [
+    { id: 'auto', name: 'Auto', description: 'Use a model classifier to approve/deny permission prompts' },
     { id: 'default', name: 'Default', description: 'Standard behavior, prompts for dangerous operations' },
     { id: 'acceptEdits', name: 'Accept Edits', description: 'Auto-accept file edit operations' },
     { id: 'plan', name: 'Plan Mode', description: 'Planning mode, no actual tool execution' },
