@@ -420,10 +420,14 @@ const DraftPersistenceSync: FC = () => {
       activeSessionRef.current = sessionId;
       return;
     }
-    // The outbox owns "is this a transient empty?" deduping; we just forward.
-    // On real user clears the runtime calls outbox.discardDraft() explicitly.
+    // Empty text means the user cleared the composer — discardDraft removes
+    // the localStorage entry so a refresh doesn't restore stale text.
+    // Transient empties from assistant-ui (thread switch, mount) are already
+    // gated by hasRestoredRef and the activeSessionRef session-change skip.
     if (text) {
       outbox.setDraft(text);
+    } else {
+      outbox.discardDraft();
     }
   }, [text, sessionId, outbox]);
 
