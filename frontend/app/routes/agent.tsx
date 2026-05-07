@@ -223,6 +223,175 @@ function ShareButton({ session, onUpdate }: { session: Session; onUpdate: (s: Pa
   )
 }
 
+// ─── ChatRuntimeShell ──────────────────────────────────────────────────────
+// Owns the agent runtime + everything derived from it (session-scoped handlers
+// and the AgentContextProvider value), so it can be remounted via `key` on
+// session switch. This is required because `useExternalStoreRuntime` holds the
+// `ExternalStoreRuntimeCore` (and its `MessageRepository`) in `useState`, which
+// only initializes once per mount. Without remounting, switching sessions
+// (including session→empty via the "+" button) leaves stale messages from the
+// previous session's repository in place — only new IDs get added; nothing
+// gets deleted when the messages array shrinks. Forcing this subtree to
+// remount on session change creates a fresh runtime instance with an empty
+// repository every time.
+type ChatRuntimeShellProps = {
+  // Inputs to useAgentRuntime
+  sessionId: string
+  hasActiveSession: boolean
+  onSend: ((text: string) => void) | undefined
+  visibleSessions: Session[]
+  activeSessionId: string | null
+  onSwitchToThread: (id: string) => void
+  onSwitchToNewThread: () => void
+  onRenameThread: (id: string, title: string) => void
+  onArchiveThread: (id: string) => void
+  onUnarchiveThread: (id: string) => void
+
+  // Inputs to agentContextValue (page-level state owned by AgentPage)
+  effectiveActiveSession: Session | undefined
+  newSessionWorkingDir: string
+  setNewSessionWorkingDir: (s: string) => void
+  newSessionAgentType: AgentType
+  setNewSessionAgentType: React.Dispatch<React.SetStateAction<AgentType>>
+  activeSessionAgentType: 'codex' | 'claude_code' | undefined
+  newSessionConfigOptions: ConfigOption[]
+  setNewSessionDefaults: React.Dispatch<React.SetStateAction<Record<string, Record<string, string>>>>
+  resultCount: number
+
+  children: React.ReactNode
+}
+
+function ChatRuntimeShell({
+  sessionId,
+  hasActiveSession,
+  onSend,
+  visibleSessions,
+  activeSessionId,
+  onSwitchToThread,
+  onSwitchToNewThread,
+  onRenameThread,
+  onArchiveThread,
+  onUnarchiveThread,
+  effectiveActiveSession,
+  newSessionWorkingDir,
+  setNewSessionWorkingDir,
+  newSessionAgentType,
+  setNewSessionAgentType,
+  activeSessionAgentType,
+  newSessionConfigOptions,
+  setNewSessionDefaults,
+  resultCount,
+  children,
+}: ChatRuntimeShellProps) {
+  const {
+    runtime,
+    connected,
+    sessionMeta,
+    pendingPermissions,
+    planEntries,
+    sendPermissionResponse,
+    sendSetConfigOption,
+    historyLoadError,
+    sessionError,
+    subagentChildrenMap,
+    pendingComposerText,
+    clearPendingComposerText,
+    reconnect,
+    interruptedAt,
+    lastPromptText,
+    sessionSource,
+    sendPrompt,
+  } = useAgentRuntime({
+    sessionId,
+    token: '',
+    enabled: hasActiveSession,
+    onSend,
+    sessions: visibleSessions,
+    activeSessionId,
+    onSwitchToThread,
+    onSwitchToNewThread,
+    onRenameThread,
+    onArchiveThread,
+    onUnarchiveThread,
+    onDeleteThread: () => {},
+  })
+
+  const handleRestartSession = useCallback(async () => {
+    if (!activeSessionId) return
+    try {
+      await api.post(`/api/agent/sessions/${activeSessionId}/restart`)
+    } catch (err) {
+      console.error('[agent] restart session failed:', err)
+    }
+    // Force WS reconnect — backend killed the process, so the old connection
+    // is stale. Reconnecting triggers session.info with fresh state.
+    reconnect()
+  }, [activeSessionId, reconnect])
+
+  const handleResume = useCallback(() => {
+    if (!lastPromptText) return
+    sendPrompt(lastPromptText)
+  }, [lastPromptText, sendPrompt])
+
+  const handleDismissInterrupted = useCallback(async () => {
+    if (!activeSessionId) return
+    try {
+      await api.patch(`/api/agent/sessions/${activeSessionId}`, { clearInterrupted: true })
+    } catch (err) {
+      console.error('[agent] dismiss interrupted failed:', err)
+    }
+    // Reconnect to refresh session.info (interruptedAt will be null)
+    reconnect()
+  }, [activeSessionId, reconnect])
+
+  const agentContextValue = {
+    sendPermissionResponse,
+    pendingPermissions,
+    connected,
+    planEntries,
+    workingDir: hasActiveSession ? (effectiveActiveSession?.workingDir ?? newSessionWorkingDir) : newSessionWorkingDir,
+    onWorkingDirChange: hasActiveSession
+      ? undefined
+      : setNewSessionWorkingDir,
+    agentType: activeSessionAgentType ?? newSessionAgentType,
+    onAgentTypeChange: hasActiveSession
+      ? undefined
+      : (type: string) => setNewSessionAgentType(type as AgentType),
+    configOptions: hasActiveSession ? sessionMeta?.configOptions : newSessionConfigOptions,
+    onConfigOptionChange: hasActiveSession
+      ? (configId: string, value: string) => sendSetConfigOption(configId, value)
+      : (configId: string, value: string) => {
+          setNewSessionDefaults(prev => ({
+            ...prev,
+            [newSessionAgentType]: { ...(prev[newSessionAgentType] ?? {}), [configId]: value },
+          }))
+        },
+    sessionCommands: sessionMeta?.commands,
+    sessionId: activeSessionId || '',
+    hasActiveSession,
+    historyLoadError,
+    sessionError,
+    subagentChildrenMap,
+    pendingComposerText,
+    clearPendingComposerText,
+    resultCount,
+    onRestart: hasActiveSession ? handleRestartSession : undefined,
+    interruptedAt: hasActiveSession ? interruptedAt : null,
+    lastPromptText: hasActiveSession ? lastPromptText : null,
+    sessionSource: hasActiveSession ? sessionSource : null,
+    onResume: hasActiveSession && interruptedAt && lastPromptText ? handleResume : undefined,
+    onDismissInterrupted: hasActiveSession && interruptedAt ? handleDismissInterrupted : undefined,
+  }
+
+  return (
+    <AgentContextProvider value={agentContextValue}>
+      <AssistantRuntimeProvider runtime={runtime}>
+        {children}
+      </AssistantRuntimeProvider>
+    </AgentContextProvider>
+  )
+}
+
 export default function AgentPage() {
   const { t } = useTranslation('agent')
   const { isAuthenticated, isLoading: authLoading, login } = useAuth()
@@ -1048,40 +1217,27 @@ export default function AgentPage() {
     return map
   }, [sessions])
 
-  // ── Agent Runtime (lifted from AgentChat) ─────────────────────────────────
-  // The runtime is owned at the route level so that AssistantRuntimeProvider
-  // wraps all AgentChat instances. The key on the provider forces a remount
-  // on session switch, preserving the original reset behavior.
+  // ── Agent Runtime ─────────────────────────────────────────────────────────
+  // The runtime lives inside <ChatRuntimeShell> below. The shell is keyed by
+  // `agentChatKey` so it remounts on session switch, which forces a fresh
+  // ExternalStoreRuntimeCore (and its MessageRepository) — the only reliable
+  // way to clear stale messages from the previous session.
   const hasActiveSession = Boolean(activeSessionId)
 
-  // Single key for all <AgentChat> instances. Changing this remounts the chat
-  // panel from scratch, guaranteeing no stale per-session state (composer
-  // refs, draft registration, child component state) leaks across:
+  // Single key driving the shell remount. Changing this remounts the entire
+  // chat subtree (runtime + providers + AgentChat), guaranteeing no stale
+  // per-session state (runtime repository, composer refs, draft registration,
+  // child component state) leaks across:
   //   - session ↔ session switches (key = sessionId)
   //   - session → empty new-session view, e.g. clicking + (key flips to 'new-N')
   //   - seedNewSession() bumps newSessionComposerKey to force a fresh read of
   //     the seeded localStorage prompt
   const agentChatKey = activeSessionId ?? `new-${newSessionComposerKey}`
-  const activeSessionAgentType =
-    effectiveActiveSession?.agentType === 'codex' || effectiveActiveSession?.agentType === 'claude_code'
-      ? effectiveActiveSession.agentType
-      : undefined
+  const activeSessionAgentType: 'codex' | 'claude_code' | undefined = (() => {
+    const at = effectiveActiveSession?.agentType
+    return at === 'codex' || at === 'claude_code' ? at : undefined
+  })()
   const onSendForRuntime = !hasActiveSession ? createSessionWithMessage : undefined
-  const { runtime, connected, sessionMeta, pendingPermissions, planEntries, sendPermissionResponse, sendSetConfigOption, historyLoadError, sessionError, subagentChildrenMap, pendingComposerText, clearPendingComposerText, reconnect, interruptedAt, lastPromptText, sessionSource, sendPrompt } =
-    useAgentRuntime({
-      sessionId: activeSessionId || "",
-      token: "",
-      enabled: hasActiveSession,
-      onSend: onSendForRuntime,
-      sessions: visibleSessions,
-      activeSessionId,
-      onSwitchToThread: handleSelectSession,
-      onSwitchToNewThread: goToList,
-      onRenameThread: updateSessionTitle,
-      onArchiveThread: archiveSession,
-      onUnarchiveThread: unarchiveSession,
-      onDeleteThread: () => {},
-    })
 
   // Build effective configOptions for new sessions: backend defaults with user-preferred overrides
   const newSessionConfigOptions = useMemo(() => {
@@ -1093,34 +1249,6 @@ export default function AgentPage() {
     }))
   }, [defaultConfigOptions, newSessionAgentType, newSessionDefaults])
 
-  const handleRestartSession = useCallback(async () => {
-    if (!activeSessionId) return
-    try {
-      await api.post(`/api/agent/sessions/${activeSessionId}/restart`)
-    } catch (err) {
-      console.error('[agent] restart session failed:', err)
-    }
-    // Force WS reconnect — backend killed the process, so the old connection
-    // is stale. Reconnecting triggers session.info with fresh state.
-    reconnect()
-  }, [activeSessionId, reconnect])
-
-  const handleResume = useCallback(() => {
-    if (!lastPromptText) return
-    sendPrompt(lastPromptText)
-  }, [lastPromptText, sendPrompt])
-
-  const handleDismissInterrupted = useCallback(async () => {
-    if (!activeSessionId) return
-    try {
-      await api.patch(`/api/agent/sessions/${activeSessionId}`, { clearInterrupted: true })
-    } catch (err) {
-      console.error('[agent] dismiss interrupted failed:', err)
-    }
-    // Reconnect to refresh session.info (interruptedAt will be null)
-    reconnect()
-  }, [activeSessionId, reconnect])
-
   // Show loading state while checking authentication
   if (authLoading || (isAuthenticated && loading)) {
     return (
@@ -1130,45 +1258,28 @@ export default function AgentPage() {
     )
   }
 
-  // Shared context value for AgentContextProvider — keeps the reference stable
-  // across the multiple conditional render branches below.
-  const agentContextValue = {
-    sendPermissionResponse,
-    pendingPermissions,
-    connected,
-    planEntries,
-    workingDir: hasActiveSession ? (effectiveActiveSession?.workingDir ?? newSessionWorkingDir) : newSessionWorkingDir,
-    onWorkingDirChange: hasActiveSession
-      ? undefined
-      : setNewSessionWorkingDir,
-    agentType: activeSessionAgentType ?? newSessionAgentType,
-    onAgentTypeChange: hasActiveSession
-      ? undefined
-      : (type: string) => setNewSessionAgentType(type as AgentType),
-    configOptions: hasActiveSession ? sessionMeta?.configOptions : newSessionConfigOptions,
-    onConfigOptionChange: hasActiveSession
-      ? (configId: string, value: string) => sendSetConfigOption(configId, value)
-      : (configId: string, value: string) => {
-          setNewSessionDefaults(prev => ({
-            ...prev,
-            [newSessionAgentType]: { ...(prev[newSessionAgentType] ?? {}), [configId]: value },
-          }))
-        },
-    sessionCommands: sessionMeta?.commands,
-    sessionId: activeSessionId || "",
+  // Props passed to <ChatRuntimeShell> in both render branches below.
+  // Spreading keeps the two call sites in sync.
+  const chatRuntimeShellProps = {
+    sessionId: activeSessionId || '',
     hasActiveSession,
-    historyLoadError,
-    sessionError,
-    subagentChildrenMap,
-    pendingComposerText,
-    clearPendingComposerText,
+    onSend: onSendForRuntime,
+    visibleSessions,
+    activeSessionId,
+    onSwitchToThread: handleSelectSession,
+    onSwitchToNewThread: goToList,
+    onRenameThread: updateSessionTitle,
+    onArchiveThread: archiveSession,
+    onUnarchiveThread: unarchiveSession,
+    effectiveActiveSession,
+    newSessionWorkingDir,
+    setNewSessionWorkingDir,
+    newSessionAgentType,
+    setNewSessionAgentType,
+    activeSessionAgentType,
+    newSessionConfigOptions,
+    setNewSessionDefaults,
     resultCount,
-    onRestart: hasActiveSession ? handleRestartSession : undefined,
-    interruptedAt: hasActiveSession ? interruptedAt : null,
-    lastPromptText: hasActiveSession ? lastPromptText : null,
-    sessionSource: hasActiveSession ? sessionSource : null,
-    onResume: hasActiveSession && interruptedAt && lastPromptText ? handleResume : undefined,
-    onDismissInterrupted: hasActiveSession && interruptedAt ? handleDismissInterrupted : undefined,
   }
 
   // ─── Native app: single layout, no responsive split ─────────────────────────
@@ -1180,21 +1291,18 @@ export default function AgentPage() {
   // The native app always shows a single session, so bypass the split entirely.
   if (isNativeApp() && activeSessionId) {
     return (
-      <AgentContextProvider value={agentContextValue}>
-        <AssistantRuntimeProvider runtime={runtime}>
-          <div className="flex h-full min-w-0">
-            <div className="flex flex-1 flex-col bg-background overflow-hidden min-w-0 h-full">
-              <AgentChat
-                key={agentChatKey}
-                sessionId={activeSessionId}
-                className="flex-1"
-                onAttachmentsStorageIdChange={handleAttachmentsStorageIdChange}
-                existingStorageId={effectiveActiveSession?.storageId ?? null}
-              />
-            </div>
+      <ChatRuntimeShell key={agentChatKey} {...chatRuntimeShellProps}>
+        <div className="flex h-full min-w-0">
+          <div className="flex flex-1 flex-col bg-background overflow-hidden min-w-0 h-full">
+            <AgentChat
+              sessionId={activeSessionId}
+              className="flex-1"
+              onAttachmentsStorageIdChange={handleAttachmentsStorageIdChange}
+              existingStorageId={effectiveActiveSession?.storageId ?? null}
+            />
           </div>
-        </AssistantRuntimeProvider>
-      </AgentContextProvider>
+        </div>
+      </ChatRuntimeShell>
     )
   }
 
@@ -1543,33 +1651,31 @@ export default function AgentPage() {
   )
 
   return (
-    <AgentContextProvider value={agentContextValue}>
-      <AssistantRuntimeProvider runtime={runtime}>
-        <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
-          {isMobile ? mobileLayout : desktopLayout}
-        </div>
-        <Dialog open={accountGateOpen} onOpenChange={setAccountGateOpen}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>{t('accountGate.title', 'Create your private MyLifeDB space')}</DialogTitle>
-              <DialogDescription>
-                {t(
-                  'accountGate.description',
-                  'This prompt will start an agent session and may import or create files. Sign in first so it runs in your own instance and storage.',
-                )}
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setAccountGateOpen(false)}>
-                {t('accountGate.keepEditing', 'Keep editing')}
-              </Button>
-              <Button onClick={() => login('/agent')}>
-                {t('accountGate.createSpace', 'Create my space')}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </AssistantRuntimeProvider>
-    </AgentContextProvider>
+    <ChatRuntimeShell key={agentChatKey} {...chatRuntimeShellProps}>
+      <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
+        {isMobile ? mobileLayout : desktopLayout}
+      </div>
+      <Dialog open={accountGateOpen} onOpenChange={setAccountGateOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('accountGate.title', 'Create your private MyLifeDB space')}</DialogTitle>
+            <DialogDescription>
+              {t(
+                'accountGate.description',
+                'This prompt will start an agent session and may import or create files. Sign in first so it runs in your own instance and storage.',
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAccountGateOpen(false)}>
+              {t('accountGate.keepEditing', 'Keep editing')}
+            </Button>
+            <Button onClick={() => login('/agent')}>
+              {t('accountGate.createSpace', 'Create my space')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </ChatRuntimeShell>
   )
 }
