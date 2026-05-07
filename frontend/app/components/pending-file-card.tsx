@@ -48,8 +48,10 @@ export function PendingFileCard({ item, onCancel }: PendingFileCardProps) {
   // Convert pending item to FileWithDigests
   const file = usePendingItemAsFile(item);
 
-  // Update countdown every second when there's a retry scheduled
+  // Update countdown every second when there's a retry scheduled.
+  // Skip for terminal `failed` items — there's no countdown to render.
   useEffect(() => {
+    if (item.status === 'failed') return;
     if (!item.nextRetryAt || !item.errorMessage) return;
 
     const interval = setInterval(() => {
@@ -57,7 +59,7 @@ export function PendingFileCard({ item, onCancel }: PendingFileCardProps) {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [item.nextRetryAt, item.errorMessage]);
+  }, [item.nextRetryAt, item.errorMessage, item.status]);
 
   const handleCancel = async () => {
     setIsCanceling(true);
@@ -68,14 +70,31 @@ export function PendingFileCard({ item, onCancel }: PendingFileCardProps) {
     }
   };
 
-  // Determine status display
-  const hasError = !!item.errorMessage && item.nextRetryAt;
+  // Determine status display.
+  //
+  // Three user-visible states:
+  // 1. `failed` — terminal. Show "Upload failed"; the X button is the dismiss
+  //    action. No countdown, no auto-retry.
+  // 2. Mid-session retry — shows a countdown until the next attempt. Kept
+  //    low-key since it's transient transport state.
+  // 3. In-flight — spinner, but only after a small delay so quick uploads
+  //    don't flash one.
+  const isFailed = item.status === 'failed';
+  const isRetrying = !!item.errorMessage && !!item.nextRetryAt && !isFailed;
   const ageMs = Date.now() - item.createdAt;
   const showSpinner = ageMs >= SPINNER_DELAY_MS;
 
-  // Render status indicator
   const renderStatusIndicator = () => {
-    if (hasError && item.nextRetryAt) {
+    if (isFailed) {
+      return (
+        <span className="flex items-center gap-1 text-destructive">
+          <CircleAlert className="h-3 w-3" />
+          Upload failed
+        </span>
+      );
+    }
+
+    if (isRetrying && item.nextRetryAt) {
       const retryTimeMs = item.nextRetryAt - Date.now();
       if (retryTimeMs <= 0) {
         return <Spinner className="h-3 w-3" />;

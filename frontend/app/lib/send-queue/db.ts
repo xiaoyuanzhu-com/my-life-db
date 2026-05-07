@@ -127,8 +127,9 @@ export async function getNextItemToProcess(tabId: string): Promise<PendingInboxI
 
       // Filter items that are ready to process
       const ready = items.filter((item) => {
-        // Uploaded items are done
+        // Terminal states — never re-process
         if (item.status === 'uploaded') return false;
+        if (item.status === 'failed') return false;
 
         // Saved items are always ready
         if (item.status === 'saved') return true;
@@ -216,6 +217,7 @@ export async function getNextItemAndLock(tabId: string): Promise<PendingInboxIte
       // Filter items that are ready to process (same logic as getNextItemToProcess)
       const ready = items.filter((item) => {
         if (item.status === 'uploaded') return false;
+        if (item.status === 'failed') return false;
         if (item.status === 'saved') return true;
 
         if (item.status === 'uploading') {
@@ -446,6 +448,109 @@ export async function markUploaded(id: string, serverPath: string): Promise<void
       const putRequest = store.put(updatedItem);
       putRequest.onerror = () => reject(new Error(`Failed to mark uploaded: ${putRequest.error?.message}`));
       putRequest.onsuccess = () => resolve();
+    };
+  });
+}
+
+/**
+ * Mark an item as terminally failed.
+ * Clears retry/lock state so the item won't auto-resume on this or any other tab.
+ */
+export async function markFailed(id: string, errorMessage: string): Promise<void> {
+  const db = await openDatabase();
+  const now = Date.now();
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+
+    const getRequest = store.get(id);
+    getRequest.onerror = () => reject(new Error(`Failed to get item: ${getRequest.error?.message}`));
+    getRequest.onsuccess = () => {
+      const item: PendingInboxItem | undefined = getRequest.result;
+      if (!item) {
+        resolve();
+        return;
+      }
+
+      const updatedItem: PendingInboxItem = {
+        ...item,
+        status: 'failed',
+        errorMessage,
+        failedAt: now,
+        nextRetryAt: undefined,
+        uploadingBy: undefined,
+        uploadingAt: undefined,
+      };
+
+      const putRequest = store.put(updatedItem);
+      putRequest.onerror = () => reject(new Error(`Failed to mark failed: ${putRequest.error?.message}`));
+      putRequest.onsuccess = () => resolve();
+    };
+  });
+}
+
+/**
+ * On startup, transition stale retry zombies to terminal `failed` and purge
+ * old failed items.
+ *
+ * "Stale retry zombie" = an item with status='uploading' that has an
+ * errorMessage and nextRetryAt set. These were mid-retry-cycle when the tab
+ * closed; resuming them silently is what made failures pile up across
+ * sessions. Now they show as `failed` until the user dismisses them.
+ *
+ * "Old failed" = an item with status='failed' whose `failedAt` is older than
+ * `purgeOlderThanMs`. These get hard-deleted so the queue self-cleans.
+ *
+ * Returns counts for logging.
+ */
+export async function sweepStaleAndPurgeFailed(
+  purgeOlderThanMs: number
+): Promise<{ markedFailed: number; purged: number }> {
+  const db = await openDatabase();
+  const now = Date.now();
+  const purgeThreshold = now - purgeOlderThanMs;
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    const getAllRequest = store.getAll();
+
+    let markedFailed = 0;
+    let purged = 0;
+
+    getAllRequest.onerror = () =>
+      reject(new Error(`Failed to query items: ${getAllRequest.error?.message}`));
+    getAllRequest.onsuccess = () => {
+      const items: PendingInboxItem[] = getAllRequest.result || [];
+      for (const item of items) {
+        // Purge old terminal failures
+        if (item.status === 'failed') {
+          const ts = item.failedAt ?? item.lastAttemptAt ?? item.createdAt;
+          if (ts < purgeThreshold) {
+            store.delete(item.id);
+            purged++;
+          }
+          continue;
+        }
+
+        // Convert stale retry zombies to terminal failed
+        if (item.status === 'uploading' && item.errorMessage && item.nextRetryAt) {
+          const updated: PendingInboxItem = {
+            ...item,
+            status: 'failed',
+            failedAt: now,
+            nextRetryAt: undefined,
+            uploadingBy: undefined,
+            uploadingAt: undefined,
+          };
+          store.put(updated);
+          markedFailed++;
+        }
+      }
+
+      tx.oncomplete = () => resolve({ markedFailed, purged });
+      tx.onerror = () => reject(new Error(`Failed to sweep: ${tx.error?.message}`));
     };
   });
 }

@@ -6,8 +6,13 @@
 
 /**
  * Pending item status
+ *
+ * - `saved`: enqueued, not yet attempted
+ * - `uploading`: in flight (or scheduled for retry within the same session)
+ * - `uploaded`: server confirmed; waiting for the file-tree sync to clean up
+ * - `failed`: terminal failure — will not auto-retry; user must dismiss or re-upload
  */
-export type PendingItemStatus = 'saved' | 'uploading' | 'uploaded';
+export type PendingItemStatus = 'saved' | 'uploading' | 'uploaded' | 'failed';
 
 /**
  * A single pending inbox item stored in IndexedDB
@@ -64,11 +69,18 @@ export interface PendingInboxItem {
   serverPath?: string;
   /** Epoch ms timestamp when uploaded */
   uploadedAt?: number;
+
+  /** Epoch ms timestamp when the item was marked terminally `failed` (used for auto-purge) */
+  failedAt?: number;
 }
 
 /**
- * Retry backoff delays in milliseconds
- * Exponential backoff: 5s, 10s, 20s, 40s, 1min, 2min, 5min, 10min, 30min, 1hr, 1day
+ * Retry backoff delays in milliseconds.
+ *
+ * Capped at MAX_RETRY_ATTEMPTS attempts (~2.5 min total). After that, the
+ * upload is marked `failed` (terminal) so it doesn't pile up across sessions.
+ * Days-long retries were a UX mistake: by the time they fire, the user has
+ * forgotten about the file and just sees stale clutter on next page load.
  */
 export const RETRY_DELAYS_MS = [
   5_000,      // 5s
@@ -76,12 +88,6 @@ export const RETRY_DELAYS_MS = [
   20_000,     // 20s
   40_000,     // 40s
   60_000,     // 1min
-  120_000,    // 2min
-  300_000,    // 5min
-  600_000,    // 10min
-  1_800_000,  // 30min
-  3_600_000,  // 1hr
-  86_400_000, // 1day (max)
 ] as const;
 
 /**
@@ -106,4 +112,8 @@ export const QUEUE_CONSTANTS = {
   UPLOAD_TIMEOUT_MS: 3 * 60 * 1000,
   /** Jitter percentage for retry delays */
   RETRY_JITTER_PERCENT: 0.1,
+  /** Max retry attempts before marking item as terminally failed */
+  MAX_RETRY_ATTEMPTS: 5,
+  /** Auto-purge `failed` items older than this on init (24h) */
+  FAILED_PURGE_AGE_MS: 24 * 60 * 60 * 1000,
 } as const;

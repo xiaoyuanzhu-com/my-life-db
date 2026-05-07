@@ -23,6 +23,8 @@ import {
   updateHeartbeat,
   updateProgress,
   markUploaded,
+  markFailed,
+  sweepStaleAndPurgeFailed,
   deleteCompletedByPaths,
   requestPersistentStorage,
 } from './db';
@@ -36,6 +38,8 @@ const {
   HEARTBEAT_INTERVAL_MS,
   UPLOAD_TIMEOUT_MS,
   RETRY_JITTER_PERCENT,
+  MAX_RETRY_ATTEMPTS,
+  FAILED_PURGE_AGE_MS,
 } = QUEUE_CONSTANTS;
 
 
@@ -97,6 +101,19 @@ export class UploadQueueManager {
 
     // Request persistent storage
     await requestPersistentStorage();
+
+    // Sweep stale retry zombies → terminal `failed`, and purge old failed
+    // items. Without this, items that failed in a previous session would
+    // resume retrying silently and pile up under whatever the user is
+    // actively uploading now.
+    try {
+      const { markedFailed, purged } = await sweepStaleAndPurgeFailed(FAILED_PURGE_AGE_MS);
+      if (markedFailed > 0 || purged > 0) {
+        console.log('[UploadQueue] Init sweep:', { markedFailed, purged });
+      }
+    } catch (err) {
+      console.error('[UploadQueue] Init sweep failed:', err);
+    }
 
     // Listen for online events
     window.addEventListener('online', this.handleOnline);
@@ -740,10 +757,24 @@ export class UploadQueueManager {
   }
 
   /**
-   * Schedule retry for a failed item
+   * Schedule retry for a failed item — or mark it terminally `failed` if the
+   * retry budget is exhausted.
    */
   private async scheduleRetry(item: PendingInboxItem, errorMessage: string): Promise<void> {
     const retryCount = item.retryCount + 1;
+
+    // Retry budget exhausted → terminal failure. The item stays visible in
+    // the UI as `failed` until the user dismisses it (or it ages out via the
+    // init-time purge). It will NOT auto-resume on next page load.
+    if (retryCount >= MAX_RETRY_ATTEMPTS) {
+      await markFailed(item.id, errorMessage);
+      await this.notifyProgress();
+      console.log(
+        `[UploadQueue] Item ${item.id} failed terminally after ${retryCount} attempts: ${errorMessage}`
+      );
+      return;
+    }
+
     const delayMs = getRetryDelay(retryCount);
     const nextRetryAt = Date.now() + delayMs;
 
