@@ -3,6 +3,8 @@ import { useNavigate, useParams, useLocation, useSearchParams } from 'react-rout
 import { useTranslation } from 'react-i18next'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import { AgentSidebar } from '~/components/agent/agent-sidebar'
+import { AgentSessionSearchResults } from '~/components/agent/agent-session-search-results'
+import { useAgentSessionSearch } from '~/hooks/use-agent-session-search'
 import { setAgentSessionPinned } from '~/lib/agent-groups'
 import { type AgentType } from '~/components/agent/agent-type-selector'
 import type { ConfigOption } from '~/hooks/use-agent-runtime'
@@ -14,6 +16,7 @@ import { useAgentRuntime } from '~/hooks/use-agent-runtime'
 import { useDraftOutbox } from '~/lib/draft-outbox'
 import type { UseDraftOutboxResult } from '~/lib/draft-outbox'
 import { Button } from '~/components/ui/button'
+import { Input } from '~/components/ui/input'
 import { Plus, PanelLeftClose, PanelLeftOpen, ChevronDown, ArrowLeft, Share2, Link, Check, Globe, Loader2 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -419,6 +422,11 @@ export default function AgentPage() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
   const [accountGateOpen, setAccountGateOpen] = useState(false)
+  // Sidebar full-text search over agent session transcripts. The query lives
+  // here (not inside AgentSidebar) so SessionsHeader can render the input and
+  // both desktop + mobile branches can swap the list for results.
+  const agentSearch = useAgentSessionSearch()
+  const isSearchActive = agentSearch.query.trim().length >= 2
   const touchStartX = useRef<number>(0)
   const touchEndX = useRef<number>(0)
   // Track previous activeSessionId so handlers can choose push vs replace
@@ -1340,7 +1348,8 @@ export default function AgentPage() {
 
   // ─── Shared header for desktop sidebar and mobile list view ────────────────
   const SessionsHeader = ({ showCollapseButton = false }: { showCollapseButton?: boolean }) => (
-    <div className="flex items-center justify-between border-b border-border px-3 py-2">
+    <div className="flex flex-col border-b border-border">
+    <div className="flex items-center justify-between px-3 py-2">
       {/* Left: collapse toggle (desktop only) */}
       <div className="w-8 flex items-center">
         {showCollapseButton && (
@@ -1358,27 +1367,39 @@ export default function AgentPage() {
 
       {/* Center: Sessions ▾ | Auto segmented toggle.
           The Sessions pill carries a chevron that opens the status filter
-          dropdown — the filter value itself is not rendered, only the chevron. */}
+          dropdown — the filter value itself is not rendered, only the chevron.
+          While search is active the filter is irrelevant (backend ignores it),
+          so the pill is shown disabled instead of opening the dropdown. */}
       <div className="flex items-center gap-0.5 rounded-md bg-muted/50 p-0.5">
         {sidebarView === 'sessions' ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                className="flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium bg-background text-foreground shadow-sm"
-                title={`Filter · ${statusFilter}`}
-              >
-                {t('sidebar.sessions', 'Sessions')}
-                <ChevronDown className="h-3 w-3 text-muted-foreground" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="center">
-              <DropdownMenuRadioGroup value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
-                <DropdownMenuRadioItem value="active">{t('sidebar.filter.active', 'Active')}</DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="all">{t('sidebar.filter.all', 'All')}</DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="archived">{t('sidebar.filter.archived', 'Archived')}</DropdownMenuRadioItem>
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          isSearchActive ? (
+            <span
+              className="flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium bg-background text-foreground shadow-sm opacity-50 cursor-not-allowed"
+              title={t('sidebar.search.filterDisabled')}
+            >
+              {t('sidebar.sessions', 'Sessions')}
+              <ChevronDown className="h-3 w-3 text-muted-foreground" />
+            </span>
+          ) : (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium bg-background text-foreground shadow-sm"
+                  title={`Filter · ${statusFilter}`}
+                >
+                  {t('sidebar.sessions', 'Sessions')}
+                  <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="center">
+                <DropdownMenuRadioGroup value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
+                  <DropdownMenuRadioItem value="active">{t('sidebar.filter.active', 'Active')}</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="all">{t('sidebar.filter.all', 'All')}</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="archived">{t('sidebar.filter.archived', 'Archived')}</DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )
         ) : (
           <button
             onClick={() => navigate('/agent')}
@@ -1429,6 +1450,18 @@ export default function AgentPage() {
           </Button>
         )}
       </div>
+    </div>
+    {sidebarView === 'sessions' && (
+      <div className="px-3 pb-2">
+        <Input
+          type="search"
+          value={agentSearch.query}
+          onChange={(e) => agentSearch.search(e.target.value)}
+          placeholder={t('sidebar.search.placeholder')}
+          className="h-7 text-[12px] px-2"
+        />
+      </div>
+    )}
     </div>
   )
 
@@ -1482,6 +1515,12 @@ export default function AgentPage() {
                   onSelectAgent={openAgentEditor}
                   onSelectSession={handleSelectSession}
                   refreshKey={agentsPanelRefresh}
+                />
+              ) : isSearchActive ? (
+                <AgentSessionSearchResults
+                  state={agentSearch}
+                  activeSessionId={activeSessionId}
+                  onSelect={handleSelectSession}
                 />
               ) : (
                 <AgentSidebar
@@ -1649,6 +1688,12 @@ export default function AgentPage() {
                 onSelectAgent={openAgentEditor}
                 onSelectSession={handleSelectSession}
                 refreshKey={agentsPanelRefresh}
+              />
+            ) : isSearchActive ? (
+              <AgentSessionSearchResults
+                state={agentSearch}
+                activeSessionId={activeSessionId}
+                onSelect={handleSelectSession}
               />
             ) : (
               <AgentSidebar

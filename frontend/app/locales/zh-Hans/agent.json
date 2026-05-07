@@ -25,6 +25,14 @@
       "active": "活跃",
       "all": "全部",
       "archived": "归档"
+    },
+    "search": {
+      "placeholder": "搜索会话",
+      "loading": "搜索中…",
+      "noResults": "未找到匹配会话",
+      "error": "搜索失败",
+      "loadMore": "加载更多",
+      "filterDisabled": "搜索时无法使用筛选"
     }
   },
   "thread": {

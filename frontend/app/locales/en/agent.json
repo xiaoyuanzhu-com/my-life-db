@@ -25,6 +25,14 @@
       "active": "Active",
       "all": "All",
       "archived": "Archived"
+    },
+    "search": {
+      "placeholder": "Search sessions",
+      "loading": "Searching…",
+      "noResults": "No sessions match",
+      "error": "Search failed",
+      "loadMore": "Load more",
+      "filterDisabled": "Filters are unavailable while searching"
     }
   },
   "thread": {
