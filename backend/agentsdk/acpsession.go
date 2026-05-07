@@ -319,10 +319,12 @@ func (s *acpSession) Send(ctx context.Context, prompt string) (<-chan []byte, er
 				}
 				return
 			}
+			humanMsg, info := humanizeAgentError(err)
 			if data, err := json.Marshal(map[string]any{
 				"type":    "error",
-				"message": err.Error(),
+				"message": humanMsg,
 				"code":    "AGENT_ERROR",
+				"data":    info,
 			}); err == nil {
 				events <- data
 			}
