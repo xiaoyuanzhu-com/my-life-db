@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { fetchExplorePosts } from "~/hooks/use-explore";
+import { useAuth } from "~/contexts/auth-context";
 import { PostCard } from "./post-card";
 import type { ExplorePost } from "~/types/explore";
 
@@ -21,6 +22,7 @@ interface ExploreFeedProps {
 export function ExploreFeed({ onPostClick }: ExploreFeedProps) {
   const { t: tCommon } = useTranslation('common');
   const { t: tData } = useTranslation('data');
+  const { isAuthenticated, isLoading: authLoading, login } = useAuth();
   const [posts, setPosts] = useState<ExplorePost[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -38,6 +40,11 @@ export function ExploreFeed({ onPostClick }: ExploreFeedProps) {
   }, []);
 
   useEffect(() => {
+    if (authLoading) return;
+    if (!isAuthenticated) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -53,9 +60,10 @@ export function ExploreFeed({ onPostClick }: ExploreFeedProps) {
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [authLoading, isAuthenticated]);
 
   const loadMore = useCallback(async () => {
+    if (!isAuthenticated) return;
     if (loadingMore || !hasMoreOlder || !lastCursor) return;
     setLoadingMore(true);
     try {
@@ -68,7 +76,7 @@ export function ExploreFeed({ onPostClick }: ExploreFeedProps) {
     } finally {
       setLoadingMore(false);
     }
-  }, [loadingMore, hasMoreOlder, lastCursor]);
+  }, [isAuthenticated, loadingMore, hasMoreOlder, lastCursor]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -85,6 +93,24 @@ export function ExploreFeed({ onPostClick }: ExploreFeedProps) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="text-muted-foreground text-sm">{tCommon('states.loading')}</div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-4">
+        <div className="flex flex-col items-center gap-1">
+          <p className="text-muted-foreground text-sm">{tData('explore.signInPreview.title')}</p>
+          <p className="text-muted-foreground text-xs">{tData('explore.signInPreview.description')}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => login('/explore')}
+          className="text-sm px-3 py-1.5 rounded-md border border-border hover:bg-accent transition-colors"
+        >
+          {tCommon('auth.signIn')}
+        </button>
       </div>
     );
   }

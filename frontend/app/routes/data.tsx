@@ -532,26 +532,81 @@ function DataContent() {
   );
 }
 
-export default function DataPage() {
+function DataPreview() {
   const { t } = useTranslation('data');
+  const { t: tCommon } = useTranslation('common');
+  const { login } = useAuth();
+  const navigate = useNavigate();
+
+  return (
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      {/* Top bar — same chrome as authenticated Data, with disabled actions */}
+      <div className="shrink-0 px-4 py-3 flex items-center gap-2 md:px-[10%]">
+        <div className="flex-1 min-w-0">
+          <BreadcrumbNav currentPath="" onNavigate={() => {}} />
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={t('common:actions.search')}
+          onClick={() => login('/')}
+        >
+          <Search className="h-5 w-5" />
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" aria-label={t('common:actions.add')}>
+              <Plus className="h-5 w-5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => login('/')}>
+              <Upload className="h-4 w-4 mr-2" />
+              {t('actions.uploadFile', 'Upload File')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => login('/')}>
+              <FolderUp className="h-4 w-4 mr-2" />
+              {t('actions.uploadFolder', 'Upload Folder')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => login('/')}>
+              <FolderPlus className="h-4 w-4 mr-2" />
+              {t('actions.newFolder', 'New Folder')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => navigate('/data/apps')}>
+              <Import className="h-4 w-4 mr-2" />
+              {t('actions.importFromApps', 'Import from apps')}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      {/* Body — sign-in CTA in place of the file grid */}
+      <div className="flex-1 overflow-y-auto md:px-[10%]">
+        <div className="flex flex-col items-center justify-center py-20 gap-4 px-4 text-center">
+          <div className="flex flex-col items-center gap-1">
+            <p className="text-muted-foreground text-sm">{t('page.signInPreview.title', 'Sign in to see your files')}</p>
+            <p className="text-muted-foreground text-xs max-w-md">{t('page.signInPreview.description', 'Files are private to your MyLifeDB instance.')}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => login('/')}
+            className="text-sm px-3 py-1.5 rounded-md border border-border hover:bg-accent transition-colors"
+          >
+            {tCommon('auth.signIn')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function DataPage() {
   const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) return null;
 
   if (!isAuthenticated) {
-    return (
-      <div className="flex items-center justify-center h-screen p-8 text-center">
-        <div>
-          <h1 className="text-3xl font-bold mb-4">{t('page.title', 'Data')}</h1>
-          <p className="text-muted-foreground text-lg mb-8 max-w-2xl">
-            {t('page.description', 'Browse and manage your personal data files.')}
-          </p>
-          <p className="text-muted-foreground">
-            {t('page.signInHint', 'Please sign in to get started.')}
-          </p>
-        </div>
-      </div>
-    );
+    return <DataPreview />;
   }
 
   return (

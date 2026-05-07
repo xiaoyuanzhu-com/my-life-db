@@ -2,7 +2,11 @@
   "page": {
     "title": "数据",
     "description": "浏览和管理你的个人数据文件。",
-    "signInHint": "请登录以开始。"
+    "signInHint": "请登录以开始。",
+    "signInPreview": {
+      "title": "登录后查看你的文件",
+      "description": "文件仅在你自己的 MyLifeDB 实例中可见。"
+    }
   },
   "search": {
     "placeholder": "搜索文件…",
@@ -129,6 +133,10 @@
     "empty": {
       "title": "暂无内容。",
       "description": "当助手通过 MCP 发布内容时，会显示在这里。"
+    },
+    "signInPreview": {
+      "title": "登录后查看内容",
+      "description": "内容仅在你自己的 MyLifeDB 实例中可见。"
     }
   },
   "upload": {

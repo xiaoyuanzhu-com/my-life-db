@@ -2,7 +2,11 @@
   "page": {
     "title": "Data",
     "description": "Browse and manage your personal data files.",
-    "signInHint": "Please sign in to get started."
+    "signInHint": "Please sign in to get started.",
+    "signInPreview": {
+      "title": "Sign in to see your files",
+      "description": "Files are private to your MyLifeDB instance."
+    }
   },
   "search": {
     "placeholder": "Search files...",
@@ -102,6 +106,10 @@
     "empty": {
       "title": "No posts yet.",
       "description": "Posts will appear here when agents publish them via MCP."
+    },
+    "signInPreview": {
+      "title": "Sign in to see posts",
+      "description": "Posts are private to your MyLifeDB instance."
     }
   },
   "upload": {

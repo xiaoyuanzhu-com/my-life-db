@@ -831,6 +831,7 @@ export default function AgentPage() {
 
   useEffect(() => {
     if (!activeSessionId || loading) return
+    if (!isAuthenticated) return
     if (sessionsRef.current.some((s) => s.id === activeSessionId)) return
 
     let cancelled = false
@@ -861,7 +862,7 @@ export default function AgentPage() {
     }).catch(() => {})
 
     return () => { cancelled = true }
-  }, [activeSessionId, loading])
+  }, [activeSessionId, loading, isAuthenticated])
 
   // Push a history entry when entering mobile new-session view so that
   // the browser's native swipe-back returns to the session list.
