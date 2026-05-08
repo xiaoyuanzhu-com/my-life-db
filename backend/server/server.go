@@ -223,6 +223,12 @@ func New(cfg *Config) (*Server, error) {
 		}
 	}
 
+	// Ensure the well-known top-level USER_DATA_DIR subfolders (agents,
+	// explore, sessions) exist and have a README.md. Idempotent — safe to
+	// run on every startup; READMEs are seeded only when missing so user
+	// edits aren't clobbered.
+	ensureUserDataDirs(cfg.UserDataDir)
+
 	// Install bundled skills for agent discovery
 	skills.Install(cfg.UserDataDir)
 
