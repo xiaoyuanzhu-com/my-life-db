@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { FolderPlus, ArrowUp, ArrowDown } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import { api } from '~/lib/api';
-import { useLibraryNotifications } from '~/hooks/use-notifications';
+import { useLibraryNotifications, usePreviewNotifications } from '~/hooks/use-notifications';
 import type { PendingInboxItem } from '~/lib/send-queue/types';
 import { parseApiError } from '~/lib/errors';
 import { useErrorMessage } from '~/hooks/use-error-message';
@@ -161,6 +161,23 @@ export function FileGrid({
 
   useLibraryNotifications({
     onLibraryChange: handleLibraryChange,
+    enabled: true,
+  });
+
+  // Refresh the listing when a preview (thumbnail) finishes — the file row's
+  // previewSqlar field flips from null to a path, so a re-fetch lets the grid
+  // render the freshly generated thumbnail.
+  const handlePreviewUpdated = useCallback((path: string, _previewType: string) => {
+    // Only care about files inside the currently visible folder
+    if (currentPath) {
+      const prefix = currentPath.endsWith('/') ? currentPath : currentPath + '/';
+      if (!path.startsWith(prefix)) return;
+    }
+    debouncedLoad();
+  }, [currentPath, debouncedLoad]);
+
+  usePreviewNotifications({
+    onPreviewUpdated: handlePreviewUpdated,
     enabled: true,
   });
 
