@@ -17,7 +17,7 @@ import { useDraftOutbox } from '~/lib/draft-outbox'
 import type { UseDraftOutboxResult } from '~/lib/draft-outbox'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
-import { Plus, PanelLeftClose, PanelLeftOpen, ChevronDown, ArrowLeft, Share2, Link, Check, Globe, Loader2 } from 'lucide-react'
+import { Plus, PanelLeftClose, PanelLeftOpen, ChevronDown, ArrowLeft, Share2, Link, Check, Globe, Loader2, Search } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -427,6 +427,16 @@ export default function AgentPage() {
   // both desktop + mobile branches can swap the list for results.
   const agentSearch = useAgentSessionSearch()
   const isSearchActive = agentSearch.query.trim().length >= 2
+  // Keep the search input visible while there is a query so that the results
+  // pane (rendered below the header) doesn't appear without its input.
+  const [searchExpanded, setSearchExpanded] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (searchExpanded) searchInputRef.current?.focus()
+  }, [searchExpanded])
+  useEffect(() => {
+    if (agentSearch.query.trim()) setSearchExpanded(true)
+  }, [agentSearch.query])
   const touchStartX = useRef<number>(0)
   const touchEndX = useRef<number>(0)
   // Track previous activeSessionId so handlers can choose push vs replace
@@ -1347,11 +1357,16 @@ export default function AgentPage() {
   }
 
   // ─── Shared header for desktop sidebar and mobile list view ────────────────
-  const SessionsHeader = ({ showCollapseButton = false }: { showCollapseButton?: boolean }) => (
+  const renderSessionsHeader = ({ showCollapseButton = false }: { showCollapseButton?: boolean } = {}) => (
     <div className="flex flex-col border-b border-border">
-    <div className="flex items-center justify-between px-3 py-2">
+    <div className="relative flex items-center justify-between px-3 py-2">
       {/* Left: collapse toggle (desktop only) */}
-      <div className="w-8 flex items-center">
+      <div
+        className={cn(
+          'w-8 flex items-center transition-opacity duration-100 ease-out',
+          searchExpanded && 'opacity-0 pointer-events-none'
+        )}
+      >
         {showCollapseButton && (
           <Button
             variant="ghost"
@@ -1370,7 +1385,12 @@ export default function AgentPage() {
           dropdown — the filter value itself is not rendered, only the chevron.
           While search is active the filter is irrelevant (backend ignores it),
           so the pill is shown disabled instead of opening the dropdown. */}
-      <div className="flex items-center gap-0.5 rounded-md bg-muted/50 p-0.5">
+      <div
+        className={cn(
+          'flex items-center gap-0.5 rounded-md bg-muted/50 p-0.5 transition-opacity duration-100 ease-out',
+          searchExpanded && 'opacity-0 pointer-events-none'
+        )}
+      >
         {sidebarView === 'sessions' ? (
           isSearchActive ? (
             <span
@@ -1424,44 +1444,85 @@ export default function AgentPage() {
       {/* Right: context-aware action buttons */}
       <div className="flex items-center justify-end gap-0.5">
         {sidebarView === 'sessions' ? (
-          sessionCreateNew && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(
+              'h-7 w-7 transition-opacity duration-100 ease-out',
+              searchExpanded && 'opacity-0 pointer-events-none'
+            )}
+            onClick={() => setSearchExpanded(true)}
+            title={t('common:actions.search')}
+            tabIndex={searchExpanded ? -1 : 0}
+          >
+            <Search className="h-4 w-4" />
+          </Button>
+        ) : null}
+        {sidebarView === 'sessions'
+          ? sessionCreateNew && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => {
+                  navigate('/agent')
+                  setShowNewSessionMobile(true)
+                }}
+                title={t('sidebar.newSession')}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            )
+          : (
             <Button
               variant="ghost"
               size="icon"
               className="h-7 w-7"
-              onClick={() => {
-                navigate('/agent')
-                setShowNewSessionMobile(true)
-              }}
-              title={t('sidebar.newSession')}
+              onClick={handleCreateAgentWithAI}
+              title={t('sidebar.newAutoAgent')}
             >
               <Plus className="h-4 w-4" />
             </Button>
-          )
-        ) : (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={handleCreateAgentWithAI}
-            title={t('sidebar.newAutoAgent')}
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
-        )}
+          )}
       </div>
+
+      {/* Expanded search input — overlays the left + center, stops before
+          the trailing + button so it stays accessible. */}
+      {sidebarView === 'sessions' && (
+        <div
+          className={cn(
+            'absolute inset-y-0 left-3 flex items-center transition-opacity duration-100 ease-out',
+            sessionCreateNew ? 'right-[2.5rem]' : 'right-3',
+            searchExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          )}
+        >
+          <div className="relative w-full">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              ref={searchInputRef}
+              type="search"
+              value={agentSearch.query}
+              onChange={(e) => agentSearch.search(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  agentSearch.clear()
+                  setSearchExpanded(false)
+                }
+              }}
+              onBlur={(e) => {
+                const next = e.relatedTarget as Node | null
+                if (next && e.currentTarget.parentElement?.contains(next)) return
+                if (agentSearch.query.trim()) return
+                setSearchExpanded(false)
+              }}
+              placeholder={t('sidebar.search.placeholder')}
+              tabIndex={searchExpanded ? 0 : -1}
+              className="h-7 text-[12px] pl-7 pr-2 focus-visible:ring-0 focus-visible:border-input"
+            />
+          </div>
+        </div>
+      )}
     </div>
-    {sidebarView === 'sessions' && (
-      <div className="px-3 pb-2">
-        <Input
-          type="search"
-          value={agentSearch.query}
-          onChange={(e) => agentSearch.search(e.target.value)}
-          placeholder={t('sidebar.search.placeholder')}
-          className="h-7 text-[12px] px-2"
-        />
-      </div>
-    )}
     </div>
   )
 
@@ -1503,7 +1564,7 @@ export default function AgentPage() {
               isSidebarCollapsed && 'hidden'
             )}
           >
-            <SessionsHeader showCollapseButton />
+            {renderSessionsHeader({ showCollapseButton: true })}
             <div className="flex flex-1 min-h-0 flex-col overflow-hidden p-2">
               {sidebarView === 'agents' ? (
                 <AutoAgentTree
@@ -1676,7 +1737,7 @@ export default function AgentPage() {
       ) : sessionSidebar ? (
         /* List view: full-screen session list (filtered by active tab) */
         <div className="flex flex-1 flex-col bg-muted/30 min-w-0 overflow-hidden">
-          <SessionsHeader />
+          {renderSessionsHeader()}
           <div className="flex-1 min-h-0 overflow-hidden p-2">
             {sidebarView === 'agents' ? (
               <AutoAgentTree
