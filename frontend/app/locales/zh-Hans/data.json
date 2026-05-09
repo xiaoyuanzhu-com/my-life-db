@@ -145,6 +145,14 @@
     "filesFailed": "上传文件失败：{{error}}",
     "folderFailed": "上传文件夹失败：{{error}}"
   },
+  "quickNote": {
+    "title": "速记",
+    "placeholder": "随手记一笔…",
+    "send": "发送",
+    "sending": "发送中…",
+    "saved": "已保存到 {{path}}",
+    "saveFailed": "保存笔记失败"
+  },
   "errors": {
     "renameFailed": "重命名失败",
     "deleteFailed": "删除失败",

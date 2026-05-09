@@ -118,6 +118,14 @@
     "filesFailed": "Failed to upload files: {{error}}",
     "folderFailed": "Failed to upload folder: {{error}}"
   },
+  "quickNote": {
+    "title": "Quick note",
+    "placeholder": "Quick note...",
+    "send": "Send",
+    "sending": "Sending...",
+    "saved": "Saved to {{path}}",
+    "saveFailed": "Failed to save note"
+  },
   "errors": {
     "renameFailed": "Failed to rename",
     "deleteFailed": "Failed to delete",

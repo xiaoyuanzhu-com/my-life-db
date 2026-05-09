@@ -27,6 +27,7 @@ import {
 import { useAuth } from "~/contexts/auth-context";
 import { useUploadNotifications } from "~/hooks/use-upload-notifications";
 import { cn } from "~/lib/utils";
+import { QuickNoteDialog } from "~/components/quick-note-dialog";
 
 function fileNodeToFileWithDigests(node: FileNode): FileWithDigests {
   const name = node.path.split("/").pop() || node.path;
@@ -121,6 +122,30 @@ function DataContent() {
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [createFolderTrigger, setCreateFolderTrigger] = useState(0);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  // Easter egg: double-click the + button opens a quick-note input. To keep
+  // single-click responsive (just open the menu) without flashing the menu on
+  // a double-click, we control the menu's open state and delay opening it by
+  // ~220ms; a second click within that window cancels the menu and opens the
+  // note dialog instead.
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [quickNoteOpen, setQuickNoteOpen] = useState(false);
+  const plusClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (plusClickTimerRef.current) clearTimeout(plusClickTimerRef.current);
+  }, []);
+  const handlePlusClick = useCallback(() => {
+    if (plusClickTimerRef.current) {
+      clearTimeout(plusClickTimerRef.current);
+      plusClickTimerRef.current = null;
+      setAddMenuOpen(false);
+      setQuickNoteOpen(true);
+      return;
+    }
+    plusClickTimerRef.current = setTimeout(() => {
+      plusClickTimerRef.current = null;
+      setAddMenuOpen(true);
+    }, 220);
+  }, []);
   const navigate = useNavigate();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -416,9 +441,15 @@ function DataContent() {
             />
           </div>
         </div>
-        <DropdownMenu>
+        <DropdownMenu open={addMenuOpen} onOpenChange={setAddMenuOpen}>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label={t('common:actions.add')}>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={t('common:actions.add')}
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={handlePlusClick}
+            >
               <Plus className="h-5 w-5" />
             </Button>
           </DropdownMenuTrigger>
@@ -528,6 +559,11 @@ function DataContent() {
           />
         )}
       </div>
+      <QuickNoteDialog
+        open={quickNoteOpen}
+        onOpenChange={setQuickNoteOpen}
+        onSaved={() => setRefreshTrigger((n) => n + 1)}
+      />
     </div>
   );
 }
