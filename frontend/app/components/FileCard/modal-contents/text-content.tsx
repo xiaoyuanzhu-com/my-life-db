@@ -37,7 +37,7 @@ export const TextContent = forwardRef<TextContentHandle, TextContentProps>(
     const [editedContent, setEditedContent] = useState<string | null>(null);
     const [isCloseDialogOpen, setIsCloseDialogOpen] = useState(false);
 
-    // Use ref for save handler so Monaco keybinding always calls latest version
+    // Use ref for save handler so the editor's Cmd+S binding always calls latest version
     const saveHandlerRef = useRef<() => Promise<void>>(async () => {});
 
     const hasUnsavedChanges = editedContent !== null && editedContent !== fullContent;
@@ -82,7 +82,7 @@ export const TextContent = forwardRef<TextContentHandle, TextContentProps>(
       saveHandlerRef.current = handleSave;
     }, [handleSave]);
 
-    // Stable callback for Monaco that uses the ref
+    // Stable callback for the editor that uses the ref
     const handleSaveFromEditor = useCallback(() => {
       saveHandlerRef.current?.();
     }, []);

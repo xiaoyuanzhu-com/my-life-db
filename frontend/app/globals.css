@@ -159,11 +159,6 @@
   background: rgb(180 180 255 / 30%);
 }
 
-/* Monaco editor rounded scrollbars */
-.monaco-editor .scrollbar .slider {
-  border-radius: 5px;
-}
-
 /* Content text - monospace font for user content (not UI labels) */
 @layer utilities {
   .font-content {
@@ -470,6 +465,23 @@
 
 .dark .shiki span {
   color: var(--shiki-dark) !important;
+}
+
+/* TextEditor overlay: neutralize shiki's <pre> so the wrapper div controls
+   layout/font/wrap, while .shiki ancestry is preserved for token colors. */
+.text-editor-shiki .shiki,
+.text-editor-shiki .shiki code {
+  background: transparent !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  font-family: inherit !important;
+  font-size: inherit !important;
+  line-height: inherit !important;
+  white-space: inherit !important;
+  word-break: inherit !important;
+  overflow-wrap: inherit !important;
+  tab-size: inherit !important;
+  color: inherit !important;
 }
 
 
