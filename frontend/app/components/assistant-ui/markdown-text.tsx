@@ -59,6 +59,7 @@ const mermaidConfig = {
   securityLevel: "strict" as const,
   fontFamily: "monospace",
   fontSize: 18,
+  suppressErrorRendering: true,
   flowchart: { nodeSpacing: 80, rankSpacing: 80, padding: 20 },
   sequence: { actorMargin: 80, messageMargin: 50 },
 };
@@ -68,6 +69,7 @@ let mermaidInitialized = false;
 const MermaidRenderer: FC<RendererProps> = ({ code: chart }) => {
   const isIncomplete = useIsCodeFenceIncomplete();
   const [svg, setSvg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const id = useId();
   const renderIdRef = useRef(0);
@@ -86,9 +88,28 @@ const MermaidRenderer: FC<RendererProps> = ({ code: chart }) => {
     mermaidLib.render(renderId, chart).then(({ svg: result }) => {
       if (currentRender === renderIdRef.current) {
         setSvg(result);
+        setError(null);
       }
-    }).catch(() => {});
+    }).catch((err: unknown) => {
+      if (currentRender === renderIdRef.current) {
+        setSvg(null);
+        setError(err instanceof Error ? err.message : "Failed to render diagram");
+      }
+      // Mermaid appends temp <div id="d{renderId}"><svg id="{renderId}">
+      // to document.body during render and cleans up only on success.
+      document.getElementById(renderId)?.remove();
+      document.getElementById(`d${renderId}`)?.remove();
+    });
   }, [chart, isIncomplete, id]);
+
+  if (error) {
+    return (
+      <div className="my-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 overflow-hidden">
+        <pre className="overflow-x-auto text-xs"><code>{chart}</code></pre>
+        <p className="mt-2 text-destructive text-sm">{error}</p>
+      </div>
+    );
+  }
 
   if (!svg) return null;
 
