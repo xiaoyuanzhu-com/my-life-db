@@ -239,6 +239,15 @@ function ShareButton({ session, onUpdate }: { session: Session; onUpdate: (s: Pa
 // gets deleted when the messages array shrinks. Forcing this subtree to
 // remount on session change creates a fresh runtime instance with an empty
 // repository every time.
+
+// DIAG: module-level counters for tracking AgentPage renders + shell
+// mount/unmount cycles. Helps identify what causes ChatRuntimeShell to
+// remount during the initial session page load (which causes the
+// "WebSocket is closed before the connection is established" warning).
+// Remove once the root cause is fixed.
+let __shellMountCounter = 0
+let __agentPageRenderCounter = 0
+
 type ChatRuntimeShellProps = {
   // Inputs to useAgentRuntime
   sessionId: string
@@ -292,6 +301,17 @@ function ChatRuntimeShell({
   outbox,
   children,
 }: ChatRuntimeShellProps) {
+  // DIAG: track shell mount/unmount cycles to find the WS double-connect cause.
+  // Module-level counter so each new instance gets a unique id we can correlate
+  // with [ws-conn] effect run logs. Remove once root cause is identified.
+  useEffect(() => {
+    const id = ++__shellMountCounter
+    console.info(`[shell] mount id=${id} sessionId=${sessionId}`)
+    return () => {
+      console.info(`[shell] unmount id=${id} sessionId=${sessionId}`)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const {
     runtime,
     connected,
@@ -406,6 +426,10 @@ function ChatRuntimeShell({
 }
 
 export default function AgentPage() {
+  // DIAG: render counter — see how many times AgentPage re-renders during
+  // the initial session page load. Logged at top so it fires before any
+  // hooks that could throw / suspend. Remove once root cause is fixed.
+  const __renderIdx = ++__agentPageRenderCounter
   const { t } = useTranslation('agent')
   const { isAuthenticated, isLoading: authLoading, login } = useAuth()
   const { sessionSidebar, sessionCreateNew } = useFeatureFlags()
@@ -1297,6 +1321,13 @@ export default function AgentPage() {
       currentValue: prefs[opt.id] ?? opt.currentValue,
     }))
   }, [defaultConfigOptions, newSessionAgentType, newSessionDefaults])
+
+  // DIAG: log every AgentPage render so we can correlate with shell mount/
+  // unmount events. See `__agentPageRenderCounter` for context. Remove once
+  // root cause is fixed.
+  console.info(
+    `[agent-page] render=${__renderIdx} authLoading=${authLoading} isAuth=${isAuthenticated} loading=${loading} activeSessionId=${activeSessionId} agentChatKey=${agentChatKey} hasActive=${hasActiveSession} native=${isNativeApp()} mobile=${isMobile}`,
+  )
 
   // Show loading state while checking authentication
   if (authLoading || (isAuthenticated && loading)) {
