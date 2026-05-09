@@ -162,6 +162,18 @@ export function useAgentWebSocket({
   const onFrameRef = useRef(onFrame)
   onFrameRef.current = onFrame
 
+  // DIAG: identify which WS effect dep is flipping on mount (causing the
+  // first WS to be torn down before its handshake completes — manifests as
+  // the "WebSocket is closed before the connection is established" warning).
+  // Remove once the root cause is identified and fixed.
+  const effectRunRef = useRef(0)
+  const prevDepsRef = useRef<{
+    sessionId: string
+    token: string
+    enabled: boolean
+    reconnectKey: number
+  } | null>(null)
+
   // Stable getters for diagnostics — let callers (use-agent-runtime) read
   // the live ws state at the moment they trigger a send, instead of relying
   // on the React `connected` boolean which can lag behind an actual close.
@@ -230,6 +242,21 @@ export function useAgentWebSocket({
   }, [send])
 
   useEffect(() => {
+    // DIAG: log every effect run with the dep diff. Helps identify which dep
+    // is flipping on mount. Remove once the root cause is fixed.
+    const runIdx = ++effectRunRef.current
+    const prev = prevDepsRef.current
+    const curr = { sessionId, token, enabled, reconnectKey }
+    const changed = prev
+      ? (Object.keys(curr) as Array<keyof typeof curr>)
+          .filter((k) => prev[k] !== curr[k])
+          .map((k) => `${k}: ${JSON.stringify(prev[k])} → ${JSON.stringify(curr[k])}`)
+      : ['<initial>']
+    console.info(
+      `[ws-conn] [${sessionId}] effect run=${runIdx} changed=[${changed.join(', ')}]`,
+    )
+    prevDepsRef.current = curr
+
     if (!enabled || !sessionId) return
 
     let ws: WebSocket | null = null
