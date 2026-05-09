@@ -5,8 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
-	"mime"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -31,89 +29,74 @@ var tinyPNG = []byte{
 	0x42, 0x60, 0x82,
 }
 
-// imageReqCapture records what arrived at the mock server.
+// imageReqCapture records what arrived at the mock /responses endpoint.
 type imageReqCapture struct {
 	Path  string
 	Auth  string
-	Body  map[string]any    // for /images/generations (JSON)
-	Form  map[string]string // for /images/edits (multipart fields)
-	Files map[string]struct {
-		Filename string
-		MimeType string
-		Bytes    []byte
-	}
+	Body  map[string]any
 	Calls int
 }
 
-func newMockImageServer(t *testing.T) (*httptest.Server, *imageReqCapture) {
-	t.Helper()
-	cap := &imageReqCapture{
-		Form: map[string]string{},
-		Files: map[string]struct {
-			Filename string
-			MimeType string
-			Bytes    []byte
-		}{},
+// firstTool returns body["tools"][0] as a map for assertion convenience.
+func (c *imageReqCapture) firstTool() map[string]any {
+	tools, _ := c.Body["tools"].([]any)
+	if len(tools) == 0 {
+		return nil
 	}
+	t, _ := tools[0].(map[string]any)
+	return t
+}
+
+// firstUserContent returns body["input"][0]["content"] as []any when input is
+// the structured array form (used for edits). Returns nil for the plain-string
+// input form (used for generations).
+func (c *imageReqCapture) firstUserContent() []any {
+	in, ok := c.Body["input"].([]any)
+	if !ok || len(in) == 0 {
+		return nil
+	}
+	first, _ := in[0].(map[string]any)
+	content, _ := first["content"].([]any)
+	return content
+}
+
+// newMockResponsesServer mounts a mock at /responses that captures the JSON
+// body and returns a minimal Responses API payload with one
+// image_generation_call output containing tinyPNG as base64.
+func newMockResponsesServer(t *testing.T) (*httptest.Server, *imageReqCapture) {
+	t.Helper()
+	cap := &imageReqCapture{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cap.Calls++
 		cap.Path = r.URL.Path
 		cap.Auth = r.Header.Get("Authorization")
 
-		ct := r.Header.Get("Content-Type")
-		mt, params, _ := mime.ParseMediaType(ct)
-		switch {
-		case strings.HasSuffix(r.URL.Path, "/images/generations"):
-			var body map[string]any
-			_ = json.NewDecoder(r.Body).Decode(&body)
-			cap.Body = body
-		case strings.HasSuffix(r.URL.Path, "/images/edits"):
-			if mt != "multipart/form-data" {
-				t.Errorf("edit endpoint expected multipart, got %q", ct)
-			}
-			mr := multipart.NewReader(r.Body, params["boundary"])
-			for {
-				part, err := mr.NextPart()
-				if err == io.EOF {
-					break
-				}
-				if err != nil {
-					t.Errorf("read part: %v", err)
-					break
-				}
-				data, _ := io.ReadAll(part)
-				if part.FileName() != "" {
-					cap.Files[part.FormName()] = struct {
-						Filename string
-						MimeType string
-						Bytes    []byte
-					}{
-						Filename: part.FileName(),
-						MimeType: part.Header.Get("Content-Type"),
-						Bytes:    data,
-					}
-				} else {
-					cap.Form[part.FormName()] = string(data)
-				}
-			}
-		default:
-			t.Errorf("unexpected path %q", r.URL.Path)
+		if !strings.HasSuffix(r.URL.Path, "/responses") {
+			t.Errorf("unexpected path %q, want suffix /responses", r.URL.Path)
 		}
+		if ct := r.Header.Get("Content-Type"); !strings.Contains(ct, "application/json") {
+			t.Errorf("Content-Type = %q, want application/json", ct)
+		}
+
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		cap.Body = body
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"created": time.Now().Unix(),
-			"data": []map[string]any{
+			"id":     "resp_test",
+			"object": "response",
+			"status": "completed",
+			"output": []map[string]any{
 				{
-					"b64_json":       base64.StdEncoding.EncodeToString(tinyPNG),
-					"revised_prompt": "model rewrote: " + cap.Path,
-					"url":            nil,
+					"id":             "ig_test",
+					"type":           "image_generation_call",
+					"status":         "generating",
+					"result":         base64.StdEncoding.EncodeToString(tinyPNG),
+					"revised_prompt": "model rewrote: " + r.URL.Path,
+					"size":           "1024x1024",
+					"output_format":  "png",
 				},
-			},
-			"usage": map[string]any{
-				"input_tokens":  31,
-				"output_tokens": 196,
-				"total_tokens":  227,
 			},
 		})
 	}))
@@ -124,7 +107,7 @@ func newMockImageServer(t *testing.T) (*httptest.Server, *imageReqCapture) {
 // --- GenerateImage --------------------------------------------------------
 
 func TestGenerateImage_HappyPath(t *testing.T) {
-	srv, cap := newMockImageServer(t)
+	srv, cap := newMockResponsesServer(t)
 	dir := t.TempDir()
 	fixedTime := time.Date(2026, 4, 26, 12, 0, 0, 0, time.UTC)
 
@@ -144,26 +127,42 @@ func TestGenerateImage_HappyPath(t *testing.T) {
 	if cap.Auth != "Bearer test-key" {
 		t.Errorf("Authorization = %q, want Bearer test-key", cap.Auth)
 	}
+	if !strings.HasSuffix(cap.Path, "/responses") {
+		t.Errorf("path = %q, want suffix /responses", cap.Path)
+	}
 	if cap.Body["model"] != "gpt-image-2" {
-		t.Errorf("model = %v, want gpt-image-2", cap.Body["model"])
+		t.Errorf("body.model = %v, want gpt-image-2", cap.Body["model"])
 	}
-	if cap.Body["size"] != "1024x1024" {
-		t.Errorf("default size = %v, want 1024x1024", cap.Body["size"])
+	// For pure generation, input is the prompt as a plain string.
+	if cap.Body["input"] != "a tiny apple icon" {
+		t.Errorf("body.input = %v, want plain prompt string", cap.Body["input"])
 	}
-	if cap.Body["quality"] != "medium" {
-		t.Errorf("default quality = %v, want medium", cap.Body["quality"])
-	}
-	if v := cap.Body["n"]; v != float64(1) {
-		t.Errorf("n = %v, want 1", v)
+	tc, _ := cap.Body["tool_choice"].(map[string]any)
+	if tc["type"] != "image_generation" {
+		t.Errorf("tool_choice.type = %v, want image_generation (force tool use)", tc["type"])
 	}
 
-	// Spec check: gpt-image-2 does not accept response_format.
-	// Sending it causes a 400, so the request body MUST NOT contain it.
-	if _, present := cap.Body["response_format"]; present {
-		t.Errorf("request body must not include response_format for gpt-image-2; got %v", cap.Body["response_format"])
+	tool := cap.firstTool()
+	if tool == nil {
+		t.Fatalf("tools[0] missing in body: %v", cap.Body)
 	}
-	if _, present := cap.Body["background"]; present {
-		t.Errorf("background was not requested but is present in body: %v", cap.Body["background"])
+	if tool["type"] != "image_generation" {
+		t.Errorf("tools[0].type = %v, want image_generation", tool["type"])
+	}
+	if tool["model"] != "gpt-image-2" {
+		t.Errorf("tools[0].model = %v, want gpt-image-2", tool["model"])
+	}
+	if tool["size"] != "1024x1024" {
+		t.Errorf("tools[0].size = %v, want 1024x1024", tool["size"])
+	}
+	if tool["quality"] != "medium" {
+		t.Errorf("tools[0].quality = %v, want medium", tool["quality"])
+	}
+	if _, present := tool["background"]; present {
+		t.Errorf("background was not requested but present in tool: %v", tool["background"])
+	}
+	if _, present := tool["input_image_mask"]; present {
+		t.Errorf("input_image_mask should not be present for generation: %v", tool["input_image_mask"])
 	}
 
 	wantDir := filepath.Join(dir, "sessions", "test-sid", "generated")
@@ -193,7 +192,7 @@ func TestGenerateImage_HappyPath(t *testing.T) {
 }
 
 func TestGenerateImage_OverridesPassThrough(t *testing.T) {
-	srv, cap := newMockImageServer(t)
+	srv, cap := newMockResponsesServer(t)
 	dir := t.TempDir()
 
 	_, err := GenerateImage(context.Background(), ImageGenConfig{
@@ -211,19 +210,20 @@ func TestGenerateImage_OverridesPassThrough(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cap.Body["size"] != "1536x1024" {
-		t.Errorf("size = %v, want 1536x1024", cap.Body["size"])
+	tool := cap.firstTool()
+	if tool["size"] != "1536x1024" {
+		t.Errorf("tool.size = %v, want 1536x1024", tool["size"])
 	}
-	if cap.Body["quality"] != "high" {
-		t.Errorf("quality = %v, want high", cap.Body["quality"])
+	if tool["quality"] != "high" {
+		t.Errorf("tool.quality = %v, want high", tool["quality"])
 	}
-	if cap.Body["background"] != "transparent" {
-		t.Errorf("background = %v, want transparent", cap.Body["background"])
+	if tool["background"] != "transparent" {
+		t.Errorf("tool.background = %v, want transparent", tool["background"])
 	}
 }
 
 func TestGenerateImage_FilenameHintUsed(t *testing.T) {
-	srv, _ := newMockImageServer(t)
+	srv, _ := newMockResponsesServer(t)
 	dir := t.TempDir()
 
 	res, err := GenerateImage(context.Background(), ImageGenConfig{
@@ -296,10 +296,31 @@ func TestGenerateImage_HTTPErrorIsForwarded(t *testing.T) {
 	}
 }
 
+func TestGenerateImage_NoImageInOutputReturnsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"completed","output":[{"type":"message","role":"assistant","content":[]}]}`))
+	}))
+	defer srv.Close()
+
+	_, err := GenerateImage(context.Background(), ImageGenConfig{
+		BaseURL:     srv.URL,
+		APIKey:      "k",
+		UserDataDir: t.TempDir(),
+		StorageID:   "test-sid",
+	}, ImageGenRequest{Prompt: "p"})
+	if err == nil {
+		t.Fatal("expected error when output has no image_generation_call")
+	}
+	if !strings.Contains(err.Error(), "image_generation_call") {
+		t.Errorf("error %q should mention missing image_generation_call", err.Error())
+	}
+}
+
 // --- EditImage ------------------------------------------------------------
 
 func TestEditImage_HappyPath(t *testing.T) {
-	srv, cap := newMockImageServer(t)
+	srv, cap := newMockResponsesServer(t)
 	dir := t.TempDir()
 	fixedTime := time.Date(2026, 4, 26, 12, 0, 0, 0, time.UTC)
 
@@ -322,39 +343,50 @@ func TestEditImage_HappyPath(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if !strings.HasSuffix(cap.Path, "/images/edits") {
-		t.Errorf("called %q, want suffix /images/edits", cap.Path)
+	if !strings.HasSuffix(cap.Path, "/responses") {
+		t.Errorf("called %q, want suffix /responses", cap.Path)
 	}
 	if cap.Auth != "Bearer test-key" {
 		t.Errorf("Authorization = %q", cap.Auth)
 	}
-	if cap.Form["model"] != "gpt-image-2" {
-		t.Errorf("form model = %q", cap.Form["model"])
+	if cap.Body["model"] != "gpt-image-2" {
+		t.Errorf("body.model = %v, want gpt-image-2", cap.Body["model"])
 	}
-	if cap.Form["prompt"] != "make it blue" {
-		t.Errorf("form prompt = %q", cap.Form["prompt"])
+
+	content := cap.firstUserContent()
+	if len(content) != 2 {
+		t.Fatalf("input[0].content length = %d, want 2 (input_text + input_image)", len(content))
 	}
-	if cap.Form["size"] != "1024x1024" {
-		t.Errorf("form size = %q, want 1024x1024", cap.Form["size"])
+	textPart, _ := content[0].(map[string]any)
+	if textPart["type"] != "input_text" || textPart["text"] != "make it blue" {
+		t.Errorf("input_text part = %v, want type=input_text text='make it blue'", textPart)
 	}
-	if cap.Form["quality"] != "medium" {
-		t.Errorf("form quality = %q, want medium", cap.Form["quality"])
+	imgPart, _ := content[1].(map[string]any)
+	if imgPart["type"] != "input_image" {
+		t.Errorf("input_image part type = %v, want input_image", imgPart["type"])
 	}
-	if cap.Form["n"] != "1" {
-		t.Errorf("form n = %q, want 1", cap.Form["n"])
+	imgURL, _ := imgPart["image_url"].(string)
+	wantPrefix := "data:image/png;base64,"
+	if !strings.HasPrefix(imgURL, wantPrefix) {
+		t.Errorf("input_image.image_url = %q (truncated), want prefix %q", truncForLog(imgURL), wantPrefix)
 	}
-	img, ok := cap.Files["image"]
-	if !ok {
-		t.Fatalf("image part missing — got files: %v", keys(cap.Files))
+	// The base64 payload should round-trip back to tinyPNG.
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(imgURL, wantPrefix))
+	if err != nil {
+		t.Errorf("input_image base64 decode failed: %v", err)
+	} else if len(decoded) != len(tinyPNG) {
+		t.Errorf("decoded input_image bytes = %d, want %d", len(decoded), len(tinyPNG))
 	}
-	if img.MimeType != "image/png" {
-		t.Errorf("image part mime = %q, want image/png", img.MimeType)
+
+	tool := cap.firstTool()
+	if tool["size"] != "1024x1024" {
+		t.Errorf("tool.size = %v, want 1024x1024", tool["size"])
 	}
-	if len(img.Bytes) != len(tinyPNG) {
-		t.Errorf("image part bytes = %d, want %d", len(img.Bytes), len(tinyPNG))
+	if tool["quality"] != "medium" {
+		t.Errorf("tool.quality = %v, want medium", tool["quality"])
 	}
-	if _, hasMask := cap.Files["mask"]; hasMask {
-		t.Errorf("mask part present but was not requested")
+	if _, hasMask := tool["input_image_mask"]; hasMask {
+		t.Errorf("input_image_mask present but mask was not requested")
 	}
 
 	// Output file goes under sessions/<sid>/generated/edited-<slug>-<hash>.png.
@@ -371,7 +403,7 @@ func TestEditImage_HappyPath(t *testing.T) {
 }
 
 func TestEditImage_WithMask(t *testing.T) {
-	srv, cap := newMockImageServer(t)
+	srv, cap := newMockResponsesServer(t)
 	dir := t.TempDir()
 	src := filepath.Join(dir, "src.png")
 	mask := filepath.Join(dir, "mask.png")
@@ -395,8 +427,14 @@ func TestEditImage_WithMask(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if _, ok := cap.Files["mask"]; !ok {
-		t.Errorf("mask part missing — files: %v", keys(cap.Files))
+	tool := cap.firstTool()
+	maskField, ok := tool["input_image_mask"].(map[string]any)
+	if !ok {
+		t.Fatalf("tool.input_image_mask missing — tool: %v", tool)
+	}
+	maskURL, _ := maskField["image_url"].(string)
+	if !strings.HasPrefix(maskURL, "data:image/png;base64,") {
+		t.Errorf("mask image_url = %q (truncated), want PNG data URL", truncForLog(maskURL))
 	}
 }
 
@@ -444,7 +482,7 @@ func TestEditImage_RejectsLargeSourceImage(t *testing.T) {
 }
 
 func TestEditImage_DetectsJPEGMimeFromExtension(t *testing.T) {
-	srv, cap := newMockImageServer(t)
+	srv, cap := newMockResponsesServer(t)
 	dir := t.TempDir()
 	src := filepath.Join(dir, "photo.jpg")
 	if err := os.WriteFile(src, tinyPNG, 0o644); err != nil {
@@ -462,8 +500,11 @@ func TestEditImage_DetectsJPEGMimeFromExtension(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cap.Files["image"].MimeType != "image/jpeg" {
-		t.Errorf("image part mime = %q, want image/jpeg", cap.Files["image"].MimeType)
+	content := cap.firstUserContent()
+	imgPart, _ := content[1].(map[string]any)
+	imgURL, _ := imgPart["image_url"].(string)
+	if !strings.HasPrefix(imgURL, "data:image/jpeg;base64,") {
+		t.Errorf("input_image.image_url should use image/jpeg MIME, got prefix: %q", truncForLog(imgURL))
 	}
 }
 
@@ -889,22 +930,14 @@ func extractSSEData(body string) string {
 	return ""
 }
 
-func TestWriteImageFromResponse_PerSessionPath(t *testing.T) {
+func TestWriteImage_PerSessionPath(t *testing.T) {
 	tmp := t.TempDir()
 	gc := ImageGenConfig{
 		UserDataDir: tmp,
 		StorageID:   "sid-Q",
 		Now:         func() time.Time { return time.Date(2026, 4, 28, 0, 0, 0, 0, time.UTC) },
 	}
-	body, _ := json.Marshal(map[string]any{
-		"data": []map[string]any{
-			{
-				"b64_json":       base64.StdEncoding.EncodeToString(tinyPNG),
-				"revised_prompt": "",
-			},
-		},
-	})
-	res, err := writeImageFromResponse(body, gc, "my-prompt", "generated")
+	res, err := writeImage(tinyPNG, "", gc, "my-prompt", "generated")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -920,24 +953,15 @@ func TestWriteImageFromResponse_PerSessionPath(t *testing.T) {
 	}
 }
 
-func TestWriteImageFromResponse_RequiresStorageID(t *testing.T) {
+func TestGenerateImage_RequiresStorageID(t *testing.T) {
 	tmp := t.TempDir()
-	gc := ImageGenConfig{
+	// StorageID intentionally empty — GenerateImage should reject before any
+	// HTTP call, so BaseURL is never reached.
+	_, err := GenerateImage(context.Background(), ImageGenConfig{
 		BaseURL:     "http://x",
 		APIKey:      "k",
 		UserDataDir: tmp,
-		// StorageID intentionally empty
-	}
-	body, _ := json.Marshal(map[string]any{
-		"data": []map[string]any{
-			{"b64_json": base64.StdEncoding.EncodeToString(tinyPNG)},
-		},
-	})
-	// writeImageFromResponse itself doesn't validate config (validateConfig
-	// is invoked by GenerateImage / EditImage). Test that GenerateImage
-	// returns the expected error when StorageID is empty.
-	_, err := GenerateImage(context.Background(), gc, ImageGenRequest{Prompt: "hi"})
-	_ = body
+	}, ImageGenRequest{Prompt: "hi"})
 	if err == nil {
 		t.Fatal("expected error when StorageID empty")
 	}
@@ -948,12 +972,14 @@ func TestWriteImageFromResponse_RequiresStorageID(t *testing.T) {
 
 // --- helpers --------------------------------------------------------------
 
-func keys[V any](m map[string]V) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
+// truncForLog clips long base64 data URLs in error output so failure logs
+// stay readable instead of dumping ~64 KB of base64.
+func truncForLog(s string) string {
+	const max = 80
+	if len(s) <= max {
+		return s
 	}
-	return out
+	return s[:max] + "...(truncated)"
 }
 
 var errBoom = errSimple("boom")
