@@ -60,9 +60,12 @@ func (c *imageReqCapture) firstUserContent() []any {
 	return content
 }
 
-// newMockResponsesServer mounts a mock at /responses that captures the JSON
-// body and returns a minimal Responses API payload with one
-// image_generation_call output containing tinyPNG as base64.
+// newMockResponsesServer mounts a mock that captures the JSON body and
+// returns a minimal Responses API payload with one image_generation_call
+// output containing tinyPNG as base64. The mock requires the request path to
+// end in "/v1/responses" — that's the path expected by the upstream Codex/
+// ChatGPT-account backend, and routing to anything else (e.g. "/responses")
+// silently lands on new-api's HTML SPA (the bug this test guards against).
 func newMockResponsesServer(t *testing.T) (*httptest.Server, *imageReqCapture) {
 	t.Helper()
 	cap := &imageReqCapture{}
@@ -71,8 +74,8 @@ func newMockResponsesServer(t *testing.T) (*httptest.Server, *imageReqCapture) {
 		cap.Path = r.URL.Path
 		cap.Auth = r.Header.Get("Authorization")
 
-		if !strings.HasSuffix(r.URL.Path, "/responses") {
-			t.Errorf("unexpected path %q, want suffix /responses", r.URL.Path)
+		if !strings.HasSuffix(r.URL.Path, "/v1/responses") {
+			t.Errorf("unexpected path %q, want suffix /v1/responses", r.URL.Path)
 		}
 		if ct := r.Header.Get("Content-Type"); !strings.Contains(ct, "application/json") {
 			t.Errorf("Content-Type = %q, want application/json", ct)
@@ -127,8 +130,8 @@ func TestGenerateImage_HappyPath(t *testing.T) {
 	if cap.Auth != "Bearer test-key" {
 		t.Errorf("Authorization = %q, want Bearer test-key", cap.Auth)
 	}
-	if !strings.HasSuffix(cap.Path, "/responses") {
-		t.Errorf("path = %q, want suffix /responses", cap.Path)
+	if !strings.HasSuffix(cap.Path, "/v1/responses") {
+		t.Errorf("path = %q, want suffix /v1/responses", cap.Path)
 	}
 	if cap.Body["model"] != "gpt-image-2" {
 		t.Errorf("body.model = %v, want gpt-image-2", cap.Body["model"])
@@ -343,8 +346,8 @@ func TestEditImage_HappyPath(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if !strings.HasSuffix(cap.Path, "/responses") {
-		t.Errorf("called %q, want suffix /responses", cap.Path)
+	if !strings.HasSuffix(cap.Path, "/v1/responses") {
+		t.Errorf("called %q, want suffix /v1/responses", cap.Path)
 	}
 	if cap.Auth != "Bearer test-key" {
 		t.Errorf("Authorization = %q", cap.Auth)
@@ -967,6 +970,29 @@ func TestGenerateImage_RequiresStorageID(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "StorageID") && !strings.Contains(err.Error(), "X-MLD-Storage-Id") {
 		t.Fatalf("error should mention StorageID or X-MLD-Storage-Id, got: %v", err)
+	}
+}
+
+// TestResponsesURL covers the bug where AGENT_BASE_URL=https://gw.example.com
+// (no /v1) caused the caller to POST to /responses on the gateway, which
+// returned the new-api HTML SPA with HTTP 200 — a JSON-parser-killing
+// "invalid character '<'" failure mode.
+func TestResponsesURL(t *testing.T) {
+	cases := []struct {
+		base string
+		want string
+	}{
+		{"https://gw.example.com", "https://gw.example.com/v1/responses"},
+		{"https://gw.example.com/", "https://gw.example.com/v1/responses"},
+		{"https://gw.example.com/v1", "https://gw.example.com/v1/responses"},
+		{"https://gw.example.com/v1/", "https://gw.example.com/v1/responses"},
+		{"https://gw.example.com/api/v1", "https://gw.example.com/api/v1/responses"},
+	}
+	for _, c := range cases {
+		got := responsesURL(c.base)
+		if got != c.want {
+			t.Errorf("responsesURL(%q) = %q, want %q", c.base, got, c.want)
+		}
 	}
 }
 

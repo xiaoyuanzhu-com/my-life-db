@@ -74,7 +74,7 @@ type ImageGenResult struct {
 // user content the user just produced.
 type ImageGenConfig struct {
 	HTTPClient  *http.Client
-	BaseURL     string // gateway base URL, e.g. https://newapi.example.com/v1
+	BaseURL     string // gateway base URL; either ".../v1" (legacy litellm convention) or just the host root ".../" — we append /v1/responses if /v1 isn't already there.
 	APIKey      string
 	UserDataDir string
 	StorageID   string // per-session storage id; required at write time
@@ -239,8 +239,7 @@ type imageResponseExtract struct {
 // error messages.
 func callResponsesImage(ctx context.Context, gc ImageGenConfig, body map[string]any, opTag string) (*imageResponseExtract, error) {
 	payload, _ := json.Marshal(body)
-	url := strings.TrimRight(gc.BaseURL, "/") + "/responses"
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, responsesURL(gc.BaseURL), bytes.NewReader(payload))
 	if err != nil {
 		return nil, err
 	}
@@ -257,6 +256,22 @@ func callResponsesImage(ctx context.Context, gc ImageGenConfig, body map[string]
 		return nil, fmt.Errorf("image %s %d: %s", opTag, resp.StatusCode, truncateForError(string(rawBody), 500))
 	}
 	return parseResponsesImage(rawBody)
+}
+
+// responsesURL builds the full URL for /v1/responses, handling both
+// conventions seen in the wild for AGENT_BASE_URL:
+//   - litellm-style: "https://gw.example.com/v1"  → append "/responses"
+//   - newapi-style:  "https://gw.example.com"     → append "/v1/responses"
+//
+// Without this, a newapi-style base hits the gateway's HTML SPA at "/responses"
+// (HTTP 200 with `<!doctype html>`), which is silent failure — the JSON parser
+// then fails with "invalid character '<'".
+func responsesURL(base string) string {
+	base = strings.TrimRight(base, "/")
+	if strings.HasSuffix(base, "/v1") {
+		return base + "/responses"
+	}
+	return base + "/v1/responses"
 }
 
 // parseResponsesImage walks the Responses API output array looking for the
