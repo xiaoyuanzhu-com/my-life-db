@@ -326,6 +326,135 @@ func TestStrip_BashCompleted_RemovesContentAndRawOutput(t *testing.T) {
 	}
 }
 
+func TestStrip_BashUpdate_RemovesToolResponseStdoutStderr(t *testing.T) {
+	// Bash tool_call_update with toolResponse: strip stdout and stderr while
+	// preserving the small status fields (interrupted, isImage, noOutputExpected).
+	frame := map[string]interface{}{
+		"sessionUpdate": "tool_call_update",
+		"toolCallId":    "tc-bash-3",
+		"_meta": map[string]interface{}{
+			"claudeCode": map[string]interface{}{
+				"toolName": "Bash",
+				"toolResponse": map[string]interface{}{
+					"interrupted":      false,
+					"isImage":          false,
+					"noOutputExpected": false,
+					"stderr":           strings.Repeat("e", 50000),
+					"stdout":           strings.Repeat("o", 50000),
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(frame)
+	stripped := StripHeavyToolCallContent(data)
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(stripped, &result); err != nil {
+		t.Fatalf("invalid stripped JSON: %v", err)
+	}
+
+	cc := result["_meta"].(map[string]interface{})["claudeCode"].(map[string]interface{})
+	resp := cc["toolResponse"].(map[string]interface{})
+
+	if _, has := resp["stdout"]; has {
+		t.Error("Bash+update: toolResponse.stdout should be stripped")
+	}
+	if _, has := resp["stderr"]; has {
+		t.Error("Bash+update: toolResponse.stderr should be stripped")
+	}
+	if resp["interrupted"] != false {
+		t.Error("Bash+update: toolResponse.interrupted should be preserved")
+	}
+	if resp["isImage"] != false {
+		t.Error("Bash+update: toolResponse.isImage should be preserved")
+	}
+	if resp["noOutputExpected"] != false {
+		t.Error("Bash+update: toolResponse.noOutputExpected should be preserved")
+	}
+}
+
+func TestStrip_ExitPlanMode_StripsRawInputPlan(t *testing.T) {
+	// ExitPlanMode tool_call_update: strip rawInput.plan (duplicate of
+	// content[0].content.text) while preserving content[], rawInput.planFilePath,
+	// title, kind, and _meta.claudeCode.toolName.
+	planMarkdown := strings.Repeat("# heading\n", 5000)
+	frame := map[string]interface{}{
+		"sessionUpdate": "tool_call_update",
+		"toolCallId":    "tc-plan-1",
+		"kind":          "switch_mode",
+		"title":         "Ready to code?",
+		"_meta": map[string]interface{}{
+			"claudeCode": map[string]interface{}{
+				"toolName": "ExitPlanMode",
+			},
+		},
+		"content": []interface{}{
+			map[string]interface{}{
+				"type": "content",
+				"content": map[string]interface{}{
+					"type": "text",
+					"text": planMarkdown,
+				},
+			},
+		},
+		"rawInput": map[string]interface{}{
+			"plan":         planMarkdown,
+			"planFilePath": "/home/x/.claude/plans/foo.md",
+		},
+	}
+	data, _ := json.Marshal(frame)
+	stripped := StripHeavyToolCallContent(data)
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(stripped, &result); err != nil {
+		t.Fatalf("invalid stripped JSON: %v", err)
+	}
+
+	rawInput := result["rawInput"].(map[string]interface{})
+	if _, has := rawInput["plan"]; has {
+		t.Error("ExitPlanMode: rawInput.plan should be stripped")
+	}
+	if rawInput["planFilePath"] != "/home/x/.claude/plans/foo.md" {
+		t.Error("ExitPlanMode: rawInput.planFilePath should be preserved")
+	}
+
+	contents := result["content"].([]interface{})
+	first := contents[0].(map[string]interface{})
+	inner := first["content"].(map[string]interface{})
+	if inner["text"] != planMarkdown {
+		t.Error("ExitPlanMode: content[0].content.text should be preserved (frontend reads from here)")
+	}
+
+	if result["title"] != "Ready to code?" {
+		t.Error("ExitPlanMode: title should be preserved")
+	}
+	if result["kind"] != "switch_mode" {
+		t.Error("ExitPlanMode: kind should be preserved")
+	}
+}
+
+func TestStrip_ExitPlanMode_NoRawInputPlan_PassesThrough(t *testing.T) {
+	// ExitPlanMode without rawInput.plan: nothing strippable, frame should be
+	// returned unchanged.
+	frame := map[string]interface{}{
+		"sessionUpdate": "tool_call_update",
+		"toolCallId":    "tc-plan-2",
+		"_meta": map[string]interface{}{
+			"claudeCode": map[string]interface{}{
+				"toolName": "ExitPlanMode",
+			},
+		},
+		"rawInput": map[string]interface{}{
+			"planFilePath": "/foo.md",
+		},
+	}
+	data, _ := json.Marshal(frame)
+	stripped := StripHeavyToolCallContent(data)
+	if string(stripped) != string(data) {
+		t.Error("ExitPlanMode without rawInput.plan should pass through unchanged")
+	}
+}
+
 func TestStrip_BashRunning_PassesThrough(t *testing.T) {
 	// Bash without status:completed must not be stripped (e.g. running command).
 	frame := map[string]interface{}{

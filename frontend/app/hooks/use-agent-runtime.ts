@@ -574,8 +574,18 @@ export function useAgentRuntime(options: {
               // via metadata (some tools send results there instead of rawOutput)
               const meta = f._meta as Record<string, unknown> | undefined
               const acpMeta = meta?.claudeCode as Record<string, unknown> | undefined // protocol field
+              const acpToolName = typeof acpMeta?.toolName === "string" ? acpMeta.toolName : undefined
               if (acpMeta?.toolResponse != null) {
                 patch.result = acpMeta.toolResponse
+              } else if (acpToolName === "ExitPlanMode" && Array.isArray(f.content)) {
+                // ExitPlanMode ships its primary payload — the plan markdown —
+                // as a top-level content[] block, not via rawOutput/toolResponse.
+                // Synthesize a result so the dedicated renderer can read it
+                // even after backend strips rawInput.plan.
+                const first = (f.content as Array<Record<string, unknown>>)[0]
+                const inner = first?.content as Record<string, unknown> | undefined
+                const text = inner?.type === "text" && typeof inner.text === "string" ? inner.text : undefined
+                if (text) patch.result = { plan: text }
               } else if (f.status === "completed") {
                 // Backend strips rawOutput for large-output tools (e.g., Bash).
                 // Use ACP status to mark the tool as finished so it doesn't show

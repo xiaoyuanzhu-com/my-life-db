@@ -12,6 +12,7 @@ import { SearchToolRenderer } from "./tools/search-tool"
 import { FetchToolRenderer } from "./tools/fetch-tool"
 import { SkillToolRenderer } from "./tools/skill-tool"
 import { ImageToolRenderer } from "./tools/image-tool"
+import { ExitPlanModeToolRenderer } from "./tools/exitplanmode-tool"
 import { FallbackToolRenderer } from "./tools/fallback-tool"
 import { SubagentSession } from "./subagent-session"
 import { useAgentContext } from "./agent-context"
@@ -35,6 +36,7 @@ export function inferToolKind(toolName: string, args: Record<string, unknown>): 
   if (metaName === "grep" || metaName === "glob" || metaName === "websearch" || metaName === "toolsearch") return "search"
   if (metaName === "webfetch") return "fetch"
   if (metaName === "skill") return "skill"
+  if (metaName === "exitplanmode") return "plan"
   // Match both snake_case (current) and camelCase (legacy persisted sessions).
   if (
     metaName.includes("generate_image") || metaName.includes("edit_image") ||
@@ -157,6 +159,8 @@ export function AcpToolRenderer(props: ToolCallMessagePartProps) {
       return <SkillToolRenderer {...props} />
     case "image":
       return <ImageToolRenderer {...props} />
+    case "plan":
+      return <ExitPlanModeToolRenderer {...props} />
     default:
       return <FallbackToolRenderer {...props} />
   }

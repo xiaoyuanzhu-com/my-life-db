@@ -15,7 +15,7 @@ import "encoding/json"
 //
 // Frames NOT modified:
 //   - Any sessionUpdate other than tool_call_update (including tool_call)
-//   - Any tool not in the allowlist (Read, Grep, Bash, Edit, Write)
+//   - Any tool not in the allowlist (Read, Grep, Bash, Edit, Write, ExitPlanMode)
 //   - Permission frames (handled separately if/when re-enabled)
 //
 // Per-tool rules (tool_call_update only). Each rule strips a specific field
@@ -32,6 +32,11 @@ import "encoding/json"
 //
 //   Bash:
 //     - top-level "content" and "rawOutput"
+//     - _meta.claudeCode.toolResponse.stdout, .stderr
+//
+//   ExitPlanMode:
+//     - rawInput.plan (duplicate of top-level content[0].content.text,
+//       which the frontend reads from)
 //
 //   Edit:
 //     - content[*].oldText, content[*].newText
@@ -97,6 +102,21 @@ func StripHeavyToolCallContent(data []byte) []byte {
 	case "Bash":
 		if stripTopLevelOutput(msg) {
 			stripped = true
+		}
+		if resp, ok := cc["toolResponse"].(map[string]interface{}); ok {
+			if deleteIfPresent(resp, "stdout") {
+				stripped = true
+			}
+			if deleteIfPresent(resp, "stderr") {
+				stripped = true
+			}
+		}
+
+	case "ExitPlanMode":
+		if rawInput, ok := msg["rawInput"].(map[string]interface{}); ok {
+			if deleteIfPresent(rawInput, "plan") {
+				stripped = true
+			}
 		}
 
 	case "Edit":
