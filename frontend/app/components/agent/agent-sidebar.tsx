@@ -45,8 +45,9 @@ import {
 } from '~/components/ui/dropdown-menu'
 import { Input } from '~/components/ui/input'
 import { cn } from '~/lib/utils'
+import type { SessionLifecycleState } from '~/types/session'
 
-type SessionState = 'idle' | 'working' | 'unread' | 'archived'
+type SessionState = SessionLifecycleState
 
 export interface SidebarSession {
   id: string
@@ -64,6 +65,7 @@ export interface AgentSidebarProps {
 
   // Per-row maps (parity with ThreadList props)
   sessionStates?: Record<string, SessionState>
+  sessionHasUnread?: Record<string, boolean>
   sessionSources?: Record<string, string>
   sessionAgentNames?: Record<string, string>
   sessionTriggerLabels?: Record<string, string>
@@ -115,6 +117,7 @@ export const AgentSidebar: FC<AgentSidebarProps> = ({
   activeSessionId,
   recentlyVisitedSessionId,
   sessionStates,
+  sessionHasUnread,
   sessionSources,
   sessionAgentNames,
   sessionTriggerLabels,
@@ -174,6 +177,7 @@ export const AgentSidebar: FC<AgentSidebarProps> = ({
               activeSessionId={activeSessionId}
               recentlyVisitedSessionId={recentlyVisitedSessionId}
               sessionStates={sessionStates}
+              sessionHasUnread={sessionHasUnread}
               sessionSources={sessionSources}
               sessionAgentNames={sessionAgentNames}
               sessionTriggerLabels={sessionTriggerLabels}
@@ -199,6 +203,7 @@ export const AgentSidebar: FC<AgentSidebarProps> = ({
                 activeSessionId={activeSessionId}
                 recentlyVisitedSessionId={recentlyVisitedSessionId}
                 sessionStates={sessionStates}
+                sessionHasUnread={sessionHasUnread}
                 sessionSources={sessionSources}
                 sessionAgentNames={sessionAgentNames}
                 sessionTriggerLabels={sessionTriggerLabels}
@@ -241,6 +246,7 @@ interface SessionRowProps {
   activeSessionId?: string | null
   recentlyVisitedSessionId?: string | null
   sessionStates?: Record<string, SessionState>
+  sessionHasUnread?: Record<string, boolean>
   sessionSources?: Record<string, string>
   sessionAgentNames?: Record<string, string>
   sessionTriggerLabels?: Record<string, string>
@@ -256,6 +262,7 @@ const SessionRow: FC<SessionRowProps> = ({
   activeSessionId,
   recentlyVisitedSessionId,
   sessionStates,
+  sessionHasUnread,
   sessionSources,
   sessionAgentNames,
   sessionTriggerLabels,
@@ -270,8 +277,22 @@ const SessionRow: FC<SessionRowProps> = ({
   const isRecentlyVisited =
     !isActive && session.id === recentlyVisitedSessionId
   const sessionState = sessionStates?.[session.id]
+  const hasUnread = !!sessionHasUnread?.[session.id]
   const isArchived = sessionState === 'archived'
-  const showDot = !isActive && (sessionState === 'working' || sessionState === 'unread')
+  // Dot priority (top wins):
+  //   working          → amber (pulsing)
+  //   error|interrupted → red ("needs your attention")
+  //   hasUnread         → emerald (existing unread color)
+  //   cancelled/archived/idle → no dot (cancelled is silent because the user did it)
+  // Render dots even on the active row — long threads bury the in-thread
+  // banner; the sidebar dot is the only persistent attention signal.
+  const needsAttention = sessionState === 'error' || sessionState === 'interrupted'
+  const dotKind: 'working' | 'attention' | 'unread' | null =
+    sessionState === 'working' ? 'working'
+    : needsAttention ? 'attention'
+    : hasUnread && !isActive ? 'unread'
+    : null
+  const showDot = dotKind !== null && !(isActive && dotKind === 'working')
   const isAuto = sessionSources?.[session.id] === 'auto' || session.source === 'auto'
   const agentName = sessionAgentNames?.[session.id] ?? session.agentName
   const triggerLabel = sessionTriggerLabels?.[session.id]
@@ -369,9 +390,15 @@ const SessionRow: FC<SessionRowProps> = ({
               <span
                 className={cn(
                   'h-2 w-2 shrink-0 rounded-full',
-                  sessionState === 'working' ? 'bg-amber-500' : 'bg-emerald-500',
+                  dotKind === 'working' && 'bg-amber-500 animate-pulse',
+                  dotKind === 'attention' && 'bg-red-500',
+                  dotKind === 'unread' && 'bg-emerald-500',
                 )}
-                title={sessionState === 'working' ? 'Agent is working' : 'New messages — waiting for you'}
+                title={
+                  dotKind === 'working' ? 'Agent is working'
+                  : dotKind === 'attention' ? (sessionState === 'error' ? 'Last turn errored — needs your attention' : 'Session interrupted — needs your attention')
+                  : 'New messages — waiting for you'
+                }
               />
             )}
           </span>

@@ -77,7 +77,7 @@ type ThreadProps = {
 }
 
 export const Thread: FC<ThreadProps> = ({ onAttachmentsStorageIdChange, existingStorageId }) => {
-  const { pendingPermissions, hasActiveSession, historyLoadError, sessionError, interruptedAt, lastPromptText, sessionSource, onResume, onDismissInterrupted } = useAgentContext();
+  const { pendingPermissions, hasActiveSession, historyLoadError, sessionError, lastTurnOutcome, lastErrorMessage, lastPromptText, sessionSource, onResume, onDismissOutcome } = useAgentContext();
   const { hybridTopInset } = useFeatureFlags();
   const hasSession = useAuiState((s) => !s.thread.isEmpty);
   const isRunning = useAuiState((s) => s.thread.isRunning);
@@ -127,11 +127,13 @@ export const Thread: FC<ThreadProps> = ({ onAttachmentsStorageIdChange, existing
         )}
         <InitialScrollToBottom />
 
-        {interruptedAt != null && sessionSource !== 'auto' && (
-          <ThreadInterruptedBanner
+        {(lastTurnOutcome === 'interrupted' || lastTurnOutcome === 'cancelled' || lastTurnOutcome === 'errored') && sessionSource !== 'auto' && (
+          <TurnOutcomeBanner
+            variant={lastTurnOutcome === 'errored' ? 'error' : lastTurnOutcome}
             lastPromptText={lastPromptText}
+            errorMessage={lastErrorMessage}
             onResume={onResume}
-            onDismiss={onDismissInterrupted}
+            onDismiss={onDismissOutcome}
           />
         )}
 
@@ -261,32 +263,65 @@ const ThreadSessionError: FC<{ message: string }> = ({ message }) => {
   );
 };
 
-const ThreadInterruptedBanner: FC<{
+type OutcomeVariant = 'interrupted' | 'cancelled' | 'error'
+
+const variantStyles: Record<OutcomeVariant, { container: string; title: string; body: string }> = {
+  interrupted: {
+    container: 'border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30',
+    title: 'text-amber-800 dark:text-amber-200',
+    body: 'text-amber-700/80 dark:text-amber-300/70',
+  },
+  cancelled: {
+    container: 'border-border bg-muted/40',
+    title: 'text-foreground',
+    body: 'text-muted-foreground',
+  },
+  error: {
+    container: 'border-destructive/30 bg-destructive/10',
+    title: 'text-destructive',
+    body: 'text-destructive/80',
+  },
+}
+
+const TurnOutcomeBanner: FC<{
+  variant: OutcomeVariant
   lastPromptText?: string | null
+  errorMessage?: string
   onResume?: () => void
   onDismiss?: () => void
-}> = ({ lastPromptText, onResume, onDismiss }) => {
+}> = ({ variant, lastPromptText, errorMessage, onResume, onDismiss }) => {
   const { t } = useTranslation('agent');
+  const styles = variantStyles[variant];
+  const titleKey = `thread.outcome.${variant}.title`;
+  const titleFallback =
+    variant === 'interrupted' ? 'Session interrupted'
+    : variant === 'cancelled' ? 'You stopped this turn'
+    : 'Something went wrong';
   return (
     <div className="mx-auto w-full max-w-(--thread-max-width) px-4 md:px-18 pt-2 pb-1">
-      <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 px-4 py-3">
-        <p className="text-sm font-medium text-amber-800 dark:text-amber-200 mb-1">
-          {t('thread.interrupted.title', 'Session interrupted')}
+      <div className={`rounded-lg border ${styles.container} px-4 py-3`}>
+        <p className={`text-sm font-medium mb-1 ${styles.title}`}>
+          {t(titleKey, titleFallback)}
         </p>
+        {variant === 'error' && errorMessage && (
+          <p className={`text-xs mb-2 break-words ${styles.body}`}>
+            {errorMessage}
+          </p>
+        )}
         {lastPromptText && (
-          <p className="text-xs text-amber-700/80 dark:text-amber-300/70 mb-2 truncate max-w-md">
-            {t('thread.interrupted.lastPrompt', 'Last prompt')}: {lastPromptText}
+          <p className={`text-xs mb-2 truncate max-w-md ${styles.body}`}>
+            {t('thread.outcome.lastPrompt', 'Last prompt')}: {lastPromptText}
           </p>
         )}
         <div className="flex gap-2">
           {onResume && (
             <Button size="sm" variant="default" className="h-7 text-xs" onClick={onResume}>
-              {t('thread.interrupted.resume', 'Resume')}
+              {t('thread.outcome.resume', 'Resume')}
             </Button>
           )}
           {onDismiss && (
             <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={onDismiss}>
-              {t('thread.interrupted.dismiss', 'Dismiss')}
+              {t('thread.outcome.dismiss', 'Dismiss')}
             </Button>
           )}
         </div>

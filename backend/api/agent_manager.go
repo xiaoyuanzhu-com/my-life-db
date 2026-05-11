@@ -9,6 +9,7 @@ import (
 
 	acp "github.com/coder/acp-go-sdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
+	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/mcptools"
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
@@ -537,6 +538,9 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 				sessionState.Mu.Lock()
 				sessionState.SetProcessing(false, params.Source+"-prompt-send-error")
 				sessionState.Mu.Unlock()
+				if dbErr := m.srv.AppDB().MarkTurnOutcome(context.Background(), sessionID, db.OutcomeErrored, err.Error(), db.NowMs()); dbErr != nil {
+					log.Warn().Err(dbErr).Str("sessionId", sessionID).Msg("failed to persist errored outcome")
+				}
 				if errBytes, err := json.Marshal(map[string]any{
 					"type": "error", "message": "Failed to send message: " + err.Error(), "code": "SEND_ERROR",
 				}); err == nil {
@@ -562,6 +566,10 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 				Int("resultCount", newResultCount).
 				Str("source", params.Source+"-prompt-complete").
 				Msg("[diag] turn complete: ResultCount++")
+			// Persist the completed outcome (also clears is_processing).
+			if err := m.srv.AppDB().MarkTurnOutcome(context.Background(), sessionID, db.OutcomeCompleted, "", db.NowMs()); err != nil {
+				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist completed outcome")
+			}
 			// Persist the new count so the unread dot survives a server restart.
 			if err := m.srv.AppDB().UpdateAgentSessionResultCount(context.Background(), sessionID, newResultCount); err != nil {
 				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist result count")

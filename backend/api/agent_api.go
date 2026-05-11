@@ -170,18 +170,26 @@ func (h *Handlers) GetAgentSessions(c *gin.Context) {
 	// Convert to response format matching what the frontend expects
 	result := make([]map[string]any, 0, len(sessions))
 	for _, s := range sessions {
-		state := computeSessionState(s.SessionID, s.ArchivedAt != nil, readStates, runtimeStates, persistedResultCounts)
+		rt := runtimeStates[s.SessionID]
+		state := computeSessionState(s.ArchivedAt != nil, rt.IsProcessing, s.LastTurnOutcome)
+		hasUnread := computeHasUnread(s.SessionID, readStates, runtimeStates, persistedResultCounts)
 
 		entry := map[string]any{
-			"id":           s.SessionID,
-			"title":        s.Title,
-			"workingDir":   s.WorkingDir,
-			"agentType":    s.AgentType,
-			"sessionState": state,
-			"createdAt":    s.CreatedAt,
-			"lastActivity": s.UpdatedAt,
-			"source":       s.Source,
-			"storageId":    s.StorageID,
+			"id":               s.SessionID,
+			"title":            s.Title,
+			"workingDir":       s.WorkingDir,
+			"agentType":        s.AgentType,
+			"sessionState":     state,
+			"hasUnread":        hasUnread,
+			"lastTurnOutcome":  s.LastTurnOutcome,
+			"lastErrorMessage": s.LastErrorMessage,
+			"createdAt":        s.CreatedAt,
+			"lastActivity":     s.UpdatedAt,
+			"source":           s.Source,
+			"storageId":        s.StorageID,
+		}
+		if s.LastTurnOutcomeAt != nil {
+			entry["lastTurnOutcomeAt"] = *s.LastTurnOutcomeAt
 		}
 		if s.GroupID != nil {
 			entry["groupId"] = *s.GroupID
@@ -242,18 +250,26 @@ func (h *Handlers) GetAgentSession(c *gin.Context) {
 	readStates, _ := h.server.AppDB().GetAllSessionReadStates()
 	runtimeStates := h.agentMgr.AllRuntimeStates()
 	persistedResultCounts, _ := h.server.AppDB().GetAllSessionResultCounts()
-	state := computeSessionState(session.SessionID, session.ArchivedAt != nil, readStates, runtimeStates, persistedResultCounts)
+	rt := runtimeStates[session.SessionID]
+	state := computeSessionState(session.ArchivedAt != nil, rt.IsProcessing, session.LastTurnOutcome)
+	hasUnread := computeHasUnread(session.SessionID, readStates, runtimeStates, persistedResultCounts)
 
 	resp := gin.H{
-		"id":           session.SessionID,
-		"title":        session.Title,
-		"workingDir":   session.WorkingDir,
-		"agentType":    session.AgentType,
-		"sessionState": state,
-		"createdAt":    session.CreatedAt,
-		"lastActivity": session.UpdatedAt,
-		"source":       session.Source,
-		"storageId":    session.StorageID,
+		"id":               session.SessionID,
+		"title":            session.Title,
+		"workingDir":       session.WorkingDir,
+		"agentType":        session.AgentType,
+		"sessionState":     state,
+		"hasUnread":        hasUnread,
+		"lastTurnOutcome":  session.LastTurnOutcome,
+		"lastErrorMessage": session.LastErrorMessage,
+		"createdAt":        session.CreatedAt,
+		"lastActivity":     session.UpdatedAt,
+		"source":           session.Source,
+		"storageId":        session.StorageID,
+	}
+	if session.LastTurnOutcomeAt != nil {
+		resp["lastTurnOutcomeAt"] = *session.LastTurnOutcomeAt
 	}
 	if session.GroupID != nil {
 		resp["groupId"] = *session.GroupID
@@ -293,10 +309,10 @@ func (h *Handlers) UpdateAgentSession(c *gin.Context) {
 	// Use json.RawMessage / pointer fields so we can distinguish "absent" from
 	// "explicit null" — needed for groupId where null = move to ungrouped.
 	var req struct {
-		Title            *string `json:"title"`
-		GroupID          *string `json:"groupId"`
-		Pinned           *bool   `json:"pinned"`
-		ClearInterrupted *bool   `json:"clearInterrupted"`
+		Title        *string `json:"title"`
+		GroupID      *string `json:"groupId"`
+		Pinned       *bool   `json:"pinned"`
+		ClearOutcome *bool   `json:"clearOutcome"`
 	}
 	// Capture which keys were present so a `"groupId": null` clears the group
 	// while an absent `groupId` is a no-op. ShouldBindJSON alone can't tell
@@ -350,9 +366,9 @@ func (h *Handlers) UpdateAgentSession(c *gin.Context) {
 		}
 	}
 
-	if req.ClearInterrupted != nil && *req.ClearInterrupted {
-		if err := h.server.AppDB().ClearInterrupted(c.Request.Context(), sessionID); err != nil {
-			log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to clear interrupted state")
+	if req.ClearOutcome != nil && *req.ClearOutcome {
+		if err := h.server.AppDB().ClearLastOutcome(c.Request.Context(), sessionID); err != nil {
+			log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to clear last outcome")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update session"})
 			return
 		}
@@ -456,36 +472,52 @@ func (h *Handlers) RestartAgentSession(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-// computeSessionState derives a unified session state string from archived flag,
-// DB read state, in-memory runtime state, and persisted result counts.
+// computeSessionState derives the unified session lifecycle state. Returns one
+// of: 'archived' | 'working' | 'idle' | 'interrupted' | 'cancelled' | 'error'.
 //
-// Priority: archived > working > unread > idle
-//   - "archived": session is archived
-//   - "working":  agent is actively processing (IsProcessing=true) — in-memory only,
-//     never survives a server restart
-//   - "unread":   agent finished but user hasn't viewed results
-//     (effective ResultCount > lastReadCount). Effective ResultCount prefers
-//     the in-memory counter and falls back to the persisted result_count from
-//     DB so the dot survives a restart.
-//   - "idle":     all caught up
+// Priority (top wins):
+//   - 'archived':    archived_at != null
+//   - 'working':     in-memory IsProcessing == true
+//   - 'interrupted': last_turn_outcome == 'interrupted' (set by the boot sweep
+//                    when a previous server instance was killed mid-turn)
+//   - 'cancelled':   last_turn_outcome == 'cancelled'  (user stopped the turn)
+//   - 'error':       last_turn_outcome == 'errored'    (note: verb→noun at API)
+//   - 'idle':        anything else (covers 'completed' and '')
+//
+// The 'unread' view-state is intentionally NOT in this enum — see computeHasUnread.
 func computeSessionState(
-	sessionID string,
 	isArchived bool,
-	readStates map[string]int,
-	runtimeStates map[string]SessionRuntimeState,
-	persistedResultCounts map[string]int,
+	isProcessing bool,
+	lastTurnOutcome string,
 ) string {
 	if isArchived {
 		return "archived"
 	}
-
-	rt, hasRuntime := runtimeStates[sessionID]
-	if hasRuntime && rt.IsProcessing {
+	if isProcessing {
 		return "working"
 	}
+	switch lastTurnOutcome {
+	case "interrupted":
+		return "interrupted"
+	case "cancelled":
+		return "cancelled"
+	case "errored":
+		return "error"
+	}
+	return "idle"
+}
 
-	// Effective result count: in-memory wins (most up-to-date), falls back to
-	// the persisted value from DB so unread state survives a server restart.
+// computeHasUnread returns true when the session has completed turns the user
+// hasn't seen yet. Effective ResultCount prefers the in-memory counter and
+// falls back to the persisted result_count so the unread signal survives a
+// server restart.
+func computeHasUnread(
+	sessionID string,
+	readStates map[string]int,
+	runtimeStates map[string]SessionRuntimeState,
+	persistedResultCounts map[string]int,
+) bool {
+	rt, hasRuntime := runtimeStates[sessionID]
 	effectiveCount := 0
 	if hasRuntime {
 		effectiveCount = rt.ResultCount
@@ -493,25 +525,8 @@ func computeSessionState(
 	if effectiveCount == 0 {
 		effectiveCount = persistedResultCounts[sessionID]
 	}
-
-	if effectiveCount > 0 {
-		lastRead := readStates[sessionID] // 0 if not found
-		if effectiveCount > lastRead {
-			log.Info().
-				Str("sessionId", sessionID).
-				Int("resultCount", effectiveCount).
-				Int("lastRead", lastRead).
-				Bool("hasRuntime", hasRuntime).
-				Msg("computeSessionState: unread")
-			return "unread"
-		}
-		log.Info().
-			Str("sessionId", sessionID).
-			Bool("isProcessing", hasRuntime && rt.IsProcessing).
-			Int("resultCount", effectiveCount).
-			Int("lastRead", lastRead).
-			Msg("computeSessionState: idle (results already read)")
+	if effectiveCount == 0 {
+		return false
 	}
-
-	return "idle"
+	return effectiveCount > readStates[sessionID]
 }

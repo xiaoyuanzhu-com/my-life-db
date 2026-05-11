@@ -165,7 +165,9 @@ export function useAgentRuntime(options: {
   // Set when a live session errors before any message can render
   const [sessionError, setSessionError] = useState<string | null>(null)
   // Interrupted state: set when the session was interrupted mid-prompt
-  const [interruptedAt, setInterruptedAt] = useState<number | null>(null)
+  const [lastTurnOutcome, setLastTurnOutcome] = useState<string>('')
+  const [lastTurnOutcomeAt, setLastTurnOutcomeAt] = useState<number | null>(null)
+  const [lastErrorMessage, setLastErrorMessage] = useState<string>('')
   const [lastPromptText, setLastPromptText] = useState<string | null>(null)
   // Source of the session ("user" or "auto") — from session.info
   const [sessionSource, setSessionSource] = useState<string | null>(null)
@@ -208,7 +210,9 @@ export function useAgentRuntime(options: {
     setPendingPermissions(new Map())
     setHistoryLoadError(null)
     setSessionError(null)
-    setInterruptedAt(null)
+    setLastTurnOutcome('')
+    setLastTurnOutcomeAt(null)
+    setLastErrorMessage('')
     setLastPromptText(null)
     setSessionSource(null)
   }
@@ -246,8 +250,11 @@ export function useAgentRuntime(options: {
           setPendingPermissions(new Map())
           setHistoryLoadError(null)
           setSessionError(null)
-          // Interrupted state from DB
-          setInterruptedAt(f.interruptedAt ?? null)
+          // Outcome state from DB (any of: '', 'completed', 'cancelled',
+          // 'interrupted', 'errored'). Empty or 'completed' means no banner.
+          setLastTurnOutcome(f.lastTurnOutcome ?? '')
+          setLastTurnOutcomeAt(f.lastTurnOutcomeAt ?? null)
+          setLastErrorMessage(f.lastErrorMessage ?? '')
           setLastPromptText(f.lastPromptText ?? null)
           setSessionSource(f.source ?? null)
           // Seed session-level config from the backend baseline (sourced from
@@ -1210,7 +1217,9 @@ export function useAgentRuntime(options: {
     sessionError,
     subagentChildrenMap,
     reconnect,
-    interruptedAt,
+    lastTurnOutcome,
+    lastTurnOutcomeAt,
+    lastErrorMessage,
     lastPromptText,
     sessionSource,
     sendPrompt,

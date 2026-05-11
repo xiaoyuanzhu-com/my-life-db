@@ -65,6 +65,20 @@
       "lastPrompt": "上次提示",
       "resume": "继续",
       "dismiss": "忽略"
+    },
+    "outcome": {
+      "lastPrompt": "上次提示",
+      "resume": "继续",
+      "dismiss": "忽略",
+      "interrupted": {
+        "title": "会话已中断"
+      },
+      "cancelled": {
+        "title": "已停止此轮"
+      },
+      "error": {
+        "title": "出错了"
+      }
     }
   },
   "autoAgent": {

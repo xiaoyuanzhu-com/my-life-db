@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
+	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/server"
 )
@@ -144,10 +145,19 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			}
 			infoFields["defaultConfigOptions"] = opts
 		}
-		// Interrupted state: surface to the frontend so it can show the Resume banner.
-		if rec.InterruptedAt != nil {
-			infoFields["interruptedAt"] = *rec.InterruptedAt
+		// Outcome of the most recent turn — surfaced to the frontend so it can
+		// render the Resume banner for interrupted/cancelled/errored states.
+		// lastPromptText accompanies any non-empty outcome so the Resume button
+		// has something to re-send.
+		if rec.LastTurnOutcome != "" {
+			infoFields["lastTurnOutcome"] = rec.LastTurnOutcome
 			infoFields["lastPromptText"] = rec.LastPromptText
+			if rec.LastTurnOutcomeAt != nil {
+				infoFields["lastTurnOutcomeAt"] = *rec.LastTurnOutcomeAt
+			}
+			if rec.LastErrorMessage != "" {
+				infoFields["lastErrorMessage"] = rec.LastErrorMessage
+			}
 		}
 		infoFields["source"] = rec.Source
 	}
@@ -594,6 +604,9 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 					}
 					sessionState.Mu.Unlock()
 					if !killed {
+						if dbErr := h.server.AppDB().MarkTurnOutcome(context.Background(), sessionID, db.OutcomeErrored, err.Error(), db.NowMs()); dbErr != nil {
+							log.Warn().Err(dbErr).Str("sessionId", sessionID).Msg("failed to persist errored outcome")
+						}
 						if errBytes, err := json.Marshal(map[string]any{
 							"type": "error", "message": "Failed to send message: " + err.Error(), "code": "SEND_ERROR",
 						}); err == nil {
@@ -643,9 +656,9 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 						Int("resultCount", newResultCount).
 						Str("source", "ws-prompt-complete").
 						Msg("[diag] turn complete: ResultCount++")
-					// Clear is_processing in DB now that the turn completed cleanly.
-					if err := h.server.AppDB().ClearPromptInFlight(context.Background(), sessionID); err != nil {
-						log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to clear prompt in-flight in DB")
+					// Persist the completed outcome (clears is_processing, bumps last_message_at).
+					if err := h.server.AppDB().MarkTurnOutcome(context.Background(), sessionID, db.OutcomeCompleted, "", db.NowMs()); err != nil {
+						log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist completed outcome")
 					}
 					// Persist the new count so the unread dot survives a server restart.
 					if err := h.server.AppDB().UpdateAgentSessionResultCount(context.Background(), sessionID, newResultCount); err != nil {
@@ -724,6 +737,15 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			// timer to kill the *new* turn's freshly-created ACP session.
 			acpSession, exists := h.agentMgr.GetSession(sessionID)
 
+			// Mark the turn as cancelled BEFORE we tear down the ACP session so
+			// the events-channel cleanup goroutine (line ~629) sees Killed=true
+			// when it acquires the lock and skips the ResultCount++ / completed
+			// outcome write that would otherwise misclassify a cancel as a clean
+			// completion.
+			sessionState.Mu.Lock()
+			sessionState.Killed = true
+			sessionState.Mu.Unlock()
+
 			if exists {
 				h.agentMgr.RemoveSession(sessionID)
 				acpSession.CancelAllPermissions()
@@ -745,9 +767,15 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				pc()
 			}
 
+			// Persist the cancelled outcome (also clears is_processing).
+			if err := h.server.AppDB().MarkTurnOutcome(context.Background(), sessionID, db.OutcomeCancelled, "", db.NowMs()); err != nil {
+				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist cancelled outcome")
+			}
+
 			// Send ack so the client can immediately update UI (stop
 			// spinner, clear permissions). turn.complete from the SDK will
-			// arrive later (synth turn.complete on ctx-cancel path) and is
+			// arrive later (synth turn.complete on ctx-cancel path) but the
+			// Killed flag suppresses its broadcast; session.cancelled is
 			// idempotent on the frontend.
 			if ackBytes, err := json.Marshal(map[string]any{
 				"type": "session.cancelled",
@@ -778,6 +806,12 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			sessionState.Killed = true
 			sessionState.SetProcessing(false, "ws-kill")
 			sessionState.Mu.Unlock()
+
+			// Persist the cancelled outcome — kill is just the force version of
+			// cancel, both are user-initiated stops.
+			if err := h.server.AppDB().MarkTurnOutcome(context.Background(), sessionID, db.OutcomeCancelled, "", db.NowMs()); err != nil {
+				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist cancelled outcome (kill)")
+			}
 
 			if completeBytes, err := json.Marshal(map[string]any{
 				"type":       "turn.complete",

@@ -8,6 +8,7 @@ import type { ThreadMessageLike } from "@assistant-ui/react"
 import type { PermissionOption } from "~/hooks/use-agent-websocket"
 import type { PlanEntry, ConfigOption } from "~/hooks/use-agent-runtime"
 import type { UseDraftOutboxResult } from "~/lib/draft-outbox"
+import type { LastTurnOutcome } from "~/types/session"
 
 export interface PendingPermissionEntry {
   toolName: string
@@ -56,16 +57,20 @@ export interface AgentContextValue {
   resultCount?: number
   /** Restart the current session (kill process + reconnect) */
   onRestart?: () => void
-  /** Unix ms timestamp set when the session was interrupted mid-prompt (null if not interrupted) */
-  interruptedAt?: number | null
-  /** The last prompt text that was in-flight when the session was interrupted */
+  /** Outcome of the last completed turn (drives the in-thread banner). */
+  lastTurnOutcome?: LastTurnOutcome
+  /** Unix ms timestamp when the last outcome was recorded. */
+  lastTurnOutcomeAt?: number | null
+  /** Populated only when lastTurnOutcome === 'errored'. */
+  lastErrorMessage?: string
+  /** The last prompt text that was in-flight (used for Resume). */
   lastPromptText?: string | null
   /** Source of the session: "user" or "auto" */
   sessionSource?: string | null
-  /** Re-send the last prompt to resume an interrupted session */
+  /** Re-send the last prompt to resume an interrupted/cancelled/errored session */
   onResume?: () => void
-  /** Clear the interrupted state (dismiss banner without resuming) */
-  onDismissInterrupted?: () => void
+  /** Clear the last-turn outcome (dismiss banner without resuming) */
+  onDismissOutcome?: () => void
 }
 
 const AgentContext = createContext<AgentContextValue | null>(null)

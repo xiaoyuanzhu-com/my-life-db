@@ -17,8 +17,9 @@ import {
 } from "lucide-react";
 import { type FC, useEffect, useRef } from "react";
 import { cn } from "~/lib/utils";
+import type { SessionLifecycleState } from "~/types/session";
 
-type SessionState = 'idle' | 'working' | 'unread' | 'archived';
+type SessionState = SessionLifecycleState;
 
 interface ThreadListProps {
   activeSessionId?: string | null;
@@ -111,10 +112,15 @@ const ThreadListItem: FC<{ activeSessionId?: string | null; sessionStates?: Reco
   const itemId = useAuiState((s) => s.threadListItem.id);
   const isActive = itemId != null && itemId === activeSessionId;
 
-  // Show status dot for working/unread sessions that aren't currently active
+  // Sidebar dot. Parity with agent-sidebar.tsx — see that file for the full
+  // priority rationale. ThreadList lacks a hasUnread map today, so the unread
+  // green dot only shows up via agent-sidebar.tsx.
   const sessionState = itemId ? sessionStates?.[itemId] : undefined;
   const isArchived = sessionState === 'archived';
-  const showDot = !isActive && (sessionState === 'working' || sessionState === 'unread');
+  const needsAttention = sessionState === 'error' || sessionState === 'interrupted';
+  const dotKind: 'working' | 'attention' | null =
+    sessionState === 'working' ? 'working' : needsAttention ? 'attention' : null;
+  const showDot = !isActive && dotKind !== null;
   const isAuto = itemId ? sessionSources?.[itemId] === 'auto' : false;
   const agentName = itemId ? sessionAgentNames?.[itemId] : undefined;
   const triggerLabel = itemId ? sessionTriggerLabels?.[itemId] : undefined;
@@ -179,9 +185,9 @@ const ThreadListItem: FC<{ activeSessionId?: string | null; sessionStates?: Reco
             <span
               className={cn(
                 'h-2 w-2 shrink-0 rounded-full',
-                sessionState === 'working' ? 'bg-amber-500' : 'bg-emerald-500'
+                dotKind === 'working' ? 'bg-amber-500 animate-pulse' : 'bg-red-500'
               )}
-              title={sessionState === 'working' ? 'Agent is working' : 'New messages — waiting for you'}
+              title={dotKind === 'working' ? 'Agent is working' : (sessionState === 'error' ? 'Last turn errored — needs your attention' : 'Session interrupted — needs your attention')}
             />
           )}
         </span>

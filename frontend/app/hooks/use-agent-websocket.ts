@@ -110,9 +110,13 @@ export interface SessionInfoFrame extends AcpFrame {
   agentType?: string
   /** Source of the session: "user" or "auto" */
   source?: string
-  /** Unix ms timestamp set when the session was interrupted mid-prompt */
-  interruptedAt?: number
-  /** The last prompt text that was in-flight when the session was interrupted */
+  /** Outcome of the last completed turn — empty when no turn has occurred. */
+  lastTurnOutcome?: '' | 'completed' | 'cancelled' | 'interrupted' | 'errored'
+  /** Unix ms timestamp when the last outcome was recorded. */
+  lastTurnOutcomeAt?: number
+  /** Populated only when lastTurnOutcome === 'errored'. */
+  lastErrorMessage?: string
+  /** The last prompt text that was in-flight (used for Resume). */
   lastPromptText?: string
   /** Baseline configOptions for agents that don't emit ACP config_option_update. */
   defaultConfigOptions?: Array<{

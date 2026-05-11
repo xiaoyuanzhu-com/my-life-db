@@ -65,6 +65,20 @@
       "lastPrompt": "Last prompt",
       "resume": "Resume",
       "dismiss": "Dismiss"
+    },
+    "outcome": {
+      "lastPrompt": "Last prompt",
+      "resume": "Resume",
+      "dismiss": "Dismiss",
+      "interrupted": {
+        "title": "Session interrupted"
+      },
+      "cancelled": {
+        "title": "You stopped this turn"
+      },
+      "error": {
+        "title": "Something went wrong"
+      }
     }
   },
   "autoAgent": {

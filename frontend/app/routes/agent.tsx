@@ -39,6 +39,7 @@ import { isNativeApp } from '~/lib/native-bridge'
 import { fetchWithRefresh } from '~/lib/fetch-with-refresh'
 import { toast } from 'sonner'
 import '@fontsource/jetbrains-mono'
+import type { SessionLifecycleState } from '~/types/session'
 
 interface Session {
   id: string
@@ -46,7 +47,8 @@ interface Session {
   summary?: string // AI-generated 5-10 word title
   customTitle?: string // User-set custom title (via /title command)
   workingDir: string
-  sessionState: 'idle' | 'working' | 'unread' | 'archived'
+  sessionState: SessionLifecycleState
+  hasUnread?: boolean
   createdAt: number
   lastActivity: number
   lastUserActivity?: number
@@ -324,7 +326,9 @@ function ChatRuntimeShell({
     sessionError,
     subagentChildrenMap,
     reconnect,
-    interruptedAt,
+    lastTurnOutcome,
+    lastTurnOutcomeAt,
+    lastErrorMessage,
     lastPromptText,
     sessionSource,
     sendPrompt,
@@ -367,14 +371,14 @@ function ChatRuntimeShell({
     sendPrompt(lastPromptText)
   }, [lastPromptText, sendPrompt])
 
-  const handleDismissInterrupted = useCallback(async () => {
+  const handleDismissOutcome = useCallback(async () => {
     if (!activeSessionId) return
     try {
-      await api.patch(`/api/agent/sessions/${activeSessionId}`, { clearInterrupted: true })
+      await api.patch(`/api/agent/sessions/${activeSessionId}`, { clearOutcome: true })
     } catch (err) {
-      console.error('[agent] dismiss interrupted failed:', err)
+      console.error('[agent] dismiss outcome failed:', err)
     }
-    // Reconnect to refresh session.info (interruptedAt will be null)
+    // Reconnect to refresh session.info (lastTurnOutcome will be cleared)
     reconnect()
   }, [activeSessionId, reconnect])
 
@@ -409,11 +413,13 @@ function ChatRuntimeShell({
     outbox,
     resultCount,
     onRestart: hasActiveSession ? handleRestartSession : undefined,
-    interruptedAt: hasActiveSession ? interruptedAt : null,
+    lastTurnOutcome: hasActiveSession ? (lastTurnOutcome as import('~/types/session').LastTurnOutcome) : '',
+    lastTurnOutcomeAt: hasActiveSession ? lastTurnOutcomeAt : null,
+    lastErrorMessage: hasActiveSession ? lastErrorMessage : '',
     lastPromptText: hasActiveSession ? lastPromptText : null,
     sessionSource: hasActiveSession ? sessionSource : null,
-    onResume: hasActiveSession && interruptedAt && lastPromptText ? handleResume : undefined,
-    onDismissInterrupted: hasActiveSession && interruptedAt ? handleDismissInterrupted : undefined,
+    onResume: hasActiveSession && lastTurnOutcome && lastTurnOutcome !== 'completed' && lastPromptText ? handleResume : undefined,
+    onDismissOutcome: hasActiveSession && lastTurnOutcome && lastTurnOutcome !== 'completed' ? handleDismissOutcome : undefined,
   }
 
   return (
@@ -1217,12 +1223,12 @@ export default function AgentPage() {
   // Optimistically clear the unread dot so it disappears immediately; the next
   // SSE-triggered refresh will confirm the server state.
   const handleSelectSession = useCallback((sessionId: string) => {
-    // Only clear "unread" optimistically — not "working".
-    // Clicking a working session should keep the amber dot visible.
+    // Optimistically clear the unread dot on click — don't touch lifecycle
+    // state (a working session stays amber while we navigate into it).
     setSessions((prev) =>
       prev.map((s) =>
-        s.id === sessionId && s.sessionState === 'unread'
-          ? { ...s, sessionState: 'idle' as const }
+        s.id === sessionId && s.hasUnread
+          ? { ...s, hasUnread: false }
           : s
       )
     )
@@ -1248,9 +1254,19 @@ export default function AgentPage() {
 
   // Build a map of session ID → sessionState for the thread list status dots
   const sessionStates = useMemo(() => {
-    const map: Record<string, 'idle' | 'working' | 'unread' | 'archived'> = {}
+    const map: Record<string, SessionLifecycleState> = {}
     for (const s of sessions) {
       map[s.id] = s.sessionState
+    }
+    return map
+  }, [sessions])
+
+  // Separate map for the per-session unread flag (split out from sessionState
+  // in the session-state refactor; the lifecycle enum no longer encodes it).
+  const sessionHasUnread = useMemo(() => {
+    const map: Record<string, boolean> = {}
+    for (const s of sessions) {
+      if (s.hasUnread) map[s.id] = true
     }
     return map
   }, [sessions])
@@ -1619,6 +1635,7 @@ export default function AgentPage() {
                   sessions={visibleSessions}
                   activeSessionId={activeSessionId}
                   sessionStates={sessionStates}
+                  sessionHasUnread={sessionHasUnread}
                   sessionSources={sessionSources}
                   sessionAgentNames={sessionAgentNames}
                   sessionTriggerLabels={sessionTriggerLabels}
@@ -1793,6 +1810,7 @@ export default function AgentPage() {
                 activeSessionId={activeSessionId}
                 recentlyVisitedSessionId={recentlyVisitedSessionId}
                 sessionStates={sessionStates}
+                sessionHasUnread={sessionHasUnread}
                 sessionSources={sessionSources}
                 sessionAgentNames={sessionAgentNames}
                 sessionTriggerLabels={sessionTriggerLabels}

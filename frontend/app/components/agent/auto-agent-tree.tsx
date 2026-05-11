@@ -13,7 +13,7 @@ export interface AutoAgentSummary {
   enabled: boolean
 }
 
-type SessionState = 'idle' | 'working' | 'unread' | 'archived'
+type SessionState = import('~/types/session').SessionLifecycleState
 
 interface SessionRow {
   id: string
@@ -228,8 +228,12 @@ export function AutoAgentTree({
                     const isActive = s.id === activeSessionId
                     const state = sessionStates[s.id]
                     const isArchived = state === 'archived'
-                    const showDot =
-                      !isActive && (state === 'working' || state === 'unread')
+                    // Same priority chain as agent-sidebar.tsx, minus unread
+                    // (this tree doesn't track per-row unread today).
+                    const needsAttention = state === 'error' || state === 'interrupted'
+                    const dotKind: 'working' | 'attention' | null =
+                      state === 'working' ? 'working' : needsAttention ? 'attention' : null
+                    const showDot = !isActive && dotKind !== null
                     const label = sessionLabel(s, sessionTriggerLabels[s.id])
                     return (
                       <button
@@ -259,14 +263,16 @@ export function AutoAgentTree({
                             <span
                               className={cn(
                                 'h-2 w-2 shrink-0 rounded-full',
-                                state === 'working'
-                                  ? 'bg-amber-500'
-                                  : 'bg-emerald-500'
+                                dotKind === 'working'
+                                  ? 'bg-amber-500 animate-pulse'
+                                  : 'bg-red-500'
                               )}
                               title={
-                                state === 'working'
+                                dotKind === 'working'
                                   ? 'Agent is working'
-                                  : 'New messages — waiting for you'
+                                  : state === 'error'
+                                    ? 'Last turn errored — needs your attention'
+                                    : 'Session interrupted — needs your attention'
                               }
                             />
                           )}
