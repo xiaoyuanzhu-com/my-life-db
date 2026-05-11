@@ -3,6 +3,7 @@
 import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown";
 import type { SyntaxHighlighterProps } from "@assistant-ui/react-streamdown";
 import { useIsCodeFenceIncomplete } from "streamdown";
+import { createMathPlugin } from "@streamdown/math";
 import mermaidLib from "mermaid";
 import {
   isValidElement,
@@ -238,6 +239,8 @@ const CodeRenderer: FC<RendererProps> = ({ code, language }) => {
 
 const LANGUAGE_REGEX = /language-([^\s]+)/;
 
+const mathPlugin = createMathPlugin({ singleDollarTextMath: true });
+
 function extractCode(children: ReactNode): string {
   if (typeof children === "string") return children;
   if (!isValidElement(children)) return "";
@@ -286,6 +289,7 @@ const MarkdownTextImpl = () => {
   return (
     <StreamdownTextPrimitive
       components={{ code: CustomCode }}
+      plugins={{ math: mathPlugin }}
       controls={{ table: false }}
     />
   );
