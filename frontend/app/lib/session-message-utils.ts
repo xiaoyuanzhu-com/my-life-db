@@ -292,13 +292,21 @@ export interface ReadToolResult {
   }
 }
 
+export interface StructuredPatchHunk {
+  oldStart: number
+  oldLines: number
+  newStart: number
+  newLines: number
+  lines: string[]
+}
+
 export interface EditToolResult {
   filePath: string
   oldString?: string
   newString?: string
   originalFile?: string
   replaceAll?: boolean
-  structuredPatch?: string
+  structuredPatch?: StructuredPatchHunk[]
   userModified?: boolean
 }
 

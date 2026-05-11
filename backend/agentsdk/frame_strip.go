@@ -42,7 +42,9 @@ import "encoding/json"
 //     - content[*].oldText, content[*].newText
 //     - rawInput.old_string, rawInput.new_string
 //     - toolResponse.oldString, toolResponse.newString,
-//       toolResponse.originalFile, toolResponse.structuredPatch
+//       toolResponse.originalFile
+//     (toolResponse.structuredPatch is preserved — bounded by edit size and
+//     used by the frontend renderer to display the diff)
 //
 //   Write:
 //     - content[*].newText (the diff block)
@@ -132,7 +134,7 @@ func StripHeavyToolCallContent(data []byte) []byte {
 			}
 		}
 		if resp, ok := cc["toolResponse"].(map[string]interface{}); ok {
-			for _, key := range [...]string{"oldString", "newString", "originalFile", "structuredPatch"} {
+			for _, key := range [...]string{"oldString", "newString", "originalFile"} {
 				if deleteIfPresent(resp, key) {
 					stripped = true
 				}

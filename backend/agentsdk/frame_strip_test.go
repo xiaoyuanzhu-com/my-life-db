@@ -557,9 +557,9 @@ func TestStrip_EditRawInput_StripsDiffContent(t *testing.T) {
 }
 
 func TestStrip_EditToolResponse_StripsResponseAndDiff(t *testing.T) {
-	// Edit tool_call_update with toolResponse: strip diff fields from
-	// content[*] AND from toolResponse (oldString, newString, originalFile,
-	// structuredPatch).
+	// Edit tool_call_update with toolResponse: strip heavy diff fields
+	// (oldString, newString, originalFile) and the content[*] diff blocks,
+	// but PRESERVE structuredPatch so the renderer can display the diff.
 	frame := map[string]interface{}{
 		"sessionUpdate": "tool_call_update",
 		"toolCallId":    "tc-edit-2",
@@ -574,7 +574,7 @@ func TestStrip_EditToolResponse_StripsResponseAndDiff(t *testing.T) {
 					"replaceAll":   false,
 					"structuredPatch": []interface{}{
 						map[string]interface{}{
-							"lines":    []interface{}{},
+							"lines":    []interface{}{"-old line", "+new line"},
 							"newLines": 3,
 							"newStart": 217,
 							"oldLines": 33,
@@ -614,10 +614,23 @@ func TestStrip_EditToolResponse_StripsResponseAndDiff(t *testing.T) {
 
 	cc := result["_meta"].(map[string]interface{})["claudeCode"].(map[string]interface{})
 	resp := cc["toolResponse"].(map[string]interface{})
-	for _, key := range []string{"oldString", "newString", "originalFile", "structuredPatch"} {
+	for _, key := range []string{"oldString", "newString", "originalFile"} {
 		if _, has := resp[key]; has {
 			t.Errorf("Edit: toolResponse.%s should be stripped", key)
 		}
+	}
+	// structuredPatch must be preserved — frontend uses it to render the diff.
+	sp, has := resp["structuredPatch"].([]interface{})
+	if !has {
+		t.Fatal("Edit: toolResponse.structuredPatch should be preserved")
+	}
+	if len(sp) != 1 {
+		t.Fatalf("Edit: structuredPatch should have 1 hunk, got %d", len(sp))
+	}
+	hunk := sp[0].(map[string]interface{})
+	lines := hunk["lines"].([]interface{})
+	if len(lines) != 2 || lines[0] != "-old line" || lines[1] != "+new line" {
+		t.Errorf("Edit: structuredPatch hunk lines not preserved: %v", lines)
 	}
 	// Preserved fields.
 	if resp["filePath"] != "/src/index.ts" {
