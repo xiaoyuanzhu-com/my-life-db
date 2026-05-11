@@ -61,13 +61,8 @@ func (h *Handlers) ServeRawFile(c *gin.Context) {
 	// Detect MIME type
 	mimeType := utils.DetectMimeType(path)
 
-	// Set cache headers for static assets
-	// Cache for 1 day - revalidation is cheap with 304 responses
-	setCacheHeaders(c, path, info.ModTime(), false)
-
-	// Set ETag before calling ServeContent (required for conditional requests)
-	etag := fmt.Sprintf(`"%d-%s"`, info.ModTime().Unix(), computePathHash(path))
-	c.Header("ETag", etag)
+	// Set cache headers (Cache-Control: no-cache, content-aware ETag)
+	setCacheHeaders(c, mutableETag(path, info), info.ModTime(), false)
 
 	// Use http.ServeContent which handles conditional requests automatically
 	// This built-in function checks If-None-Match and If-Modified-Since for us
@@ -173,11 +168,7 @@ func (h *Handlers) ServeSqlarFile(c *gin.Context) {
 	// Use mtime from SQLAR as modification time
 	modTime := time.Unix(int64(sqlarFile.Mtime), 0)
 	// SQLAR files never change once written, so use immutable cache
-	setCacheHeaders(c, name, modTime, true)
-
-	// Set ETag for conditional requests
-	etag := fmt.Sprintf(`"%d-%s"`, modTime.Unix(), computePathHash(name))
-	c.Header("ETag", etag)
+	setCacheHeaders(c, immutableETag(name, modTime), modTime, true)
 
 	c.Header("Content-Type", mimeType)
 
@@ -631,39 +622,38 @@ func (h *Handlers) GetLibraryRoot(c *gin.Context) {
 // HTTP Caching Helpers
 // =============================================================================
 
-// setCacheHeaders sets appropriate cache headers for static assets
-// This implements industry best practices for HTTP caching across all platforms
-func setCacheHeaders(c *gin.Context, path string, modTime time.Time, isImmutable bool) {
-	// Generate ETag from modification time + path
-	// This provides a unique identifier that changes when file content changes
-	etag := fmt.Sprintf(`"%d-%s"`, modTime.Unix(), computePathHash(path))
+// setCacheHeaders sets ETag, Last-Modified, Cache-Control, and Vary headers.
+//
+// Mutable user files use Cache-Control: no-cache so the browser revalidates
+// on every request. A long max-age with a path-based ETag is unsafe here:
+// rename(file2 → file1) on POSIX preserves file2's mtime, so a stale cached
+// response for /raw/file1 can survive a delete+rename and serve the wrong
+// content. Caller must pass a content-aware ETag (see mutableETag).
+//
+// SQLAR-cached derivatives are content-addressed and never change, so they
+// use max-age=1y with the immutable directive (browser skips revalidation).
+func setCacheHeaders(c *gin.Context, etag string, modTime time.Time, isImmutable bool) {
 	c.Header("ETag", etag)
-
-	// Set Last-Modified header (RFC 7232)
-	// Format: Wed, 21 Oct 2015 07:28:00 GMT
 	c.Header("Last-Modified", modTime.UTC().Format(http.TimeFormat))
-
-	// Cache-Control: public means the response can be cached by any cache (browser, CDN, proxy)
-	//
-	// For user-uploaded files: max-age=1 day (revalidatable)
-	// - Files rarely change, but we check daily for peace of mind
-	// - 304 responses are cheap (~300 bytes, ~10-50ms)
-	// - ETag changes automatically if file is modified
-	// - Good balance between freshness and efficiency
-	//
-	// For SQLAR-cached derivatives: max-age=1 year + immutable
-	// - These files NEVER change (they're content-addressed)
-	// - immutable directive = browser won't even revalidate
-	// - Maximum performance with zero staleness risk
 	if isImmutable {
 		c.Header("Cache-Control", "public, max-age=31536000, immutable")
 	} else {
-		c.Header("Cache-Control", "public, max-age=86400") // 1 day
+		c.Header("Cache-Control", "no-cache")
 	}
-
-	// Vary header tells caches to consider Accept-Encoding when caching
-	// (important for gzip/brotli compression)
 	c.Header("Vary", "Accept-Encoding")
+}
+
+// mutableETag builds an ETag for an on-disk file that may be replaced via
+// rename. Includes size and nanosecond mtime so delete+rename produces a
+// different ETag than the file it replaced, even when the source file's
+// mtime is preserved.
+func mutableETag(path string, info os.FileInfo) string {
+	return fmt.Sprintf(`"%d-%d-%s"`, info.Size(), info.ModTime().UnixNano(), computePathHash(path))
+}
+
+// immutableETag builds an ETag for content-addressed (SQLAR) files.
+func immutableETag(name string, modTime time.Time) string {
+	return fmt.Sprintf(`"%d-%s"`, modTime.Unix(), computePathHash(name))
 }
 
 // Note: We use Go's built-in http.ServeContent() for conditional request handling
