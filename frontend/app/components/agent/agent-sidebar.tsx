@@ -315,7 +315,7 @@ const SessionRow: FC<SessionRowProps> = ({
     <div
       {...(isActive ? { 'data-active': 'true' } : {})}
       {...(isRecentlyVisited ? { 'data-recently-visited': 'true' } : {})}
-      className="group relative flex h-8 items-center gap-1 rounded-md transition-colors duration-300 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none data-active:bg-muted data-[recently-visited=true]:bg-muted"
+      className="group relative flex h-8 items-center gap-1 rounded-md transition-colors duration-300 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none data-active:bg-foreground/10 data-[recently-visited=true]:bg-muted"
     >
       {renaming ? (
         <div className="flex h-full min-w-0 flex-1 items-center px-2.5">
