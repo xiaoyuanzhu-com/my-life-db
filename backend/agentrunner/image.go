@@ -327,10 +327,10 @@ func validateConfig(gc ImageGenConfig) error {
 // withDefaults fills in defaulted fields on ImageGenConfig (HTTPClient, Now, Model).
 func withDefaults(gc ImageGenConfig) ImageGenConfig {
 	if gc.HTTPClient == nil {
-		// 5 minutes accommodates gpt-image-2 high-quality at 1024x1536, which
-		// can take 90-150s. Keepalive SSE comments on the inbound side prevent
-		// the agent CLI from timing out during this wait.
-		gc.HTTPClient = &http.Client{Timeout: 5 * time.Minute}
+		// 1 hour accommodates gpt-image-2 even when the upstream is slow
+		// (we've seen edit_image take 300+s). Keepalive SSE comments on the
+		// inbound side prevent the agent CLI from timing out during this wait.
+		gc.HTTPClient = &http.Client{Timeout: time.Hour}
 	}
 	if gc.Now == nil {
 		gc.Now = time.Now

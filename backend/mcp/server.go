@@ -27,8 +27,9 @@ const protocolVersion = "2024-11-05"
 
 // toolCallTimeout caps how long a single tools/call may run before the server
 // aborts. Sized for the slowest tool currently registered (image generation,
-// ~30-90s typical, ~5min worst case via the upstream HTTP timeout).
-const toolCallTimeout = 6 * time.Minute
+// ~30-90s typical, ~1h worst case via the upstream HTTP timeout). Kept 1 min
+// above the upstream so the upstream error is what surfaces.
+const toolCallTimeout = time.Hour + time.Minute
 
 // keepaliveInterval is how often the SSE path sends a `: keepalive\n\n`
 // comment frame to keep proxy and client read-timers from firing.
