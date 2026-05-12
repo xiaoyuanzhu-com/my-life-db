@@ -15,6 +15,8 @@ interface UseSendQueueResult {
   send: (text: string | undefined, files: File[]) => Promise<PendingInboxItem[]>;
   /** Cancel a pending upload */
   cancel: (id: string) => Promise<void>;
+  /** Manually retry a failed pending upload */
+  retry: (id: string) => Promise<void>;
   /** Refresh the pending items list */
   refresh: () => Promise<void>;
 }
@@ -73,6 +75,11 @@ export function useSendQueue(
     return manager.cancelUpload(id);
   }, []);
 
+  const retry = useCallback(async (id: string): Promise<void> => {
+    const manager = getUploadQueueManager();
+    return manager.retryUpload(id);
+  }, []);
+
   const refresh = useCallback(async (): Promise<void> => {
     const manager = getUploadQueueManager();
     const items = await manager.getPendingItems();
@@ -84,6 +91,7 @@ export function useSendQueue(
     isInitialized,
     send,
     cancel,
+    retry,
     refresh,
   };
 }

@@ -430,6 +430,47 @@ export class UploadQueueManager {
   }
 
   /**
+   * Manually retry a failed/stalled item. Resets the retry budget so a
+   * terminally `failed` item becomes eligible for upload again, and kicks
+   * `processNext()` so a fresh attempt starts immediately.
+   */
+  async retryUpload(id: string): Promise<void> {
+    const timer = this.retryTimers.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      this.retryTimers.delete(id);
+    }
+
+    const active = this.activeUploads.get(id);
+    if (active) {
+      active.abortController.abort();
+      if (active.tusUpload) {
+        active.tusUpload.abort(true);
+      }
+      if (active.heartbeatInterval) {
+        clearInterval(active.heartbeatInterval);
+      }
+      this.activeUploads.delete(id);
+    }
+
+    const item = await getItem(id);
+    if (!item) return;
+
+    await saveItem({
+      ...item,
+      status: 'uploading',
+      retryCount: 0,
+      uploadProgress: 0,
+      errorMessage: undefined,
+      nextRetryAt: undefined,
+      uploadingBy: undefined,
+      uploadingAt: undefined,
+    });
+    await this.notifyProgress();
+    this.processNext();
+  }
+
+  /**
    * Delete completed uploads whose serverPath matches any of the given paths
    * Called by file-tree when real files appear in the tree
    */

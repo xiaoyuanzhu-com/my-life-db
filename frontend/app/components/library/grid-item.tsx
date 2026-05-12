@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pencil, Trash2, Copy, Loader2, CircleAlert, Download, Upload, FolderUp, FolderPlus, PackageOpen } from 'lucide-react';
+import { Pencil, Trash2, Copy, Loader2, CircleAlert, Download, Upload, FolderUp, FolderPlus, PackageOpen, RotateCw, X } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import { api, encodePath } from '~/lib/api';
 import { downloadFile, downloadFolder, getSqlarUrl } from '~/components/FileCard/utils';
@@ -50,6 +50,10 @@ interface GridItemProps {
   onUploadFolderTo?: (targetPath: string) => void;
   /** Create a new subfolder in this folder (only for folder items) */
   onNewFolderIn?: (parentPath: string) => void;
+  /** Retry a pending upload (only meaningful for virtual file nodes with an error) */
+  onRetryUpload?: (pendingItemId: string) => void;
+  /** Cancel a pending upload (only for virtual file nodes) */
+  onCancelUpload?: (pendingItemId: string) => void;
 }
 
 export function GridItem({
@@ -64,6 +68,8 @@ export function GridItem({
   onUploadFileTo,
   onUploadFolderTo,
   onNewFolderIn,
+  onRetryUpload,
+  onCancelUpload,
 }: GridItemProps) {
   const { t } = useTranslation(['data', 'common']);
   const [isRenaming, setIsRenaming] = useState(false);
@@ -78,6 +84,9 @@ export function GridItem({
 
   const isUploading = node.uploadStatus === 'pending' || node.uploadStatus === 'uploading';
   const hasError = node.uploadStatus === 'error';
+  // Virtual file rows backed by a pending upload — file isn't on the server yet,
+  // so preview / rename / download / etc. don't apply. Show retry+cancel instead.
+  const isPendingFile = !isFolder && !!node.pendingItemId;
 
   const systemDir = getSystemDir(fullPath, isFolder);
   const systemDirDescription = systemDir
@@ -262,6 +271,7 @@ export function GridItem({
               onClick={(e) => {
                 if (isRenaming) return;
                 e.stopPropagation();
+                if (isPendingFile) return;
                 onClick();
               }}
               onTouchStart={handleTouchStart}
@@ -323,6 +333,7 @@ export function GridItem({
               onClick={(e) => {
                 if (isRenaming) return;
                 e.stopPropagation();
+                if (isPendingFile) return;
                 onClick();
               }}
               onTouchStart={handleTouchStart}
@@ -359,47 +370,69 @@ export function GridItem({
           )}
         </ContextMenuTrigger>
         <ContextMenuContent>
-          {isFolder && (
+          {isPendingFile ? (
             <>
-              <ContextMenuItem onClick={() => onUploadFileTo?.(fullPath)}>
-                <Upload className="w-4 h-4 mr-2" />
-                Upload Files Here
+              {hasError && (
+                <ContextMenuItem
+                  onClick={() => node.pendingItemId && onRetryUpload?.(node.pendingItemId)}
+                >
+                  <RotateCw className="w-4 h-4 mr-2" />
+                  Retry Upload
+                </ContextMenuItem>
+              )}
+              <ContextMenuItem
+                onClick={() => node.pendingItemId && onCancelUpload?.(node.pendingItemId)}
+                variant="destructive"
+              >
+                <X className="w-4 h-4 mr-2" />
+                Cancel Upload
               </ContextMenuItem>
-              <ContextMenuItem onClick={() => onUploadFolderTo?.(fullPath)}>
-                <FolderUp className="w-4 h-4 mr-2" />
-                Upload Folder Here
+            </>
+          ) : (
+            <>
+              {isFolder && (
+                <>
+                  <ContextMenuItem onClick={() => onUploadFileTo?.(fullPath)}>
+                    <Upload className="w-4 h-4 mr-2" />
+                    Upload Files Here
+                  </ContextMenuItem>
+                  <ContextMenuItem onClick={() => onUploadFolderTo?.(fullPath)}>
+                    <FolderUp className="w-4 h-4 mr-2" />
+                    Upload Folder Here
+                  </ContextMenuItem>
+                  <ContextMenuItem onClick={() => onNewFolderIn?.(fullPath)}>
+                    <FolderPlus className="w-4 h-4 mr-2" />
+                    New Folder Here
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                </>
+              )}
+              <ContextMenuItem onClick={handleDownload}>
+                <Download className="w-4 h-4 mr-2" />
+                Download
               </ContextMenuItem>
-              <ContextMenuItem onClick={() => onNewFolderIn?.(fullPath)}>
-                <FolderPlus className="w-4 h-4 mr-2" />
-                New Folder Here
+              {!isFolder && isArchiveFile(name) && (
+                <ContextMenuItem onClick={handleExtract} disabled={isExtracting}>
+                  <PackageOpen className="w-4 h-4 mr-2" />
+                  {isExtracting ? 'Extracting...' : 'Extract Here'}
+                </ContextMenuItem>
+              )}
+              <ContextMenuSeparator />
+              <ContextMenuItem onClick={startRename}>
+                <Pencil className="w-4 h-4 mr-2" />
+                Rename
+              </ContextMenuItem>
+              <ContextMenuItem onClick={handleCopyPath}>
+                <Copy className="w-4 h-4 mr-2" />
+                Copy Path
               </ContextMenuItem>
               <ContextMenuSeparator />
+              <ContextMenuItem onClick={() => setShowDeleteDialog(true)} variant="destructive">
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete
+              </ContextMenuItem>
             </>
           )}
-          <ContextMenuItem onClick={handleDownload}>
-            <Download className="w-4 h-4 mr-2" />
-            Download
-          </ContextMenuItem>
-          {!isFolder && isArchiveFile(name) && (
-            <ContextMenuItem onClick={handleExtract} disabled={isExtracting}>
-              <PackageOpen className="w-4 h-4 mr-2" />
-              {isExtracting ? 'Extracting...' : 'Extract Here'}
-            </ContextMenuItem>
-          )}
-          <ContextMenuSeparator />
-          <ContextMenuItem onClick={startRename}>
-            <Pencil className="w-4 h-4 mr-2" />
-            Rename
-          </ContextMenuItem>
-          <ContextMenuItem onClick={handleCopyPath}>
-            <Copy className="w-4 h-4 mr-2" />
-            Copy Path
-          </ContextMenuItem>
-          <ContextMenuSeparator />
-          <ContextMenuItem onClick={() => setShowDeleteDialog(true)} variant="destructive">
-            <Trash2 className="w-4 h-4 mr-2" />
-            Delete
-          </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
 

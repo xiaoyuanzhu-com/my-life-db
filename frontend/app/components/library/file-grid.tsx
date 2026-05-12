@@ -317,6 +317,9 @@ export function FileGrid({
   const handleItemClick = (node: FileNode, fullPath: string) => {
     if (node.type === 'folder') {
       navigateTo(fullPath);
+    } else if (node.pendingItemId) {
+      // Pending upload — file isn't on the server yet, so no preview to open.
+      return;
     } else {
       onFileOpen(fullPath, getNodeName(node));
     }
@@ -331,6 +334,30 @@ export function FileGrid({
     onFileRenamed?.(oldPath, newPath);
     loadChildren(false);
   }, [onFileRenamed, loadChildren]);
+
+  const handleRetryUpload = useCallback(async (pendingItemId: string) => {
+    try {
+      const { getUploadQueueManager } = await import('~/lib/send-queue/upload-queue-manager');
+      const manager = getUploadQueueManager();
+      await manager.init();
+      await manager.retryUpload(pendingItemId);
+    } catch (error) {
+      console.error('Failed to retry upload:', error);
+      toast.error(t('data:upload.retryFailed', 'Failed to retry upload'));
+    }
+  }, [t]);
+
+  const handleCancelUpload = useCallback(async (pendingItemId: string) => {
+    try {
+      const { getUploadQueueManager } = await import('~/lib/send-queue/upload-queue-manager');
+      const manager = getUploadQueueManager();
+      await manager.init();
+      await manager.cancelUpload(pendingItemId);
+    } catch (error) {
+      console.error('Failed to cancel upload:', error);
+      toast.error(t('data:upload.cancelFailed', 'Failed to cancel upload'));
+    }
+  }, [t]);
 
   // Merge real children with virtual upload nodes
   const realChildPaths = new Set(children.map(c => c.path));
@@ -455,6 +482,8 @@ export function FileGrid({
                   onUploadFileTo={handleUploadFileTo}
                   onUploadFolderTo={handleUploadFolderTo}
                   onNewFolderIn={handleNewFolderIn}
+                  onRetryUpload={handleRetryUpload}
+                  onCancelUpload={handleCancelUpload}
                 />
               );
             })}

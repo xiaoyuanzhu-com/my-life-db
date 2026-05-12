@@ -12,6 +12,9 @@ export interface FileNode {
   children?: FileNode[];
   uploadStatus?: 'pending' | 'uploading' | 'error';
   uploadProgress?: number;
+  /** IndexedDB id of the underlying pending item — set on virtual file nodes
+   *  so the context menu can drive retry/cancel against it. */
+  pendingItemId?: string;
 }
 
 export type SortKey = 'name' | 'modifiedAt' | 'createdAt';
@@ -115,6 +118,7 @@ export function buildVirtualNodes(
         size: item.size,
         uploadStatus: getFileUploadStatus(item),
         uploadProgress: item.uploadProgress,
+        pendingItemId: item.id,
       });
       continue;
     }
