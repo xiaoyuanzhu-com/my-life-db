@@ -51,12 +51,22 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # OCI labels (image.revision, image.created, …) have to be applied
+      # at per-arch build time — `buildx imagetools create` in the merge
+      # job only stamps tags, not labels.
+      - name: Extract labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
       - name: Build and push by digest
         id: build
         uses: docker/build-push-action@v5
         with:
           context: .
           platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
           # Push by digest only — no tags. The merge job assembles the
           # final tagged manifest list from the per-arch digests.
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
