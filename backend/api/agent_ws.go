@@ -679,7 +679,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 
 			log.Info().
 				Str("sessionId", sessionID).
-				Str("prompt", promptText).
+				Int("promptLen", len(promptText)).
 				Msg("prompt sent to agent session via WebSocket")
 
 		case "session.cancel":

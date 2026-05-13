@@ -91,35 +91,13 @@ func (c *acpClient) SessionUpdate(ctx context.Context, params acp.SessionNotific
 	// Debug: log frame sequence to detect ACP SDK goroutine reordering.
 	seq := c.frameSeq.Add(1)
 	frameType := "unknown"
-	framePreview := ""
 	switch {
 	case update.UserMessageChunk != nil:
 		frameType = "user_message_chunk"
-		if update.UserMessageChunk.Content.Text != nil {
-			t := update.UserMessageChunk.Content.Text.Text
-			if len(t) > 80 {
-				t = t[:80]
-			}
-			framePreview = t
-		}
 	case update.AgentMessageChunk != nil:
 		frameType = "agent_message_chunk"
-		if update.AgentMessageChunk.Content.Text != nil {
-			t := update.AgentMessageChunk.Content.Text.Text
-			if len(t) > 80 {
-				t = t[:80]
-			}
-			framePreview = t
-		}
 	case update.AgentThoughtChunk != nil:
 		frameType = "agent_thought_chunk"
-		if update.AgentThoughtChunk.Content.Text != nil {
-			t := update.AgentThoughtChunk.Content.Text.Text
-			if len(t) > 80 {
-				t = t[:80]
-			}
-			framePreview = t
-		}
 	case update.ToolCall != nil:
 		frameType = fmt.Sprintf("tool_call[%s]", update.ToolCall.ToolCallId)
 	case update.ToolCallUpdate != nil:
@@ -135,7 +113,7 @@ func (c *acpClient) SessionUpdate(ctx context.Context, params acp.SessionNotific
 	default:
 		frameType = "other"
 	}
-	log.Info().Int64("seq", seq).Str("frameType", frameType).Str("preview", framePreview).Msg("ACP SessionUpdate received")
+	log.Info().Int64("seq", seq).Str("frameType", frameType).Msg("ACP SessionUpdate received")
 
 	// Marshal the ACP SessionUpdate to JSON (uses ACP SDK's custom MarshalJSON
 	// which produces JSON with a "sessionUpdate" discriminator field).
