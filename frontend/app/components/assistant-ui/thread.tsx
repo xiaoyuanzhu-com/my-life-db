@@ -447,6 +447,16 @@ const DraftPersistenceSync: FC = () => {
   // Persist as-you-type by forwarding into the outbox. Suppressed until the
   // restore phase completes (so we don't immediately overwrite the restored
   // draft with assistant-ui's transient initial empty text).
+  //
+  // NOTE: we deliberately do NOT mirror empty text → discardDraft. That is
+  // the empty-transient-wipe class of bug DESIGN.md was written to prevent
+  // (I2 in `draft-outbox/outbox.ts`): assistant-ui's auto-clear after submit
+  // also produces "", and discarding here would race the durable `submit` /
+  // create-session paths and silently destroy the user's input on a failed
+  // send. Drafts are removed only by `userDiscardedDraft` (atomic move into
+  // the outbox via `submit`) or by the runtime calling `discardDraft` after
+  // a confirmed-accepted send. The trade-off: text the user backspaced to
+  // empty without sending will reappear after a refresh.
   const activeSessionRef = useRef(sessionId);
   useEffect(() => {
     if (!hasRestoredRef.current) return;
@@ -455,22 +465,27 @@ const DraftPersistenceSync: FC = () => {
       activeSessionRef.current = sessionId;
       return;
     }
-    // Empty text means the user cleared the composer — discardDraft removes
-    // the localStorage entry so a refresh doesn't restore stale text.
-    // Transient empties from assistant-ui (thread switch, mount) are already
-    // gated by hasRestoredRef and the activeSessionRef session-change skip.
     if (text) {
       outbox.setDraft(text);
-    } else {
-      outbox.discardDraft();
     }
   }, [text, sessionId, outbox]);
 
-  // Note: the legacy `pendingComposerText` failed-send restore path has been
-  // removed. The outbox now handles the same case durably: on a failed send
-  // the draft is never cleared (because the outbox only clears on
-  // `userDiscardedDraft` or after the corresponding outbox item is acked),
-  // so a remount/refresh re-restores it via the effect above.
+  // Subscribe to draftRestored events so a non-composer-source draft change
+  // (e.g. runtime calling `restoreDraft` from a failed-send catch) re-fills
+  // the live composer textarea. The hook's draft state alone is invisible
+  // to assistant-ui's internal composer text — only `composer.setText` is.
+  useEffect(() => {
+    if (!outbox) return;
+    return outbox.subscribeDraftRestored((restoredText) => {
+      composerRef.current.setText(restoredText);
+    });
+  }, [outbox]);
+
+  // Note: the legacy `pendingComposerText` failed-send restore path was
+  // removed in the v2 outbox refactor and replaced by the durable
+  // `restoreDraft` event above — the live textarea now refills on failure
+  // (via `subscribeDraftRestored`) AND the draft survives a refresh
+  // (because the runtime never pre-discards before POST).
 
   return null;
 };

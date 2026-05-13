@@ -32,6 +32,13 @@ export interface UseDraftOutboxResult {
   setDraft: (text: string) => void
   submit: (payload: { text: string; attachments?: AttachmentRef[] }) => string
   discardDraft: () => void
+  /**
+   * Push text back into the draft from a non-composer source (e.g. the
+   * runtime catch after a failed POST). Persists durably AND fires the
+   * `draftRestored` channel — `subscribeDraftRestored` consumers (the
+   * composer bridge) re-display it in the live textarea.
+   */
+  restoreDraft: (text: string) => void
 
   // ── Network-driven signals (called from WS hook / onFrame) ──
   notifyConnection: (state: ConnState) => void
@@ -50,6 +57,14 @@ export interface UseDraftOutboxResult {
   subscribeItemFailed: (
     handler: (e: { messageId: string; reason: string; retryable: boolean }) => void,
   ) => () => void
+
+  /**
+   * Subscribe to `draftRestored` events. The composer bridge uses this to
+   * imperatively call `composer.setText(text)` — necessary because the
+   * assistant-ui composer maintains its own internal text state and won't
+   * pick up outbox-side draft changes through React state alone.
+   */
+  subscribeDraftRestored: (handler: (text: string) => void) => () => void
 }
 
 /**
@@ -123,13 +138,14 @@ export function useDraftOutbox(sessionId: string): UseDraftOutboxResult {
     setConnState("closed")
   }
 
-  // External subscribers (flush, itemFailed). We multiplex through here so
-  // a single outbox subscription serves all consumers and we don't pay the
-  // cost of one outbox.subscribe per consumer.
+  // External subscribers (flush, itemFailed, draftRestored). We multiplex
+  // through here so a single outbox subscription serves all consumers and
+  // we don't pay the cost of one outbox.subscribe per consumer.
   const flushSubsRef = useRef<Set<(item: OutboxItem) => void>>(new Set())
   const failSubsRef = useRef<
     Set<(e: { messageId: string; reason: string; retryable: boolean }) => void>
   >(new Set())
+  const restoreSubsRef = useRef<Set<(text: string) => void>>(new Set())
 
   useEffect(() => {
     const ob = createDraftOutbox({ sessionId })
@@ -145,6 +161,7 @@ export function useDraftOutbox(sessionId: string): UseDraftOutboxResult {
       switch (event.type) {
         case "draftRestored":
           setDraftState(event.text)
+          for (const h of restoreSubsRef.current) h(event.text)
           break
         case "draftCleared":
           setDraftState("")
@@ -199,6 +216,15 @@ export function useDraftOutbox(sessionId: string): UseDraftOutboxResult {
     outboxRef.current?.userDiscardedDraft()
   }, [])
 
+  // Restore the draft from a non-composer source (e.g. runtime catch after
+  // a failed POST). Writes to durable storage AND fires `draftRestored`,
+  // which DraftPersistenceSync forwards into the live composer textarea —
+  // setDraft alone leaves the textarea blank until next mount.
+  const restoreDraft = useCallback((text: string) => {
+    outboxRef.current?.restoreDraft(text)
+    setDraftState(text)
+  }, [])
+
   const notifyConnection = useCallback((state: ConnState) => {
     setConnState(state)
     outboxRef.current?.connectionChanged(state)
@@ -245,6 +271,17 @@ export function useDraftOutbox(sessionId: string): UseDraftOutboxResult {
     [],
   )
 
+  // Subscribe to draftRestored events. Used by DraftPersistenceSync to
+  // imperatively push restored text into the assistant-ui composer (whose
+  // own internal text state is otherwise unaware of outbox-side restores).
+  const subscribeDraftRestored = useCallback(
+    (handler: (text: string) => void): (() => void) => {
+      restoreSubsRef.current.add(handler)
+      return () => restoreSubsRef.current.delete(handler)
+    },
+    [],
+  )
+
   return useMemo(
     () => ({
       draft,
@@ -254,6 +291,7 @@ export function useDraftOutbox(sessionId: string): UseDraftOutboxResult {
       setDraft,
       submit,
       discardDraft,
+      restoreDraft,
       notifyConnection,
       notifyAcked,
       notifyRejected,
@@ -262,6 +300,7 @@ export function useDraftOutbox(sessionId: string): UseDraftOutboxResult {
       discardOutboxItem,
       subscribeFlush,
       subscribeItemFailed,
+      subscribeDraftRestored,
     }),
     [
       draft,
@@ -271,6 +310,7 @@ export function useDraftOutbox(sessionId: string): UseDraftOutboxResult {
       setDraft,
       submit,
       discardDraft,
+      restoreDraft,
       notifyConnection,
       notifyAcked,
       notifyRejected,
@@ -279,6 +319,7 @@ export function useDraftOutbox(sessionId: string): UseDraftOutboxResult {
       discardOutboxItem,
       subscribeFlush,
       subscribeItemFailed,
+      subscribeDraftRestored,
     ],
   )
 }

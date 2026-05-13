@@ -1075,12 +1075,17 @@ export function useAgentRuntime(options: {
 
         if (onSend) {
           // New-session path: prompt is delivered via HTTP session-create,
-          // not WS. The outbox owns the draft; we just discard it (the
-          // optimistic message holds the text for the user) and on failure
-          // restore it. No outbox enqueue here — the prompt isn't a WS
-          // send and a stuck 'new-session' outbox item would have nowhere
-          // to ack from.
-          outbox?.discardDraft()
+          // not WS. The outbox holds the durable draft until we know the
+          // POST landed. On success, the create-session handler in
+          // agent.tsx synchronously calls outbox.discardDraft() before
+          // goToSession() — doing it here in .then() would race the
+          // navigation and target the new session's outbox instead of
+          // 'new-session'. On failure we restore via `restoreDraft` (which
+          // fires `draftRestored` so the live composer textarea refills,
+          // and persists in localStorage so a refresh also restores).
+          // Pre-POST discard would race the catch and lose the user's
+          // input on transport-level failures (e.g. wifi swap mid-request,
+          // ERR_NETWORK_CHANGED).
           pendingOptimisticRef.current = text
           setMessages((prev) => [
             ...prev,
@@ -1097,8 +1102,11 @@ export function useAgentRuntime(options: {
             pendingOptimisticRef.current = null
             setMessages([])
             setIsRunning(false)
-            // Restore draft so the user's text reappears in the composer.
-            outbox?.setDraft(text)
+            // Restore both the durable draft AND the live composer text.
+            // `restoreDraft` emits `draftRestored`, which DraftPersistenceSync
+            // forwards to `composer.setText` — `setDraft` alone would only
+            // refill localStorage, leaving the textarea blank.
+            outbox?.restoreDraft(text)
           })
         } else {
           // Existing-session path: hand the prompt to the outbox. It

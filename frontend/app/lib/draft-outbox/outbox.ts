@@ -57,6 +57,13 @@ export interface DraftOutbox {
   userTyped(text: string): void
   userSubmitted(payload: SubmitPayload): string // returns messageId (= the message's id end-to-end)
   userDiscardedDraft(): void
+  /**
+   * Put text back into the draft from a non-composer source (e.g. the runtime
+   * after a failed send). Persists durably AND fires `draftRestored` so the
+   * live composer textarea can re-display it — userTyped() alone only writes
+   * to storage and would leave the UI empty until next mount.
+   */
+  restoreDraft(text: string): void
   connectionChanged(state: ConnState): void
   serverAcked(messageId: string): void
   serverRejected(messageId: string, reason: string): void
@@ -245,6 +252,21 @@ export function createDraftOutbox(opts: CreateOptions): DraftOutbox {
       diag.drafts.cleared += 1
       logger.info("userDiscardedDraft", { sessionId })
       emit({ type: "draftCleared", sessionId })
+    },
+
+    restoreDraft(text: string): void {
+      tickIn("restoreDraft")
+      // Same value? skip the write — but still emit so the composer
+      // textarea (which can be out of sync with outbox.draft) gets the
+      // chance to re-display it.
+      if (text !== draft) {
+        draft = text
+        if (text) saveDraft(sessionId, text)
+        else clearDraft(sessionId)
+        diag.drafts.persisted += 1
+      }
+      logger.info("restoreDraft", { sessionId, "text.len": text.length })
+      emit({ type: "draftRestored", sessionId, text })
     },
 
     connectionChanged(state: ConnState): void {

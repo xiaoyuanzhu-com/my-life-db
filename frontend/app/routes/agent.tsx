@@ -1134,17 +1134,28 @@ export default function AgentPage() {
         const without = prevSessions.filter((s) => s.id !== newSession.id)
         return sortSessions([newSession, ...without])
       })
+      // Confirmed-accepted: drop the durable new-session draft NOW, before
+      // navigation. The outbox handle here still targets 'new-session';
+      // after goToSession() it would swap to the new session's outbox and
+      // a deferred discard would clear the wrong draft (or no-op).
+      outbox.discardDraft()
       // New sessions created via the composer are user sessions → /agent/:id.
       goToSession(session.id, 'user')
       setShowNewSessionMobile(false)
-      localStorage.removeItem('agent-input:new-session')
     } catch (error) {
       console.error('Failed to create session:', error)
-      // Surface to the user. Until now this only logged to console, so a new
-      // user hitting an agent_crash from the ACP subprocess would see their
-      // composer text vanish with no explanation.
-      const detail = error instanceof Error ? error.message : String(error)
-      toast.error(t('agent:errors.createSessionFailed', { error: detail }))
+      // Toast policy mirrors the WS-send path: transient transport blips
+      // (wifi swap mid-request → TypeError: Failed to fetch, offline, etc.)
+      // are silent — the runtime catch keeps the user's text in the composer
+      // and outbox, so they can just re-hit Send. Only surface a toast when
+      // the server actually responded with an error (HTTP 4xx/5xx parsed
+      // into the thrown message above), which is the one durable failure
+      // signal the user needs to see.
+      const isTransport = error instanceof TypeError
+      if (!isTransport) {
+        const detail = error instanceof Error ? error.message : String(error)
+        toast.error(t('agent:errors.createSessionFailed', { error: detail }))
+      }
       throw error // Re-throw so the runtime can restore composer text
     } finally {
       setIsCreatingSession(false)
