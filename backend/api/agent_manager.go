@@ -219,6 +219,12 @@ func (m *AgentManager) RestartSession(sessionID string) error {
 // GetOrCreateState returns the SessionState for the given session ID,
 // creating one if it doesn't exist. When a FrameStore is configured,
 // it is wired into new states so frames are persisted automatically.
+//
+// New states are seeded with the session's persisted result_count from the DB
+// so the in-memory counter reflects the true total across server restarts.
+// Without this, in-memory ResultCount starts at 0 and new live turns can't
+// push DB result_count past the prior value (it's MAX-guarded), which
+// permanently suppresses the unread dot.
 func (m *AgentManager) GetOrCreateState(sessionID string) *agentsdk.SessionState {
 	m.statesMu.Lock()
 	defer m.statesMu.Unlock()
@@ -228,6 +234,11 @@ func (m *AgentManager) GetOrCreateState(sessionID string) *agentsdk.SessionState
 	state := agentsdk.NewSessionState(sessionID)
 	if m.frameStore != nil {
 		state.SetFrameStore(m.frameStore)
+	}
+	if rc, err := m.srv.AppDB().GetAgentSessionResultCount(sessionID); err != nil {
+		log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to load persisted result_count; in-memory starts at 0")
+	} else {
+		state.ResultCount = rc
 	}
 	m.states[sessionID] = state
 	return state

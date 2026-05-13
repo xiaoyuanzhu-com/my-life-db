@@ -333,6 +333,24 @@ func (d *DB) UpdateAgentSessionResultCount(ctx context.Context, sessionID string
 	})
 }
 
+// GetAgentSessionResultCount returns the persisted result_count for a single
+// session. Returns 0 if the session row doesn't exist yet — callers (e.g.
+// GetOrCreateState seeding on first state creation) treat that as "no history".
+func (d *DB) GetAgentSessionResultCount(sessionID string) (int, error) {
+	var count int
+	err := d.conn.QueryRow(
+		`SELECT result_count FROM agent_sessions WHERE session_id = ?`,
+		sessionID,
+	).Scan(&count)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 // GetAllSessionResultCounts returns the persisted result_count for all sessions
 // where result_count > 0, as a session_id -> count map.
 // Used to reconstruct unread-state after a server restart wipes the in-memory
