@@ -2,6 +2,7 @@ package fs
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 
@@ -122,7 +123,16 @@ func (w *watcher) watchRecursive(root string) error {
 		// Add directory to watcher
 		if info.IsDir() {
 			if err := w.watcher.Add(path); err != nil {
-				log.Warn().Err(err).Str("path", path).Msg("failed to watch directory")
+				// fsnotify's macOS kqueue backend enumerates children
+				// during Add (mimicking inotify) and bails on broken
+				// symlinks with ENOENT. The watch itself is registered;
+				// only that child-listing step aborts. Downgrade so it
+				// doesn't look like a real failure.
+				if errors.Is(err, os.ErrNotExist) {
+					log.Debug().Err(err).Str("path", path).Msg("watch added; broken symlink in subtree skipped")
+				} else {
+					log.Warn().Err(err).Str("path", path).Msg("failed to watch directory")
+				}
 			}
 		}
 
