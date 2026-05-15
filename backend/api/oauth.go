@@ -35,6 +35,11 @@ type TokenResponse struct {
 
 // OAuthAuthorize handles GET /api/system/oauth/authorize
 func (h *Handlers) OAuthAuthorize(c *gin.Context) {
+	if !auth.IsAuthRequired() {
+		c.Redirect(http.StatusFound, "/")
+		return
+	}
+
 	// Get OIDC provider with automatic discovery
 	provider, err := auth.GetOIDCProvider()
 	if err != nil {
@@ -81,6 +86,11 @@ func (h *Handlers) OAuthAuthorize(c *gin.Context) {
 
 // OAuthCallback handles GET /api/system/oauth/callback
 func (h *Handlers) OAuthCallback(c *gin.Context) {
+	if !auth.IsAuthRequired() {
+		c.Redirect(http.StatusFound, "/")
+		return
+	}
+
 	code := c.Query("code")
 	if code == "" {
 		errMsg := c.Query("error")
@@ -232,6 +242,14 @@ func (h *Handlers) OAuthCallback(c *gin.Context) {
 
 // OAuthRefresh handles POST /api/system/oauth/refresh
 func (h *Handlers) OAuthRefresh(c *gin.Context) {
+	// When auth is disabled, the frontend's proactive refresh paths
+	// (visibility change, SSE/WS reconnect) still POST here. Reply quietly
+	// instead of attempting OIDC discovery and logging a 503.
+	if !auth.IsAuthRequired() {
+		c.Status(http.StatusNoContent)
+		return
+	}
+
 	// Get refresh token: cookie first (web clients), then JSON body (native clients)
 	refreshToken, _ := c.Cookie("refresh_token")
 	if refreshToken == "" {
@@ -307,6 +325,11 @@ func (h *Handlers) OAuthRefresh(c *gin.Context) {
 
 // OAuthToken handles GET /api/system/oauth/token
 func (h *Handlers) OAuthToken(c *gin.Context) {
+	if !auth.IsAuthRequired() {
+		c.JSON(http.StatusOK, gin.H{"authenticated": true})
+		return
+	}
+
 	// Get access token from cookie or header
 	accessToken := c.Request.Header.Get("Authorization")
 	if strings.HasPrefix(accessToken, "Bearer ") {
