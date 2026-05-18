@@ -293,7 +293,6 @@ Never create shadcn components manually.
 | MLD_INBOX_AGENT | | Set to `1` to enable inbox agent |
 | AGENT_BASE_URL | | Agent LLM gateway URL (e.g., litellm). When set, agents use this instead of own credentials |
 | AGENT_API_KEY | | Agent LLM gateway API key |
-| AGENT_CUSTOMER_ID | | Per-user customer ID for gateway usage tracking |
 | AGENT_MODELS | | JSON array of available models: `[{"value":"...","name":"...","description":"..."}]` |
 | DB_LOG_QUERIES | | Set to `1` to enable SQL query logging |
 | DEBUG | | Debug module filter (optional) |

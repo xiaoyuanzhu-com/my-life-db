@@ -45,10 +45,9 @@ func main() {
 				}
 			}
 			return server.AgentLLMConfig{
-				BaseURL:    cfg.AgentBaseURL,
-				APIKey:     cfg.AgentAPIKey,
-				CustomerID: cfg.AgentCustomerID,
-				Models:     agentModels,
+				BaseURL: cfg.AgentBaseURL,
+				APIKey:  cfg.AgentAPIKey,
+				Models:  agentModels,
 			}
 		}(),
 	}

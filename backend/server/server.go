@@ -257,11 +257,7 @@ func New(cfg *Config) (*Server, error) {
 			// real key for now; their CLIs also persist it to disk
 			// (~/.codex/auth.json etc.), so proxying only the env would give
 			// a misleading sense of secrecy. Tracked as follow-up.
-			extraHeaders := http.Header{}
-			if cfg.AgentLLM.CustomerID != "" {
-				extraHeaders.Set("x-litellm-customer-id", cfg.AgentLLM.CustomerID)
-			}
-			proxy, err := agentproxy.New(cfg.AgentLLM.BaseURL, cfg.AgentLLM.APIKey, extraHeaders)
+			proxy, err := agentproxy.New(cfg.AgentLLM.BaseURL, cfg.AgentLLM.APIKey)
 			if err != nil {
 				return nil, fmt.Errorf("agent proxy: %w", err)
 			}
@@ -294,9 +290,6 @@ func New(cfg *Config) (*Server, error) {
 				codexEnv["OPENAI_MODEL"] = codexModels[0].Value
 			}
 
-			// TODO(qwen): no customer-ID header path yet; cfg.AgentLLM.CustomerID is
-			// not propagated to Qwen sessions. Investigate qwen-cli env vars or config
-			// file for custom HTTP headers.
 			qwenEnv["OPENAI_BASE_URL"] = cfg.AgentLLM.BaseURL
 			qwenEnv["OPENAI_API_KEY"] = cfg.AgentLLM.APIKey
 			if qwenModels := FilterModelsForAgent(cfg.AgentLLM.Models, "qwen"); len(qwenModels) > 0 {
@@ -304,15 +297,11 @@ func New(cfg *Config) (*Server, error) {
 			}
 
 			// gemini-cli v0.x+ supports GEMINI_CLI_CUSTOM_HEADERS
-			// (google-gemini/gemini-cli#11893, merged 2025-11). Pass as a single
-			// header line; only inject when a customer ID is configured.
+			// (google-gemini/gemini-cli#11893, merged 2025-11).
 			geminiEnv["GOOGLE_GEMINI_BASE_URL"] = cfg.AgentLLM.BaseURL
 			geminiEnv["GEMINI_API_KEY"] = cfg.AgentLLM.APIKey
 			if geminiModels := FilterModelsForAgent(cfg.AgentLLM.Models, "gemini"); len(geminiModels) > 0 {
 				geminiEnv["GEMINI_MODEL"] = geminiModels[0].Value
-			}
-			if cfg.AgentLLM.CustomerID != "" {
-				geminiEnv["GEMINI_CLI_CUSTOM_HEADERS"] = "x-litellm-customer-id: " + cfg.AgentLLM.CustomerID
 			}
 			// MyLifeDB fully owns the per-agent config dirs for codex, gemini,
 			// qwen, and opencode (auth files, settings, model catalogs). To keep
@@ -341,23 +330,21 @@ func New(cfg *Config) (*Server, error) {
 				}
 
 				// Always write config.toml: `model_catalog_json` must be set
-				// for the bundled catalog to take effect. The litellm provider
-				// block is only emitted when CustomerID is set (codex has no
-				// env var for custom HTTP headers).
+				// for the bundled catalog to take effect. Use an HTTP-only
+				// provider with supports_websockets=false to force HTTP transport
+				// until the websocket path is fixed upstream.
 				configPath := filepath.Join(codexHome, "config.toml")
 				configTOML := fmt.Sprintf("model_catalog_json = %q\n", catalogPath)
-				if cfg.AgentLLM.CustomerID != "" {
-					configTOML += fmt.Sprintf(`
-model_provider = "litellm"
+				configTOML += fmt.Sprintf(`
+model_provider = "openai_http"
 
-[model_providers.litellm]
-name = "litellm"
-base_url = %q
+[model_providers.openai_http]
+name = "OpenAI HTTP only"
 wire_api = "responses"
-env_key = "OPENAI_API_KEY"
-http_headers = { "x-litellm-customer-id" = %q }
-`, cfg.AgentLLM.BaseURL+"/v1", cfg.AgentLLM.CustomerID)
-				}
+requires_openai_auth = true
+supports_websockets = false
+base_url = %q
+`, cfg.AgentLLM.BaseURL+"/v1")
 				if err := os.WriteFile(configPath, []byte(configTOML), 0600); err != nil {
 					log.Warn().Err(err).Str("path", configPath).Msg("failed to write codex config.toml")
 				}
@@ -384,35 +371,17 @@ http_headers = { "x-litellm-customer-id" = %q }
 				}
 			}
 
-			// Write settings.json under QWEN_HOME. qwen-code (a gemini-cli fork)
-			// does not honor GEMINI_CLI_CUSTOM_HEADERS; it only reads
-			// customHeaders from its settings.json.
+			// Ensure Qwen home dir exists. No per-agent config needed —
+			// Qwen uses env vars (OPENAI_BASE_URL, OPENAI_API_KEY, OPENAI_MODEL).
 			qwenHome := resolveAgentHome("QWEN_HOME", "qwen", cfg.AppDataDir)
 			qwenEnv["QWEN_HOME"] = qwenHome
 			if err := os.MkdirAll(qwenHome, 0700); err != nil {
 				log.Warn().Err(err).Str("path", qwenHome).Msg("failed to create qwen home")
-			} else {
-				settings := map[string]any{}
-				if cfg.AgentLLM.CustomerID != "" {
-					settings["model"] = map[string]any{
-						"generationConfig": map[string]any{
-							"customHeaders": map[string]string{
-								"x-litellm-customer-id": cfg.AgentLLM.CustomerID,
-							},
-						},
-					}
-				}
-				qwenSettingsPath := filepath.Join(qwenHome, "settings.json")
-				if body, err := json.MarshalIndent(settings, "", "  "); err != nil {
-					log.Warn().Err(err).Msg("failed to marshal qwen settings.json")
-				} else if err := os.WriteFile(qwenSettingsPath, body, 0600); err != nil {
-					log.Warn().Err(err).Str("path", qwenSettingsPath).Msg("failed to write qwen settings.json")
-				}
 			}
 
 			// Write opencode.json under OPENCODE_CONFIG. opencode has no env-var
 			// path for provider options; the provider block (baseURL, apiKey,
-			// headers, models) lives in JSON. Unlike the other agents,
+			// models) lives in JSON. Unlike the other agents,
 			// OPENCODE_CONFIG points at the file itself, not a directory.
 			opencodeConfigPath := os.Getenv("OPENCODE_CONFIG")
 			if opencodeConfigPath == "" {
@@ -426,11 +395,6 @@ http_headers = { "x-litellm-customer-id" = %q }
 				providerOptions := map[string]any{
 					"baseURL": cfg.AgentLLM.BaseURL,
 					"apiKey":  cfg.AgentLLM.APIKey,
-				}
-				if cfg.AgentLLM.CustomerID != "" {
-					providerOptions["headers"] = map[string]string{
-						"x-litellm-customer-id": cfg.AgentLLM.CustomerID,
-					}
 				}
 				models := map[string]any{}
 				for _, m := range FilterModelsForAgent(cfg.AgentLLM.Models, "opencode") {

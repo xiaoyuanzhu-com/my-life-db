@@ -90,10 +90,9 @@ func (c *Config) ToFSConfig() fs.Config {
 
 // AgentLLMConfig holds configuration for the agent LLM gateway.
 type AgentLLMConfig struct {
-	BaseURL    string
-	APIKey     string
-	CustomerID string
-	Models     []AgentModelInfo
+	BaseURL string
+	APIKey  string
+	Models  []AgentModelInfo
 }
 
 // AgentModelInfo describes an available model from the LLM gateway.

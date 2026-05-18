@@ -40,7 +40,6 @@ type Config struct {
 	// Agent LLM (AGENT_* env vars — translated per agent type)
 	AgentBaseURL    string // AGENT_BASE_URL — LLM gateway (e.g., litellm)
 	AgentAPIKey     string // AGENT_API_KEY — gateway API key
-	AgentCustomerID string // AGENT_CUSTOMER_ID — per-user ID for usage tracking
 	AgentModels     string // AGENT_MODELS — JSON array of available models
 
 	// Debug settings
@@ -114,7 +113,6 @@ func load() *Config {
 		// Agent LLM
 		AgentBaseURL:    getEnv("AGENT_BASE_URL", ""),
 		AgentAPIKey:     getEnv("AGENT_API_KEY", ""),
-		AgentCustomerID: getEnv("AGENT_CUSTOMER_ID", ""),
 		AgentModels:     getEnv("AGENT_MODELS", ""),
 
 		// Debug
@@ -160,7 +158,7 @@ var appEnvKeys = []string{
 	"MLD_AUTH_MODE", "MLD_OAUTH_CLIENT_ID", "MLD_OAUTH_CLIENT_SECRET",
 	"MLD_OAUTH_ISSUER_URL", "MLD_OAUTH_REDIRECT_URI", "MLD_EXPECTED_USERNAME",
 	// Agent LLM gateway
-	"AGENT_BASE_URL", "AGENT_API_KEY", "AGENT_CUSTOMER_ID", "AGENT_MODELS",
+	"AGENT_BASE_URL", "AGENT_API_KEY", "AGENT_MODELS",
 	// ANTHROPIC_* (deployment mirrors AGENT_* for agent child processes)
 	"ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "ANTHROPIC_CUSTOM_HEADERS",
 	"ANTHROPIC_MODEL", "ANTHROPIC_SMALL_FAST_MODEL",

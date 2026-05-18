@@ -13,18 +13,16 @@ import (
 // upstreamRecorder is a fake LiteLLM that captures the inbound request
 // for assertions and replies with a fixed body.
 type upstreamRecorder struct {
-	gotAuth      string
-	gotAPIKey    string
-	gotCustomer  string
-	gotPath      string
-	gotBody      string
+	gotAuth   string
+	gotAPIKey string
+	gotPath   string
+	gotBody   string
 }
 
 func (u *upstreamRecorder) handler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u.gotAuth = r.Header.Get("Authorization")
 		u.gotAPIKey = r.Header.Get("x-api-key")
-		u.gotCustomer = r.Header.Get("x-litellm-customer-id")
 		u.gotPath = r.URL.Path
 		body, _ := io.ReadAll(r.Body)
 		u.gotBody = string(body)
@@ -39,20 +37,15 @@ func TestProxy_InjectsRealKeyAndStripsAgentAuth(t *testing.T) {
 	upstream := httptest.NewServer(rec.handler())
 	defer upstream.Close()
 
-	headers := http.Header{}
-	headers.Set("x-litellm-customer-id", "iloahz")
-	p, err := New(upstream.URL, "real-upstream-key-XYZ", headers)
+	p, err := New(upstream.URL, "real-upstream-key-XYZ")
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	tok := p.IssueToken()
 
-	// Agent → proxy: presents its own token + a bogus customer header
-	// (which should be overwritten, not appended to).
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"prompt":"hi"}`))
 	req.Header.Set("x-api-key", tok)
 	req.Header.Set("Authorization", "Bearer "+tok)
-	req.Header.Set("x-litellm-customer-id", "evil-override-attempt")
 
 	resp := httptest.NewRecorder()
 	p.ServeHTTP(resp, req)
@@ -68,9 +61,6 @@ func TestProxy_InjectsRealKeyAndStripsAgentAuth(t *testing.T) {
 	}
 	if rec.gotAuth != "" {
 		t.Errorf("upstream Authorization should be stripped, got %q", rec.gotAuth)
-	}
-	if rec.gotCustomer != "iloahz" {
-		t.Errorf("upstream x-litellm-customer-id = %q, want iloahz (proxy must overwrite agent's value)", rec.gotCustomer)
 	}
 	if rec.gotPath != "/v1/messages" {
 		t.Errorf("upstream path = %q, want /v1/messages", rec.gotPath)
