@@ -284,12 +284,7 @@ Never create shadcn components manually.
 | ENV | development | Environment (development/production) |
 | USER_DATA_DIR | ./data | User data directory (inbox, notes, etc.) |
 | APP_DATA_DIR | ./.my-life-db | App data directory (database, cache) |
-| MLD_AUTH_MODE | none | Auth mode: `none`, `password`, or `oauth` |
-| MLD_OAUTH_CLIENT_ID | | OAuth client ID |
-| MLD_OAUTH_CLIENT_SECRET | | OAuth client secret |
-| MLD_OAUTH_ISSUER_URL | | OIDC issuer URL |
-| MLD_OAUTH_REDIRECT_URI | | OAuth redirect URI |
-| MLD_EXPECTED_USERNAME | | Expected username for user instance |
+| MLD_AUTH_MODE | none | Auth mode: `none` (all APIs open) or `password` (HTTP/cookie password auth). Third-party OAuth lives in the cloud gateway, not the backend. |
 | MLD_INBOX_AGENT | | Set to `1` to enable inbox agent |
 | AGENT_BASE_URL | | Agent LLM gateway URL (e.g., litellm). When set, agents use this instead of own credentials |
 | AGENT_API_KEY | | Agent LLM gateway API key |
@@ -303,8 +298,7 @@ All API routes are defined in [backend/api/routes.go](backend/api/routes.go). Ke
 
 | Group | Routes | Description |
 |-------|--------|-------------|
-| Auth | `/api/auth/*` | Login/logout |
-| OAuth | `/api/oauth/*` | OAuth flow (authorize, callback, token, refresh, logout) |
+| Auth | `/api/system/auth/login`, `/api/system/auth/logout` | Password login/logout |
 | Inbox | `/api/inbox`, `/api/inbox/:id` | Inbox CRUD + pinning + re-enrichment + status |
 | Library | `/api/library/*` | File management, tree structure, pinning, rename, move |
 | Search | `/api/search` | Full-text search |
@@ -327,10 +321,11 @@ The app embeds Claude Code sessions with a web UI for interacting with Claude CL
 - **Docs**: See Claude Code section in `../my-life-db-docs/`
 
 ### Authentication
-Three auth modes configured via `MLD_AUTH_MODE`:
-- `none` — no authentication (default)
-- `password` — simple password auth
-- `oauth` — OIDC/OAuth 2.0 flow (see `backend/auth/`)
+Two auth modes configured via `MLD_AUTH_MODE`:
+- `none` — no authentication; every API is open (default)
+- `password` — owner-session cookie required on every `/api/*` route except the public login + share routes
+
+Third-party access (OAuth / "Connect" protocol / scoped tokens) used to live in the backend but has been moved out to the cloud gateway. The backend is now a user-agnostic data store and does not validate Connect tokens, read `X-Mxy-Sub`, or enforce scopes.
 
 ## Logging
 

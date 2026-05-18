@@ -8,51 +8,27 @@ import (
 
 // SetupRoutes configures all API routes with handlers.
 //
-// The route table follows the namespace structure locked in
-// internal/api/api-structure.md (Phase B): three tiers, six top-level
-// `/api/*` namespaces, plus four protocol/byte-I/O surfaces outside `/api/`.
+// Auth model (post-Connect):
 //
-//   tier      | namespaces
-//   --------- | --------------------------------
-//   product   | /api/data/, /api/agent/, /api/explore/
-//   protocol  | /api/connect/, /api/mcp/
-//   admin     | /api/system/
+//   - "none" (default): all APIs are open
+//   - "password":      AuthMiddleware enforces an owner session cookie on every
+//                      /api/* route except the password-login + public ones
 //
-// Phase D removed all legacy `/api/library/*`, `/api/auth/*`, `/api/oauth/*`,
-// `/api/settings`, `/api/stats`, `/api/notifications/stream`, `/api/upload/*`,
-// `/api/search`, `/api/directories`, `/api/apps*`, `/api/collectors*`, and
-// `/api/share/*` aliases now that all first-party clients (web + iOS) speak
-// the new namespace.
+// Third-party OAuth ("Connect" protocol) used to live here; it has been moved
+// out of the backend entirely to the cloud gateway. The backend is now a
+// user-agnostic data store. The /webhook/*, /webdav/*, /s3/* integration
+// surfaces still authenticate via integration credentials (a separate concept
+// from Connect OAuth tokens); they remain mounted but will migrate to the
+// gateway in a later pass.
 func SetupRoutes(r *gin.Engine, h *Handlers) {
 	auth := h.AuthMiddleware()
-	connectAuth := h.ConnectAuthMiddleware()
-	bufferBody := h.BufferJSONBody()
-
-	// =========================================================================
-	// Outside `/api/` — OAuth public endpoints + RFC 8414 discovery
-	// =========================================================================
-	// MyLifeDB Connect — OAuth 2.1 endpoints exposed at the top level so
-	// third-party apps can hardcode them. Public; PKCE replaces the client
-	// secret on /connect/token.
-	r.POST("/connect/token", h.ConnectToken)
-	r.POST("/connect/revoke", h.ConnectRevoke)
-	r.GET("/.well-known/oauth-authorization-server", h.ConnectMetadata)
 
 	// =========================================================================
 	// Outside `/api/` — byte I/O surfaces
 	// =========================================================================
-	// Raw file serving — protected. Three middlewares run in order:
-	//
-	//   1. ConnectAuthMiddleware  — if a valid Connect bearer token is
-	//      attached, attach it to the request context; if it's invalid,
-	//      reject here. No-op for owner-session traffic.
-	//   2. AuthMiddleware         — owner-session check; passes through
-	//      automatically when (1) already authenticated the request.
-	//   3. RequireConnectScope    — for Connect-authenticated callers,
-	//      check that the resolved scope satisfies the path; pass-through
-	//      for owner-session callers.
-	r.GET("/raw/*path", connectAuth, auth, h.RequireConnectScope("files.read"), h.ServeRawFile)
-	r.PUT("/raw/*path", connectAuth, auth, h.RequireConnectScope("files.write"), h.SaveRawFile)
+	// Raw file serving — owner-only when password mode is on; open otherwise.
+	r.GET("/raw/*path", auth, h.ServeRawFile)
+	r.PUT("/raw/*path", auth, h.SaveRawFile)
 	r.GET("/sqlar/*path", auth, h.ServeSqlarFile)
 
 	// Integration surfaces — non-OAuth ingestion endpoints. Each route
@@ -87,14 +63,9 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 	// =========================================================================
 	public := r.Group("/api")
 	{
-		// --- /api/system/* — auth + OAuth login flow (must be public) ---
+		// --- /api/system/* — password login flow (must be public) ---
 		public.POST("/system/auth/login", h.Login)
 		public.POST("/system/auth/logout", h.Logout)
-		public.GET("/system/oauth/authorize", h.OAuthAuthorize)
-		public.GET("/system/oauth/callback", h.OAuthCallback)
-		public.POST("/system/oauth/refresh", h.OAuthRefresh)
-		public.GET("/system/oauth/token", h.OAuthToken)
-		public.POST("/system/oauth/logout", h.OAuthLogout)
 
 		// --- /api/agent/share/:token — public share link reads ---
 		public.GET("/agent/share/:token", h.GetSharedSession)
@@ -107,11 +78,6 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		public.GET("/public/apps", h.GetApps)
 		public.GET("/public/apps/:id", h.GetApp)
 
-		// --- /api/connect/* — Connect consent UI preview (public) ---
-		// The consent screen renders "App X wants permissions Y" before the
-		// user is asked to approve. Read-only; mints no tokens or grants.
-		public.GET("/connect/authorize/preview", h.ConnectAuthorizePreview)
-
 		// --- /api/mcp — JSON-RPC tool runtime ---
 		// Single MCP endpoint hosting every MyLifeDB tool. Auth: the server's
 		// internal MCP token is enforced when callers send an Authorization
@@ -121,7 +87,6 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 		public.GET("/mcp", func(c *gin.Context) {
 			c.Status(http.StatusMethodNotAllowed)
 		})
-
 	}
 
 	// =========================================================================
@@ -132,91 +97,44 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 	{
 		// ---------------------------------------------------------------------
 		// /api/data/* — file I/O, search, events, uploads, ingestion config
-		//
-		// Phase E: Connect-scope-gated. `connectAuth` resolves a Connect
-		// token (if present) into request context; per-route middleware
-		// then enforces files.read / files.write against the request's
-		// effective path.
-		//
-		// Three path-extraction strategies:
-		//   - RequireConnectScope        — gin catch-all `*path`
-		//   - RequireConnectScopeQuery   — `?path=` query parameter
-		//   - RequireConnectScopeRoot    — implicit "/" (whole-FS scope)
-		//
-		// Body-derived paths (POST /folders, PATCH /files move-variant,
-		// POST /extract, POST /uploads/finalize) use BufferJSONBody +
-		// inline h.CheckConnectScope(...) calls inside the handler.
 		// ---------------------------------------------------------------------
 		data := api.Group("/data")
-		data.Use(connectAuth)
 		{
 			// File metadata + lifecycle (REST: path is the resource).
-			data.GET("/files/*path",
-				h.RequireConnectScope("files.read"), h.GetDataFile)
-			data.DELETE("/files/*path",
-				h.RequireConnectScope("files.write"), h.DeleteDataFile)
-			// PATCH: middleware checks write scope on the SOURCE path; the
-			// handler additionally calls CheckConnectScope on the DEST path
-			// for the move-variant.
-			data.PATCH("/files/*path",
-				bufferBody, h.RequireConnectScope("files.write"), h.PatchDataFile)
+			data.GET("/files/*path", h.GetDataFile)
+			data.DELETE("/files/*path", h.DeleteDataFile)
+			data.PATCH("/files/*path", h.PatchDataFile)
 
-			// Folder creation. Body has {parent, name}; effective path is
-			// parent/name. Handler calls CheckConnectScope inline.
-			data.POST("/folders",
-				bufferBody, h.CreateDataFolder)
+			// Folder creation. Body has {parent, name}.
+			data.POST("/folders", h.CreateDataFolder)
 
-			// Tree view of a folder. Note: `tree` is a derived view, so it
-			// gets its own subroot rather than `/folders/*path/tree` (which
-			// gin's catch-all syntax cannot express — `*path` must be the
-			// final segment).
-			data.GET("/tree",
-				h.RequireConnectScopeQuery("files.read"), h.GetLibraryTree)
+			// Tree view of a folder.
+			data.GET("/tree", h.GetLibraryTree)
 
 			// Pin lifecycle (idempotent PUT/DELETE on the pin resource).
-			// Pins are "owner-side state about a file" — gated as files.write.
-			data.PUT("/pins/*path",
-				h.RequireConnectScope("files.write"), h.PutDataPin)
-			data.DELETE("/pins/*path",
-				h.RequireConnectScope("files.write"), h.DeleteDataPin)
+			data.PUT("/pins/*path", h.PutDataPin)
+			data.DELETE("/pins/*path", h.DeleteDataPin)
 
 			// Misc.
-			data.GET("/download",
-				h.RequireConnectScopeQuery("files.read"), h.DownloadLibraryPath)
-			data.POST("/extract",
-				bufferBody, h.ExtractArchive)
-			data.GET("/root",
-				h.RequireConnectScopeRoot("files.read"), h.GetLibraryRoot)
-			data.GET("/directories",
-				h.RequireConnectScopeRoot("files.read"), h.GetDirectories)
-			data.GET("/search",
-				h.RequireConnectScopeRoot("files.read"), h.Search)
+			data.GET("/download", h.DownloadLibraryPath)
+			data.POST("/extract", h.ExtractArchive)
+			data.GET("/root", h.GetLibraryRoot)
+			data.GET("/directories", h.GetDirectories)
+			data.GET("/search", h.Search)
 
-			// Filesystem event stream (renamed from /api/notifications/stream:
-			// these are filesystem events, not user-facing notifications).
-			// The stream itself requires files.read at root; events are
-			// filtered per-event by the handler against the token's scopes.
-			data.GET("/events",
-				h.RequireConnectScopeRoot("files.read"), h.NotificationStream)
+			// Filesystem event stream.
+			data.GET("/events", h.NotificationStream)
 
 			// Uploads (Simple PUT for small files + TUS for large files).
-			data.PUT("/uploads/simple/*path",
-				h.RequireConnectScope("files.write"), h.SimpleUpload)
-			data.POST("/uploads/finalize",
-				bufferBody, h.FinalizeUpload)
-			data.Any("/uploads/tus/*path",
-				h.RequireConnectScope("files.write"), h.TUSHandler)
+			data.PUT("/uploads/simple/*path", h.SimpleUpload)
+			data.POST("/uploads/finalize", h.FinalizeUpload)
+			data.Any("/uploads/tus/*path", h.TUSHandler)
 
-			// App + collector catalogs (ingestion config). These are
-			// owner-side metadata — gate at root scope.
-			data.GET("/apps",
-				h.RequireConnectScopeRoot("files.read"), h.GetApps)
-			data.GET("/apps/:id",
-				h.RequireConnectScopeRoot("files.read"), h.GetApp)
-			data.GET("/collectors",
-				h.RequireConnectScopeRoot("files.read"), h.GetCollectors)
-			data.PUT("/collectors/:id",
-				h.RequireConnectScopeRoot("files.write"), h.UpsertCollector)
+			// App + collector catalogs (ingestion config).
+			data.GET("/apps", h.GetApps)
+			data.GET("/apps/:id", h.GetApp)
+			data.GET("/collectors", h.GetCollectors)
+			data.PUT("/collectors/:id", h.UpsertCollector)
 		}
 
 		// ---------------------------------------------------------------------
@@ -228,26 +146,18 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 			explore.GET("/posts/:id", h.GetExplorePost)
 			explore.GET("/posts/:id/comments", h.GetExploreComments)
 			explore.DELETE("/posts/:id", h.DeleteExplorePost)
-			// REST writes (POST /posts, /posts/:id/comments, /posts/:id/tags)
-			// are reserved by the ADR; backend implementation lands in a
-			// follow-up. Until then, writes flow through MCP tools.
 		}
 
 		// ---------------------------------------------------------------------
-		// /api/connect/* — owner-side OAuth admin + non-OAuth credentials
+		// /api/connect/credentials — integration credential CRUD
+		//
+		// These manage long-lived secrets for the non-OAuth ingestion
+		// surfaces (webhook / WebDAV / S3). They live under the legacy
+		// /api/connect/* namespace for now and will migrate to the cloud
+		// gateway in a later pass.
 		// ---------------------------------------------------------------------
 		connect := api.Group("/connect")
 		{
-			connect.POST("/consent", h.ConnectConsent)
-			connect.GET("/clients", h.ConnectListClients)
-			connect.DELETE("/clients/:id", h.ConnectRevokeClient)
-			connect.GET("/clients/:id/audit", h.ConnectClientAudit)
-
-			// Long-lived credentials for non-OAuth ingestion surfaces
-			// (HTTP webhook / WebDAV / S3-compatible). Lives in the
-			// /api/connect/* namespace because it is the same
-			// conceptual category — third-party access management —
-			// just with a different auth model.
 			connect.GET("/credentials", h.IntegrationListCredentials)
 			connect.POST("/credentials", h.IntegrationCreateCredential)
 			connect.DELETE("/credentials/:id", h.IntegrationRevokeCredential)
@@ -264,7 +174,6 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 			system.POST("/settings", h.ResetSettings)
 			system.GET("/stats", h.GetStats)
 		}
-
 	}
 
 	// =========================================================================

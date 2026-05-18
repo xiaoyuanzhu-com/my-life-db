@@ -1,10 +1,12 @@
 package config
 
 import (
+	stdlog "log"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -29,13 +31,9 @@ type Config struct {
 	SimpleExtensionPath string
 	SimpleDictDir       string
 
-	// OAuth settings
-	AuthMode              string
-	OAuthClientID         string
-	OAuthClientSecret     string
-	OAuthIssuerURL        string
-	OAuthRedirectURI      string
-	OAuthExpectedUsername string
+	// Auth settings. Two modes supported: "none" (default) or "password".
+	// Third-party OAuth lives in the cloud gateway, not the backend.
+	AuthMode string
 
 	// Agent LLM (AGENT_* env vars — translated per agent type)
 	AgentBaseURL    string // AGENT_BASE_URL — LLM gateway (e.g., litellm)
@@ -87,6 +85,18 @@ func load() *Config {
 	simpleExtPath := filepath.Join(extDir, libBase)
 	simpleDictDir := filepath.Join(extDir, "dict")
 
+	authMode := getEnv("MLD_AUTH_MODE", "none")
+	switch strings.ToLower(authMode) {
+	case "none", "password":
+		// supported
+	case "oauth":
+		stdlog.Fatalf("config: MLD_AUTH_MODE=oauth is no longer supported by the backend. " +
+			"The OAuth/Connect login flow has moved to the cloud gateway. " +
+			"Use MLD_AUTH_MODE=none or password instead.")
+	default:
+		stdlog.Fatalf("config: MLD_AUTH_MODE=%q is unknown; expected 'none' or 'password'", authMode)
+	}
+
 	return &Config{
 		// Server
 		Port: getEnvInt("PORT", 12345),
@@ -102,13 +112,8 @@ func load() *Config {
 		SimpleExtensionPath: simpleExtPath,
 		SimpleDictDir:       simpleDictDir,
 
-		// OAuth
-		AuthMode:              getEnv("MLD_AUTH_MODE", "none"),
-		OAuthClientID:         getEnv("MLD_OAUTH_CLIENT_ID", ""),
-		OAuthClientSecret:     getEnv("MLD_OAUTH_CLIENT_SECRET", ""),
-		OAuthIssuerURL:        getEnv("MLD_OAUTH_ISSUER_URL", ""),
-		OAuthRedirectURI:      getEnv("MLD_OAUTH_REDIRECT_URI", ""),
-		OAuthExpectedUsername: getEnv("MLD_EXPECTED_USERNAME", ""),
+		// Auth
+		AuthMode: authMode,
 
 		// Agent LLM
 		AgentBaseURL:    getEnv("AGENT_BASE_URL", ""),
@@ -154,9 +159,8 @@ var appEnvKeys = []string{
 	"HOST_USER_DATA_DIR", "HOST_APP_DATA_DIR", "HOST_CLAUDE_DIR",
 	"HOST_CODEX_DIR", "HOST_CONFIG_DIR", "HOST_GEMINI_DIR",
 	"HOST_OPENCODE_DIR", "HOST_QWEN_DIR", "HOST_SSH_DIR",
-	// OAuth
-	"MLD_AUTH_MODE", "MLD_OAUTH_CLIENT_ID", "MLD_OAUTH_CLIENT_SECRET",
-	"MLD_OAUTH_ISSUER_URL", "MLD_OAUTH_REDIRECT_URI", "MLD_EXPECTED_USERNAME",
+	// Auth
+	"MLD_AUTH_MODE",
 	// Agent LLM gateway
 	"AGENT_BASE_URL", "AGENT_API_KEY", "AGENT_MODELS",
 	// ANTHROPIC_* (deployment mirrors AGENT_* for agent child processes)

@@ -41,13 +41,9 @@ type Config struct {
 	// Agent LLM
 	AgentLLM AgentLLMConfig
 
-	// OAuth settings
-	AuthMode              string
-	OAuthClientID         string
-	OAuthClientSecret     string
-	OAuthIssuerURL        string
-	OAuthRedirectURI      string
-	OAuthExpectedUsername string
+	// Auth mode: "none" (default) or "password". Third-party OAuth lives in
+	// the cloud gateway, not the backend.
+	AuthMode string
 
 	// Debug settings
 	DBLogQueries bool

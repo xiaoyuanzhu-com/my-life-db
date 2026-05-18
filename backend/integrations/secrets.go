@@ -35,7 +35,7 @@ const (
 
 	// Length of the random portion of a secret (bytes pre-base64).
 	// 32 bytes → ~43 chars base64url, comfortably above the OAuth opaque-token
-	// floor and matches connect.RandomToken sizing.
+	// floor.
 	secretRandomBytes = 32
 
 	// Length of the random portion of a credential id / public id (bytes pre-base64).

@@ -20,7 +20,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/agentproxy"
 	"github.com/xiaoyuanzhu-com/my-life-db/agentrunner"
 	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
-	"github.com/xiaoyuanzhu-com/my-life-db/connect"
 	"github.com/xiaoyuanzhu-com/my-life-db/integrations"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/explore"
@@ -55,7 +54,6 @@ type Server struct {
 	fsHook          *hooks.FSHook
 	agentRunner     *agentrunner.Runner
 	mcpTools        *mcptools.Cache
-	connectStore    *connect.Store
 	integrations    *integrations.Store
 
 	// Per-credential rate limiter for the non-OAuth ingestion surfaces
@@ -564,10 +562,6 @@ base_url = %q
 	log.Info().Msg("initializing session indexer")
 	s.sessionIndexer = sessionindex.New(s.appDB, s.indexDB, s.frameStore, 0)
 
-	// 7.5. MyLifeDB Connect store — third-party app authorization (OAuth 2.1
-	// + PKCE). Schema is owned by db/migration_026_connect.go (app DB).
-	s.connectStore = connect.NewStore(s.appDB.Conn())
-
 	// 7.6. Integration credentials — webhook/WebDAV/S3 long-lived secrets
 	// for non-OAuth ingestion surfaces. Schema is owned by
 	// db/migration_031_integration_credentials.go (app DB).
@@ -907,7 +901,6 @@ func (s *Server) AgentRunner() *agentrunner.Runner               { return s.agen
 func (s *Server) MCP() *mcppkg.Server                            { return s.mcpServer }
 func (s *Server) MCPTools() *mcptools.Cache                      { return s.mcpTools }
 func (s *Server) MCPToken() string                            { return s.mcpToken }
-func (s *Server) Connect() *connect.Store                        { return s.connectStore }
 func (s *Server) Integrations() *integrations.Store              { return s.integrations }
 func (s *Server) IntegrationsLimiter() *integrations.Limiter     { return s.integrationsLimiter }
 

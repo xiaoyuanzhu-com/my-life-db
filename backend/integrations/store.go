@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"time"
-
-	"github.com/xiaoyuanzhu-com/my-life-db/connect"
 )
 
 // Store is the persistence layer for integration credentials. Backed by
@@ -24,9 +22,9 @@ func NewStore(db *sql.DB) *Store { return &Store{db: db} }
 // included). The caller must show the raw secret to the owner immediately and
 // never re-fetch it; only the bcrypt hash is persisted.
 //
-// scope is parsed via connect.ParseScopes — the credential holds exactly one
-// scope so we reject empty input or anything containing more than one scope
-// token. Reusing the Connect parser means typos and unknown families surface
+// scope is parsed via ParseScopes — the credential holds exactly one scope
+// so we reject empty input or anything containing more than one scope
+// token. Using the package parser means typos and unknown families surface
 // at create time, not request time.
 func (s *Store) Create(name string, p Protocol, scope string) (*IssuedCredential, error) {
 	if name == "" {
@@ -35,7 +33,7 @@ func (s *Store) Create(name string, p Protocol, scope string) (*IssuedCredential
 	if scope == "" {
 		return nil, errors.New("scope is required")
 	}
-	parsed, err := connect.ParseScopes(scope)
+	parsed, err := ParseScopes(scope)
 	if err != nil {
 		return nil, fmt.Errorf("invalid scope: %w", err)
 	}
@@ -183,12 +181,10 @@ func (s *Store) TouchLastUsed(id, ip string) {
 }
 
 // RecordAudit appends a row to integration_audit for one gated request.
-// Best-effort; failure logs nowhere and does not propagate — the goroutine
-// that calls this from RequestPrincipal.AuditFn already runs detached.
+// Best-effort; failure logs nowhere and does not propagate.
 //
 // `scopeFamily` is the family that satisfied the request on success (e.g.
-// "files.write") or "" on denial — same convention as connect_audit's scope
-// column.
+// "files.write") or "" on denial.
 func (s *Store) RecordAudit(credentialID, ip, method, path string, status int, scopeFamily string) {
 	_, _ = s.db.Exec(
 		`INSERT INTO integration_audit (credential_id, timestamp, ip, method, path, status, scope_family)
@@ -197,10 +193,8 @@ func (s *Store) RecordAudit(credentialID, ip, method, path string, status int, s
 	)
 }
 
-// AuditRow is one decoded row from integration_audit. Mirrors the shape
-// connect.AuditEntry exposes (timestamp, method, path, status, IP,
-// scope_family) so the frontend audit drawer can render either source
-// with the same column layout.
+// AuditRow is one decoded row from integration_audit. Columns: timestamp,
+// method, path, status, IP, scope_family.
 type AuditRow struct {
 	ID           int64
 	CredentialID string

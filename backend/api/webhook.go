@@ -12,10 +12,9 @@
 //  2. Look up the credential by the URL `:credentialId`. Reject if unknown,
 //     revoked, or not protocol=webhook.
 //  3. Bcrypt-verify the presented secret against the stored hash.
-//  4. Attach a RequestPrincipal carrying the credential's scope to the gin
-//     context so the same RequireConnectScope middleware that gates Connect
-//     bearer tokens enforces "files.write:<scope-path>" against
-//     "<scope-path>/<subpath>".
+//  4. Resolve the credential's single scope (files.write:<scope-path>) and
+//     reject any request whose resolved path is not contained inside
+//     <scope-path>. Each request is audited.
 //
 // Body handling:
 //   - Raw body (any Content-Type that is NOT multipart/form-data) writes one
@@ -44,7 +43,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/xiaoyuanzhu-com/my-life-db/connect"
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
 	"github.com/xiaoyuanzhu-com/my-life-db/integrations"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
@@ -133,11 +131,10 @@ func (h *Handlers) WebhookIngest(c *gin.Context) {
 		return
 	}
 
-	// Parse the credential's scope into a ScopeSet so the existing
-	// scope-enforcement machinery can gate the request. Validation already
+	// Parse the credential's scope into a ScopeSet. Validation already
 	// happened at credential-create time, so failure here is a corrupted
 	// row — surface as 500 rather than 400.
-	scopes, err := connect.ParseScopes(cred.Scope)
+	scopes, err := integrations.ParseScopes(cred.Scope)
 	if err != nil {
 		log.Error().Err(err).Str("credentialId", cred.ID).Str("scope", cred.Scope).
 			Msg("webhook: stored credential scope failed to parse")
@@ -157,19 +154,6 @@ func (h *Handlers) WebhookIngest(c *gin.Context) {
 	}
 
 	clientIP := c.ClientIP()
-
-	// Attach the principal so RequireConnectScope-style enforcement (and
-	// CheckConnectScope, if a future caller wants to use it inline) sees
-	// the credential's scopes. Audit goes to integration_audit, not
-	// connect_audit.
-	credIDCopy := cred.ID
-	setRequestPrincipal(c, &RequestPrincipal{
-		Scopes:      scopes,
-		PrincipalID: credIDCopy,
-		AuditFn: func(method, urlPath string, status int, scopeFamily string) {
-			store.RecordAudit(credIDCopy, clientIP, method, urlPath, status, scopeFamily)
-		},
-	})
 
 	// Best-effort touch — non-fatal if the DB blip swallows it.
 	store.TouchLastUsed(cred.ID, clientIP)
@@ -228,6 +212,7 @@ func (h *Handlers) webhookHandleRawBody(c *gin.Context, cred *integrations.Crede
 	if err != nil {
 		log.Error().Err(err).Str("credentialId", cred.ID).Str("path", resolved).
 			Msg("webhook: WriteFile failed")
+		h.server.Integrations().RecordAudit(cred.ID, c.ClientIP(), c.Request.Method, c.Request.URL.Path, http.StatusInternalServerError, "")
 		RespondInternalError(c, "failed to write file")
 		return
 	}
@@ -238,6 +223,7 @@ func (h *Handlers) webhookHandleRawBody(c *gin.Context, cred *integrations.Crede
 		Bool("isNew", result.IsNew).
 		Msg("webhook: file written")
 
+	h.server.Integrations().RecordAudit(cred.ID, c.ClientIP(), c.Request.Method, c.Request.URL.Path, http.StatusCreated, "files.write")
 	RespondCreated(c, gin.H{"path": "/" + resolved}, "/raw/"+resolved)
 }
 
@@ -299,6 +285,7 @@ func (h *Handlers) webhookHandleMultipart(c *gin.Context, cred *integrations.Cre
 		Int("partsWritten", written).
 		Msg("webhook: multipart upload complete")
 
+	h.server.Integrations().RecordAudit(cred.ID, c.ClientIP(), c.Request.Method, c.Request.URL.Path, http.StatusCreated, "files.write")
 	RespondCreated(c, gin.H{"path": "/" + lastResolved, "count": written}, "/raw/"+lastResolved)
 }
 
@@ -333,9 +320,10 @@ func (h *Handlers) webhookWriteOnePart(c *gin.Context, cred *integrations.Creden
 }
 
 // resolveAndCheckPath joins scopePath + subpath, normalizes the result,
-// confirms it's still rooted under scopePath, then runs the scope check
-// via CheckConnectScope (which fires the audit hook attached to the
-// principal). Returns (resolved, true) on success. On failure, it has
+// confirms it's still rooted under scopePath, then enforces the
+// files.write family against the credential's scopes (every webhook
+// request is a write). Audit is recorded on the credential before
+// returning. Returns (resolved, true) on success. On failure, it has
 // already written the error response — caller returns immediately.
 func resolveAndCheckPath(c *gin.Context, h *Handlers, cred *integrations.Credential, scopePath, subpath string) (string, bool) {
 	combined := joinSubpath(scopePath, subpath)
@@ -344,15 +332,10 @@ func resolveAndCheckPath(c *gin.Context, h *Handlers, cred *integrations.Credent
 	// the prefix check is sufficient.
 	prefix := path.Clean("/" + scopePath)
 	if cleaned != prefix && !strings.HasPrefix(cleaned, prefix+"/") {
+		store := h.server.Integrations()
+		store.RecordAudit(cred.ID, c.ClientIP(), c.Request.Method, c.Request.URL.Path, http.StatusForbidden, "")
 		RespondCoded(c, http.StatusForbidden, "FORBIDDEN",
 			"resolved path escapes credential scope")
-		return "", false
-	}
-
-	// CheckConnectScope reads the principal we attached above and runs
-	// the family + path check. files.write because every webhook write
-	// is a write.
-	if !h.CheckConnectScope(c, "files.write", cleaned) {
 		return "", false
 	}
 	return strings.TrimPrefix(cleaned, "/"), true

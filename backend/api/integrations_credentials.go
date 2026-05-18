@@ -1,6 +1,8 @@
 package api
 
 import (
+	"strconv"
+
 	"github.com/gin-gonic/gin"
 
 	"github.com/xiaoyuanzhu-com/my-life-db/integrations"
@@ -91,17 +93,13 @@ func (h *Handlers) IntegrationCredentialAudit(c *gin.Context) {
 	}
 	limit := 100
 	if v := c.Query("limit"); v != "" {
-		var n int
-		_, _ = fmtSscan(v, &n)
-		if n > 0 {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			limit = n
 		}
 	}
 	offset := 0
 	if v := c.Query("offset"); v != "" {
-		var n int
-		_, _ = fmtSscan(v, &n)
-		if n > 0 {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			offset = n
 		}
 	}

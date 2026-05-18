@@ -60,7 +60,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"golang.org/x/net/webdav"
 
-	"github.com/xiaoyuanzhu-com/my-life-db/connect"
 	"github.com/xiaoyuanzhu-com/my-life-db/integrations"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
@@ -112,7 +111,7 @@ func (h *Handlers) WebDAVHandler(c *gin.Context) {
 		return
 	}
 
-	scopes, err := connect.ParseScopes(cred.Scope)
+	scopes, err := integrations.ParseScopes(cred.Scope)
 	if err != nil {
 		log.Error().Err(err).Str("credentialId", cred.ID).Str("scope", cred.Scope).
 			Msg("webdav: stored credential scope failed to parse")

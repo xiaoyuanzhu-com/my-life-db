@@ -9,9 +9,8 @@
 //   - The raw secret is shown to the owner exactly once at creation; only its
 //     bcrypt hash and a short prefix are stored.
 //   - Lookups happen on every request (lookup row by public_id, bcrypt-compare
-//     secret); the resolved scope is then injected into the gin context where
-//     the same RequireConnectScope middleware that gates OAuth Connect tokens
-//     enforces it.
+//     secret); each surface handler then enforces the credential's scope
+//     against the requested path before delegating to the filesystem layer.
 //
 // This package owns persistence, secret generation, and verification — but
 // not the per-protocol auth handlers; those live alongside the surface

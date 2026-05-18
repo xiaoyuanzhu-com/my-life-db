@@ -64,7 +64,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/xiaoyuanzhu-com/my-life-db/connect"
 	"github.com/xiaoyuanzhu-com/my-life-db/integrations"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
@@ -84,7 +83,7 @@ const s3MaxBodyBytes int64 = 5 << 30 // 5 GB
 // applicable) and emit responses.
 type s3Context struct {
 	cred       *integrations.Credential
-	scopes     connect.ScopeSet
+	scopes     integrations.ScopeSet
 	scopePath  string // e.g. "health/apple/raw" (no leading slash)
 	bucketName string // decorative; always equal to bucketNameForScope(scopePath)
 	key        string // post-bucket-strip; "" for bucket-level ops, "foo/bar.txt" for object-level
@@ -220,7 +219,7 @@ func (h *Handlers) S3Handler(c *gin.Context) {
 	}
 
 	// ---- Scope resolution ---------------------------------------------
-	scopes, err := connect.ParseScopes(cred.Scope)
+	scopes, err := integrations.ParseScopes(cred.Scope)
 	if err != nil {
 		log.Error().Err(err).Str("credentialId", cred.ID).Str("scope", cred.Scope).
 			Msg("s3: stored credential scope failed to parse")
