@@ -9,7 +9,6 @@
   "tabs": {
     "general": "General",
     "connectedApps": "Connected Apps",
-    "integrations": "Integrations",
     "stats": "Stats"
   },
   "actions": {
@@ -19,63 +18,6 @@
     "retry": "Retry",
     "cancel": "Cancel",
     "done": "Done"
-  },
-  "integrations": {
-    "title": "Legacy integrations",
-    "subtitle": "Basic credentials for older apps that connect over webhook, WebDAV, or S3.",
-    "new": "Set up",
-    "empty": "No legacy integrations are set up yet.",
-    "fullAccess": "Full data access",
-    "credentialsTitle": "Credentials",
-    "credentialsHint": "Generate these only when a legacy client needs a token, username, or access key.",
-    "created": "Created",
-    "lastUsed": "Last used",
-    "fromIp": "from {{ip}}",
-    "revoke": "Revoke",
-    "history": "History",
-    "audit": {
-      "title": "Recent requests",
-      "empty": "No requests yet.",
-      "time": "Time",
-      "method": "Method",
-      "path": "Path",
-      "status": "Status",
-      "ip": "IP"
-    },
-    "confirmRevoke": "Revoke credential \"{{name}}\"? Any apps using it will stop working immediately.",
-    "errors": {
-      "nameRequired": "Name is required.",
-      "scopeRequired": "Folder path is required.",
-      "alreadyConfigured": "This protocol is already set up."
-    },
-    "create": {
-      "title": "Set up legacy access",
-      "description": "Create one full-access credential for an older app or client. The secret is shown once.",
-      "nameLabel": "Name",
-      "namePlaceholder": "Apple Health Shortcut",
-      "protocolLabel": "Protocol",
-      "scopeLabel": "Scope",
-      "scopeHint": "Folder under your data root. The credential will only see this subtree.",
-      "fullAccessHint": "Legacy credentials can read and write your data root.",
-      "surfaceDisabled": "This protocol is currently disabled. The credential will mint, but requests to its URL will 404 until you enable the toggle above.",
-      "submit": "Set up"
-    },
-    "reveal": {
-      "title": "Save your credentials",
-      "description": "These values are shown once. Copy them into your app now \u2014 you cannot retrieve them later.",
-      "username": "Username",
-      "password": "Password",
-      "bearerToken": "Bearer token",
-      "accessKeyId": "Access key id",
-      "secretAccessKey": "Secret access key",
-      "webhookUrl": "Webhook URL",
-      "webhookHint": "Replace `{filename}` with the destination path under your scope folder.",
-      "webdavMountUrl": "Mount URL",
-      "webdavHint": "Mount this URL with your username and password in any WebDAV client (Finder, Files, Cyberduck, Obsidian Remotely Save).",
-      "s3Endpoint": "Endpoint URL",
-      "s3Bucket": "Bucket name",
-      "s3Hint": "Configure your S3 client (rclone, restic, Duplicati) with this endpoint, bucket, access key id, and secret. Use path-style addressing and any region (the server ignores it)."
-    }
   },
   "toast": {
     "saveSuccess": "Settings saved successfully!",
@@ -92,14 +34,6 @@
       "label": "Display language",
       "hint": "The language used for MyLifeDB's interface. Empty follows your browser/system.",
       "systemDefault": "System default"
-    },
-    "surfaces": {
-      "title": "Integration surfaces",
-      "subtitle": "Enable the protocols apps can use to push data into MyLifeDB.",
-      "webhook": "HTTP webhook",
-      "webdav": "WebDAV",
-      "s3": "S3-compatible",
-      "liveHint": "Toggling a surface takes effect immediately."
     }
   },
   "stats": {

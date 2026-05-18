@@ -11,7 +11,6 @@ import { useAuth } from "~/contexts/auth-context";
 import type { UserSettings } from "~/lib/config/settings";
 import { api } from "~/lib/api";
 import { ConnectedAppsTab } from "~/components/settings/connected-apps-tab";
-import { IntegrationsTab } from "~/components/settings/integrations-tab";
 
 interface Stats {
   library: {
@@ -101,7 +100,6 @@ function SettingsContent() {
   const tabs = [
     { label: t('tabs.general', 'General'), value: "general", path: "/me" },
     { label: t('tabs.connectedApps', 'Connected Apps'), value: "connected-apps", path: "/me/connected-apps" },
-    { label: t('tabs.integrations', 'Integrations'), value: "integrations", path: "/me/integrations" },
     { label: t('tabs.stats', 'Stats'), value: "stats", path: "/me/stats" },
   ];
 
@@ -228,13 +226,8 @@ function SettingsContent() {
           <ConnectedAppsTab />
         )}
 
-        {/* Integrations Tab */}
-        {activeTab === "integrations" && (
-          <IntegrationsTab />
-        )}
-
         {/* Save Button */}
-        {activeTab !== "stats" && activeTab !== "connected-apps" && activeTab !== "integrations" && (
+        {activeTab !== "stats" && activeTab !== "connected-apps" && (
           <div className="flex items-center justify-end gap-3 pt-6">
             {saveMessage && (
               <div className="flex items-center gap-2">

@@ -20,7 +20,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/agentproxy"
 	"github.com/xiaoyuanzhu-com/my-life-db/agentrunner"
 	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
-	"github.com/xiaoyuanzhu-com/my-life-db/integrations"
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/explore"
 	"github.com/xiaoyuanzhu-com/my-life-db/fs"
@@ -54,17 +53,10 @@ type Server struct {
 	fsHook          *hooks.FSHook
 	agentRunner     *agentrunner.Runner
 	mcpTools        *mcptools.Cache
-	integrations    *integrations.Store
 
-	// Per-credential rate limiter for the non-OAuth ingestion surfaces
-	// (webhook / WebDAV / S3). Single instance lives for the server's
-	// lifetime; each credential gets its own token bucket inside.
-	integrationsLimiter *integrations.Limiter
-
-	// WebDAV lock system. Process-wide, in-memory; locks are URL-keyed
-	// (not credential-keyed), so a single shared instance is correct
-	// across all WebDAV credentials. Initialized lazily on first
-	// LockSystem() access so non-WebDAV deployments don't pay for it.
+	// WebDAV lock system. Process-wide, in-memory; locks are URL-keyed.
+	// Initialized lazily on first LockSystem() access so non-WebDAV
+	// deployments don't pay for it.
 	webdavLocks     webdav.LockSystem
 
 	// Central MCP server. Backed by a single Registry into which every
@@ -562,21 +554,6 @@ base_url = %q
 	log.Info().Msg("initializing session indexer")
 	s.sessionIndexer = sessionindex.New(s.appDB, s.indexDB, s.frameStore, 0)
 
-	// 7.6. Integration credentials — webhook/WebDAV/S3 long-lived secrets
-	// for non-OAuth ingestion surfaces. Schema is owned by
-	// db/migration_031_integration_credentials.go (app DB).
-	s.integrations = integrations.NewStore(s.appDB.Conn())
-	s.integrationsLimiter = integrations.NewLimiter()
-
-	// 7.7. One-shot startup GC for stale S3 multipart staging dirs (Phase 4d).
-	// Detached so a slow disk doesn't delay server start; failures are
-	// logged, not fatal — the next restart will retry.
-	go func() {
-		if _, err := GarbageCollectMultipartStaging(s.cfg.AppDataDir, multipartStagingMaxAge); err != nil {
-			log.Error().Err(err).Msg("multipart-gc: startup sweep failed")
-		}
-	}()
-
 	// 8. Wire service connections
 	s.connectServices()
 
@@ -901,12 +878,7 @@ func (s *Server) AgentRunner() *agentrunner.Runner               { return s.agen
 func (s *Server) MCP() *mcppkg.Server                            { return s.mcpServer }
 func (s *Server) MCPTools() *mcptools.Cache                      { return s.mcpTools }
 func (s *Server) MCPToken() string                            { return s.mcpToken }
-func (s *Server) Integrations() *integrations.Store              { return s.integrations }
-func (s *Server) IntegrationsLimiter() *integrations.Limiter     { return s.integrationsLimiter }
 
-// WebDAVLocks returns the process-wide WebDAV lock system, lazily creating
-// the in-memory store on first call. Locks are URL-keyed and not durable
-// across restarts — acceptable for personal-server use, per design doc.
 func (s *Server) WebDAVLocks() webdav.LockSystem {
 	if s.webdavLocks == nil {
 		s.webdavLocks = webdav.NewMemLS()

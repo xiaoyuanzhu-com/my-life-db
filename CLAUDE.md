@@ -310,6 +310,7 @@ All API routes are defined in [backend/api/routes.go](backend/api/routes.go). Ke
 | Notifications | `/api/notifications/stream` | SSE event stream |
 | Raw Files | `/raw/*path` | Serve (GET) / save (PUT) raw files |
 | SQLAR | `/sqlar/*path` | Serve files from SQLAR archives |
+| WebDAV | `/webdav/*path` | WebDAV file access (HTTP Basic Auth in password mode) |
 
 ## Major Feature Modules
 

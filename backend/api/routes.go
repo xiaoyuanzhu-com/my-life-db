@@ -8,18 +8,16 @@ import (
 
 // SetupRoutes configures all API routes with handlers.
 //
-// Auth model (post-Connect):
+// Auth model:
 //
 //   - "none" (default): all APIs are open
-//   - "password":      AuthMiddleware enforces an owner session cookie on every
-//                      /api/* route except the password-login + public ones
+//   - "password":      AuthMiddleware enforces an owner session cookie or
+//                      HTTP Basic Auth on every /api/* route (and on the
+//                      /webdav surface) except the password-login + public
+//                      ones.
 //
-// Third-party OAuth ("Connect" protocol) used to live here; it has been moved
-// out of the backend entirely to the cloud gateway. The backend is now a
-// user-agnostic data store. The /webhook/*, /webdav/*, /s3/* integration
-// surfaces still authenticate via integration credentials (a separate concept
-// from Connect OAuth tokens); they remain mounted but will migrate to the
-// gateway in a later pass.
+// Third-party OAuth ("Connect" protocol) lives in the cloud gateway, not
+// the backend. The backend is a user-agnostic data store.
 func SetupRoutes(r *gin.Engine, h *Handlers) {
 	auth := h.AuthMiddleware()
 
@@ -31,32 +29,16 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 	r.PUT("/raw/*path", auth, h.SaveRawFile)
 	r.GET("/sqlar/*path", auth, h.ServeSqlarFile)
 
-	// Integration surfaces — non-OAuth ingestion endpoints. Each route
-	// is mounted unconditionally and gated per-request by
-	// RequireSurfaceEnabled, which reads the live settings toggle and
-	// 404s when off. Flipping the toggle in the UI takes effect on the
-	// very next request — no restart needed.
-	webhookGuard := RequireSurfaceEnabled(h.server, surfaceWebhook)
-	r.POST("/webhook/:credentialId/*subpath", webhookGuard, h.WebhookIngest)
-	r.PUT("/webhook/:credentialId/*subpath", webhookGuard, h.WebhookIngest)
-
-	webdavGuard := RequireSurfaceEnabled(h.server, surfaceWebDAV)
-	// One handler for every WebDAV verb. gin's Any() covers the
-	// standard methods; the WebDAV-specific verbs (PROPFIND, PROPPATCH,
-	// MKCOL, COPY, MOVE, LOCK, UNLOCK) must be registered explicitly
-	// via Handle().
-	r.Any("/webdav/*path", webdavGuard, h.WebDAVHandler)
+	// WebDAV file access at /webdav. Uses the standard auth middleware:
+	// in password mode the middleware accepts HTTP Basic Auth so WebDAV
+	// clients (Finder, iOS Files, rclone) work without a separate flow.
+	// gin's Any() covers the standard methods; the WebDAV-specific verbs
+	// (PROPFIND, PROPPATCH, MKCOL, COPY, MOVE, LOCK, UNLOCK) must be
+	// registered explicitly via Handle().
+	r.Any("/webdav/*path", auth, h.WebDAVHandler)
 	for _, m := range []string{"PROPFIND", "PROPPATCH", "MKCOL", "COPY", "MOVE", "LOCK", "UNLOCK"} {
-		r.Handle(m, "/webdav/*path", webdavGuard, h.WebDAVHandler)
+		r.Handle(m, "/webdav/*path", auth, h.WebDAVHandler)
 	}
-
-	s3Guard := RequireSurfaceEnabled(h.server, surfaceS3)
-	// One catch-all dispatcher for every S3 op. Path-style addressing
-	// (/s3/<bucket>/<key>) means the bucket lives in the URL alongside
-	// the key — gin's `*path` covers both. The dispatcher in api/s3.go
-	// does the real routing based on method + query parameters.
-	r.Any("/s3", s3Guard, h.S3Handler)
-	r.Any("/s3/*path", s3Guard, h.S3Handler)
 
 	// =========================================================================
 	// /api/* — public group (no auth required)
@@ -146,22 +128,6 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 			explore.GET("/posts/:id", h.GetExplorePost)
 			explore.GET("/posts/:id/comments", h.GetExploreComments)
 			explore.DELETE("/posts/:id", h.DeleteExplorePost)
-		}
-
-		// ---------------------------------------------------------------------
-		// /api/connect/credentials — integration credential CRUD
-		//
-		// These manage long-lived secrets for the non-OAuth ingestion
-		// surfaces (webhook / WebDAV / S3). They live under the legacy
-		// /api/connect/* namespace for now and will migrate to the cloud
-		// gateway in a later pass.
-		// ---------------------------------------------------------------------
-		connect := api.Group("/connect")
-		{
-			connect.GET("/credentials", h.IntegrationListCredentials)
-			connect.POST("/credentials", h.IntegrationCreateCredential)
-			connect.DELETE("/credentials/:id", h.IntegrationRevokeCredential)
-			connect.GET("/credentials/:id/audit", h.IntegrationCredentialAudit)
 		}
 
 		// ---------------------------------------------------------------------
