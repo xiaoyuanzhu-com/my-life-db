@@ -141,6 +141,8 @@
     "uploadingMany": "正在上传 {{count}} 个文件…",
     "uploadingOne": "正在上传 {{filename}}…",
     "batchProgress": "{{label}} — 上传中 {{uploaded}}/{{total}}",
+    "cancelAll": "取消",
+    "cancelFailed": "取消上传失败",
     "failedFile": "上传失败：{{filename}}",
     "filesFailed": "上传文件失败：{{error}}",
     "folderFailed": "上传文件夹失败：{{error}}"

@@ -430,6 +430,20 @@ export class UploadQueueManager {
   }
 
   /**
+   * Cancel every queued and in-flight upload. Terminal `failed` items are
+   * left in place (the user explicitly dismisses those) and `uploaded`
+   * items are obviously kept.
+   */
+  async cancelAllPending(): Promise<number> {
+    const items = await getAllItems();
+    const targets = items.filter(
+      (item) => item.status === 'saved' || item.status === 'uploading',
+    );
+    await Promise.all(targets.map((item) => this.cancelUpload(item.id)));
+    return targets.length;
+  }
+
+  /**
    * Manually retry a failed/stalled item. Resets the retry budget so a
    * terminally `failed` item becomes eligible for upload again, and kicks
    * `processNext()` so a fresh attempt starts immediately.

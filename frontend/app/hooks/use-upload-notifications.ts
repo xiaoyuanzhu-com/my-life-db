@@ -42,6 +42,32 @@ export function useUploadNotifications(options: UseUploadNotificationsOptions = 
   // Track the batch label (folder name or filename) for the progress toast
   const batchLabelRef = useRef<string>('');
 
+  const cancelAllUploads = useCallback(async () => {
+    // Dismiss the progress toast immediately so the user gets feedback even
+    // before the cancellations propagate through IndexedDB.
+    toast.dismiss(PROGRESS_TOAST_ID);
+    // Reset batch refs so the next progress event (post-cancel) doesn't
+    // fire a stale "uploaded N" success toast for items that already finished.
+    completedCountRef.current = 0;
+    batchTotalRef.current = 0;
+    batchLabelRef.current = '';
+    activeUploadsRef.current.clear();
+    if (successToastTimeoutRef.current) {
+      clearTimeout(successToastTimeoutRef.current);
+      successToastTimeoutRef.current = null;
+    }
+    try {
+      const { getUploadQueueManager } = await import(
+        '~/lib/send-queue/upload-queue-manager'
+      );
+      const manager = getUploadQueueManager();
+      await manager.cancelAllPending();
+    } catch (err) {
+      console.error('Failed to cancel uploads:', err);
+      toast.error(i18n.t('data:upload.cancelFailed', 'Failed to cancel upload'));
+    }
+  }, []);
+
   const handleProgress = useCallback((items: PendingInboxItem[]) => {
     const prevItems = prevItemsRef.current;
 
@@ -156,12 +182,18 @@ export function useUploadNotifications(options: UseUploadNotificationsOptions = 
       toast.loading(i18n.t('data:upload.batchProgress', { label, uploaded, total: batchTotal }), {
         id: PROGRESS_TOAST_ID,
         duration: Infinity,
+        action: {
+          label: i18n.t('data:upload.cancelAll', 'Cancel'),
+          // Fire-and-forget — the queue manager handles errors internally and
+          // a progress event will dismiss the toast as items disappear.
+          onClick: () => { void cancelAllUploads(); },
+        },
       });
     }
 
     // Update previous items map
     prevItemsRef.current = new Map(items.map((item) => [item.id, item]));
-  }, []);
+  }, [cancelAllUploads]);
 
   useEffect(() => {
     if (!enabled) return;

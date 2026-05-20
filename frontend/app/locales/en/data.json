@@ -114,6 +114,8 @@
     "uploadingMany": "Uploading {{count}} files...",
     "uploadingOne": "Uploading {{filename}}...",
     "batchProgress": "{{label}} — uploading {{uploaded}}/{{total}}",
+    "cancelAll": "Cancel",
+    "cancelFailed": "Failed to cancel upload",
     "failedFile": "Upload failed: {{filename}}",
     "filesFailed": "Failed to upload files: {{error}}",
     "folderFailed": "Failed to upload folder: {{error}}"
