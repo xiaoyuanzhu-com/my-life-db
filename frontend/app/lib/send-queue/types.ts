@@ -1,7 +1,8 @@
 /**
- * Local-First Send Queue Types
+ * Send queue types
  *
- * Types for the IndexedDB-based upload queue that enables offline-first sending.
+ * The queue is session-scoped: items live in memory inside the
+ * UploadQueueManager and are gone when the page closes or reloads.
  */
 
 /**
@@ -15,7 +16,7 @@
 export type PendingItemStatus = 'saved' | 'uploading' | 'uploaded' | 'failed';
 
 /**
- * A single pending inbox item stored in IndexedDB
+ * A single pending inbox item
  */
 export interface PendingInboxItem {
   // Identity
@@ -52,13 +53,7 @@ export interface PendingInboxItem {
   /** Epoch ms timestamp of last attempt */
   lastAttemptAt?: number;
 
-  // Multi-tab lock (heartbeat-based)
-  /** Tab ID currently uploading */
-  uploadingBy?: string;
-  /** Lock timestamp in epoch ms (updated every 1min by uploading tab) */
-  uploadingAt?: number;
-
-  // TUS resumable upload tracking
+  // TUS resumable upload tracking (within-session resume across chunk failures)
   /** TUS upload URL for resume */
   tusUploadUrl?: string;
   /** Bytes successfully uploaded */
@@ -75,9 +70,7 @@ export interface PendingInboxItem {
  * Retry backoff delays in milliseconds.
  *
  * Capped at MAX_RETRY_ATTEMPTS attempts (~2.5 min total). After that, the
- * upload is marked `failed` (terminal) so it doesn't pile up across sessions.
- * Days-long retries were a UX mistake: by the time they fire, the user has
- * forgotten about the file and just sees stale clutter on next page load.
+ * upload is marked `failed` (terminal).
  */
 export const RETRY_DELAYS_MS = [
   5_000,      // 5s
@@ -91,20 +84,10 @@ export const RETRY_DELAYS_MS = [
  * Queue constants
  */
 export const QUEUE_CONSTANTS = {
-  /** IndexedDB database name */
-  DB_NAME: 'mylife-inbox-queue',
-  /** IndexedDB store name */
-  STORE_NAME: 'pending-items',
-  /** Database version */
-  DB_VERSION: 1,
   /** Maximum concurrent uploads */
   MAX_CONCURRENT_UPLOADS: 6,
   /** Size threshold for simple PUT upload vs TUS (1MB) */
   SIMPLE_UPLOAD_THRESHOLD: 1 * 1024 * 1024,
-  /** Lock staleness threshold (1 hour in ms) */
-  LOCK_STALE_THRESHOLD_MS: 60 * 60 * 1000,
-  /** Heartbeat interval (1 minute in ms) */
-  HEARTBEAT_INTERVAL_MS: 60 * 1000,
   /** Upload timeout (3 minutes in ms) */
   UPLOAD_TIMEOUT_MS: 3 * 60 * 1000,
   /** Jitter percentage for retry delays */
