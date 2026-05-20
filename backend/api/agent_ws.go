@@ -62,21 +62,9 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 
 	// Track seen result count for read state persistence
 	var seenResultCount atomic.Int32
-	// Diag: how many turn.complete frames this WS actually delivered (for working→idle race analysis)
-	var turnCompletesDelivered atomic.Int32
 
 	persistReadState := func() {
 		n := int(seenResultCount.Load())
-		sessionState.Mu.RLock()
-		currentRC := sessionState.ResultCount
-		sessionState.Mu.RUnlock()
-		delivered := int(turnCompletesDelivered.Load())
-		log.Info().
-			Str("sessionId", sessionID).
-			Int("seenResultCount", n).
-			Int("currentResultCount", currentRC).
-			Int("turnCompletesDelivered", delivered).
-			Msg("[diag] WS disconnect: persisting read state")
 		if n > 0 {
 			if err := h.server.AppDB().MarkAgentSessionRead(context.Background(), sessionID, n); err != nil {
 				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist read state")
@@ -195,19 +183,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				// working→unread.
 				var mt struct{ Type string `json:"type"` }
 				if json.Unmarshal(data, &mt) == nil && mt.Type == "turn.complete" {
-					newSeen := seenResultCount.Add(1)
-					newDelivered := turnCompletesDelivered.Add(1)
-					sessionState.Mu.RLock()
-					currentRC := sessionState.ResultCount
-					ctxErr := ctx.Err() != nil
-					sessionState.Mu.RUnlock()
-					log.Info().
-						Str("sessionId", sessionID).
-						Int("seenResultCount", int(newSeen)).
-						Int("turnCompletesDelivered", int(newDelivered)).
-						Int("currentResultCount", currentRC).
-						Bool("ctxCancelled", ctxErr).
-						Msg("[diag] WS write: delivered turn.complete")
+					seenResultCount.Add(1)
 				}
 			}
 			// Wait for new data or context cancellation
