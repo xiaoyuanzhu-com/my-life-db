@@ -347,7 +347,7 @@ Detect environment by platform: `darwin` = local, `linux` = remote. The two flow
 
 ### Local (`darwin` / macOS) — commit directly on `main`
 
-Solo-dev on the user's own machine. No feature branch, no worktree. Branches are pointless overhead when you're the only author and the user tests changes in-place before committing.
+Solo-dev on the user's own machine. No feature branch — branches are pointless overhead when you're the only author and the user tests changes in-place before committing.
 
     # Work directly in the repo
     cd <repo-root>
@@ -361,40 +361,29 @@ Solo-dev on the user's own machine. No feature branch, no worktree. Branches are
     git fetch origin && git rebase origin/main
     git push origin main
 
-### Remote (`linux` / server) — worktree + feature branch
+### Remote (`linux` / server) — feature branch
 
-Shared / automation environment where sessions can collide. Use git worktrees with a feature branch for isolation. Use the `using-git-worktrees` skill to set up. Create the worktree FIRST — before reading, editing, building, or running any code.
-
-- **Main directory is off-limits** — only `git worktree add/remove` there; everything else happens inside the worktree.
-- **Sub-agents get the worktree path** — never pass the main repo path.
-
-**Each worktree has one lifecycle: create → work → push → clean up.** A worktree may accumulate multiple commits before pushing. After every push, clean up immediately.
+Shared / automation environment where sessions can collide. Use a feature branch and push to `main` via rebase.
 
     # --- start of work ---
     cd <repo-root>
     git fetch origin
-    git worktree add -b <branch> .worktrees/<name> origin/main
+    git checkout -b <branch> origin/main
 
     # --- commit (repeat as needed before pushing) ---
-    cd .worktrees/<name>
     # ... git add, git commit ...
 
-    # --- push + sync + clean up (after every push) ---
+    # --- push + sync ---
     git fetch origin && git rebase origin/main
     git push origin <branch>:main
-    # Sync main working directory
-    cd <repo-root>
-    git pull --rebase origin main
-    # If dirty main dir: git checkout -- . && git pull --rebase origin main
-    # Clean up
-    git worktree remove .worktrees/<name>
+    git checkout main && git pull --rebase origin main
     git branch -d <branch>
 
 ### Rules for both environments
 
 - **`git fetch origin` first — every time, no exceptions.**
 - **Always rebase, never merge** — no PRs, no merge commits.
-- **Never auto-commit or auto-push** — when changes are ready (tests pass, work complete), prompt: *"Ready to commit, push, and clean up?"* so the user can reply **"go"** to confirm. Consent applies to the current batch only; after each push cycle, wait for the user's next instruction.
+- **Never auto-commit or auto-push** — when changes are ready (tests pass, work complete), prompt: *"Ready to commit and push?"* so the user can reply **"go"** to confirm. Consent applies to the current batch only; after each push, wait for the user's next instruction.
 
 ## Development Server
 
