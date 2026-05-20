@@ -31,7 +31,9 @@ func walkSkillRoots(roots []skillRoot, bundled map[string]struct{}) []skillEntry
 			continue
 		}
 		for _, ent := range entries {
-			if !ent.IsDir() {
+			fullPath := filepath.Join(r.dir, ent.Name())
+			info, err := os.Stat(fullPath)
+			if err != nil || !info.IsDir() {
 				continue
 			}
 			if r.agent != "" && r.source == "user" {
@@ -150,5 +152,35 @@ func TestListSkills_KeepsProjectScopedBundledNameMatch(t *testing.T) {
 	}
 	if out[0].Source != "project" {
 		t.Errorf("source = %q, want project", out[0].Source)
+	}
+}
+
+func TestListSkills_FollowsSymlinkedSkillDir(t *testing.T) {
+	// Users symlink skills into ~/.claude/skills/ from a source checkout (e.g.
+	// apple-health, roadmap-diffusion). DirEntry.IsDir() returns false for
+	// symlinks regardless of target type, so the scan must os.Stat each entry
+	// to follow the link before deciding to skip.
+	home := t.TempDir()
+	source := t.TempDir()
+	writeSkill(t, source, "apple-health", "health analysis")
+
+	claudeDir := filepath.Join(home, ".claude/skills")
+	if err := os.MkdirAll(claudeDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(source, "apple-health"), filepath.Join(claudeDir, "apple-health")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	roots := []skillRoot{
+		{dir: claudeDir, source: "user", agent: "claude_code"},
+	}
+	out := walkSkillRoots(roots, bundledSkillNames())
+
+	if len(out) != 1 {
+		t.Fatalf("expected symlinked skill to be discovered, got %d entries: %+v", len(out), out)
+	}
+	if out[0].Name != "apple-health" {
+		t.Errorf("name = %q, want apple-health", out[0].Name)
 	}
 }

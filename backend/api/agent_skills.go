@@ -87,7 +87,12 @@ func (h *Handlers) ListSkills(c *gin.Context) {
 			continue
 		}
 		for _, ent := range entries {
-			if !ent.IsDir() {
+			// Stat (follows symlinks) so symlinked skill directories like
+			// ~/.claude/skills/apple-health → <repo>/apple-health/ are discovered.
+			// DirEntry.IsDir() returns false for symlinks regardless of target.
+			fullPath := filepath.Join(r.dir, ent.Name())
+			info, err := os.Stat(fullPath)
+			if err != nil || !info.IsDir() {
 				continue
 			}
 			// Suppress the agent-specific copy of a bundled skill. The same
