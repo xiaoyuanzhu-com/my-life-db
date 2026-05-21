@@ -40,18 +40,6 @@ var defaultConfigOptions = map[string][]configOption{
 			},
 		},
 		{
-			ID: "effort", Category: "thought_level", Name: "Effort", Type: "select",
-			Description:  "Available effort levels for this model",
-			CurrentValue: "xhigh",
-			Options: []configOptionChoice{
-				{Value: "low", Name: "Low"},
-				{Value: "medium", Name: "Medium"},
-				{Value: "high", Name: "High"},
-				{Value: "xhigh", Name: "Xhigh"},
-				{Value: "max", Name: "Max"},
-			},
-		},
-		{
 			ID: "mode", Category: "mode", Name: "Mode", Type: "select",
 			Description:  "Session permission mode",
 			CurrentValue: "bypassPermissions",
