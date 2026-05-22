@@ -320,6 +320,7 @@ func (s *acpSession) Send(ctx context.Context, prompt string) (<-chan []byte, er
 				return
 			}
 			humanMsg, info := humanizeAgentError(err)
+			log.Warn().Err(err).Str("session_id", s.sessionID).Msg("ACP prompt errored — emitting AGENT_ERROR frame")
 			if data, err := json.Marshal(map[string]any{
 				"type":    "error",
 				"message": humanMsg,

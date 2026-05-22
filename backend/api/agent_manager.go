@@ -561,31 +561,75 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 				return
 			}
 
+			sawErrorFrame := false
+			var errorFrameMsg string
 			for frame := range events {
+				// Detect error frames so we can persist OutcomeErrored and
+				// tear down the wedged ACP subprocess (same workaround as the
+				// WS prompt path; see agent_ws.go for the full explanation).
+				var ft struct {
+					Type    string `json:"type"`
+					Message string `json:"message"`
+				}
+				if json.Unmarshal(frame, &ft) == nil && ft.Type == "error" {
+					sawErrorFrame = true
+					errorFrameMsg = ft.Message
+					log.Info().
+						Str("sessionId", sessionID).
+						Str("errorMsg", errorFrameMsg).
+						Msg("ACP emitted error frame on initial prompt — will tear down session after channel close")
+				}
 				sessionState.AppendAndBroadcast(frame)
 			}
 
 			sessionState.Mu.Lock()
-			sessionState.ResultCount++
 			newResultCount := sessionState.ResultCount
+			// Don't count an errored turn as a "result" — there's nothing the
+			// user should treat as unread output.
+			if !sawErrorFrame {
+				sessionState.ResultCount++
+				newResultCount = sessionState.ResultCount
+			}
 			sessionState.SetProcessing(false, params.Source+"-prompt-complete")
 			sessionState.ClearPrompt()
 			sessionState.Mu.Unlock()
 
-			log.Info().
-				Str("sessionId", sessionID).
-				Int("resultCount", newResultCount).
-				Str("source", params.Source+"-prompt-complete").
-				Msg("[diag] turn complete: ResultCount++")
-			// Persist the completed outcome (also clears is_processing).
-			if err := m.srv.AppDB().MarkTurnOutcome(context.Background(), sessionID, db.OutcomeCompleted, "", db.NowMs()); err != nil {
-				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist completed outcome")
+			if sawErrorFrame {
+				// ACP wedge workaround: after conn.Prompt returns an error,
+				// claude-agent-acp's server is desynced; the next prompt
+				// returns end_turn with zero content and the actual reply
+				// leaks out on the prompt after that. Kill + remove so the
+				// next user prompt hits ensureLiveACPSession's respawn path
+				// with a fresh process. Same approach as session.cancel.
+				if existing, exists := m.GetSession(sessionID); exists {
+					m.RemoveSession(sessionID)
+					existing.CancelAllPermissions()
+					if err := existing.Close(); err != nil {
+						log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to close ACP session after error frame")
+					} else {
+						log.Info().Str("sessionId", sessionID).Msg("closed ACP session after error frame on initial prompt — next prompt will respawn")
+					}
+				}
+				if err := m.srv.AppDB().MarkTurnOutcome(context.Background(), sessionID, db.OutcomeErrored, errorFrameMsg, db.NowMs()); err != nil {
+					log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist errored outcome")
+				}
+				m.notifService.NotifyAgentSessionUpdated(sessionID, "result")
+			} else {
+				log.Info().
+					Str("sessionId", sessionID).
+					Int("resultCount", newResultCount).
+					Str("source", params.Source+"-prompt-complete").
+					Msg("[diag] turn complete: ResultCount++")
+				// Persist the completed outcome (also clears is_processing).
+				if err := m.srv.AppDB().MarkTurnOutcome(context.Background(), sessionID, db.OutcomeCompleted, "", db.NowMs()); err != nil {
+					log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist completed outcome")
+				}
+				// Persist the new count so the unread dot survives a server restart.
+				if err := m.srv.AppDB().UpdateAgentSessionResultCount(context.Background(), sessionID, newResultCount); err != nil {
+					log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist result count")
+				}
+				m.notifService.NotifyAgentSessionUpdated(sessionID, "result")
 			}
-			// Persist the new count so the unread dot survives a server restart.
-			if err := m.srv.AppDB().UpdateAgentSessionResultCount(context.Background(), sessionID, newResultCount); err != nil {
-				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist result count")
-			}
-			m.notifService.NotifyAgentSessionUpdated(sessionID, "result")
 		}(sess, params.Message)
 	}
 

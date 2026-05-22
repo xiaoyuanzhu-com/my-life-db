@@ -520,7 +520,8 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 					return
 				}
 
-				frameCount := 0
+				sawErrorFrame := false
+				var errorFrameMsg string
 				for frame := range events {
 					// Skip frames if session was force-killed (kill handler
 					// already emitted turn.complete).
@@ -530,44 +531,74 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 					if killed {
 						continue
 					}
-					frameCount++
 
-					// Diagnostic: log error/turn.complete events from events channel
-					var ft struct{ Type string `json:"type"` }
-					if json.Unmarshal(frame, &ft) == nil && (ft.Type == "error" || ft.Type == "turn.complete") {
-						log.Info().Str("sessionId", sessionID).Str("eventType", ft.Type).Int("frameCount", frameCount).Msg("[diag] events-channel frame")
+					// Detect error frames so we can persist OutcomeErrored and
+					// trigger the ACP wedge workaround below (see comment in the
+					// post-loop block).
+					var ft struct {
+						Type    string `json:"type"`
+						Message string `json:"message"`
+					}
+					if json.Unmarshal(frame, &ft) == nil && ft.Type == "error" {
+						sawErrorFrame = true
+						errorFrameMsg = ft.Message
 					}
 
 					sessionState.AppendAndBroadcast(frame)
 				}
 				// Channel closed = turn complete
-				log.Info().Str("sessionId", sessionID).Int("frameCount", frameCount).Msg("[diag] events channel closed")
 				sessionState.Mu.Lock()
 				killed := sessionState.Killed
 				newResultCount := sessionState.ResultCount
 				if !killed {
-					sessionState.ResultCount++
-					newResultCount = sessionState.ResultCount
+					// Don't count an errored turn as a "result" — there's
+					// nothing the user should treat as unread output.
+					if !sawErrorFrame {
+						sessionState.ResultCount++
+						newResultCount = sessionState.ResultCount
+					}
 					sessionState.SetProcessing(false, "ws-prompt-complete")
 				}
 				sessionState.ClearPrompt()
 				sessionState.Mu.Unlock()
 
 				if !killed {
-					log.Info().
-						Str("sessionId", sessionID).
-						Int("resultCount", newResultCount).
-						Str("source", "ws-prompt-complete").
-						Msg("[diag] turn complete: ResultCount++")
-					// Persist the completed outcome (clears is_processing, bumps last_message_at).
-					if err := h.server.AppDB().MarkTurnOutcome(context.Background(), sessionID, db.OutcomeCompleted, "", db.NowMs()); err != nil {
-						log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist completed outcome")
+					if sawErrorFrame {
+						// ACP wedge workaround. After conn.Prompt returns an
+						// error, claude-agent-acp's server is in a state where
+						// the next conn.Prompt() returns stopReason=end_turn
+						// with zero content frames, and the actual response to
+						// the next prompt is held back internally and leaks out
+						// on the prompt AFTER that. Same desync as the cancel
+						// case (see session.cancel handler above), so apply the
+						// same heavy-handed fix: kill the subprocess and let
+						// ensureLiveACPSession respawn it on the next user
+						// prompt. LoadSession on the lazy-create path restores
+						// in-session conversation memory.
+						if existing, exists := h.agentMgr.GetSession(sessionID); exists {
+							h.agentMgr.RemoveSession(sessionID)
+							existing.CancelAllPermissions()
+							if err := existing.Close(); err != nil {
+								log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to close ACP session after error frame")
+							} else {
+								log.Info().Str("sessionId", sessionID).Msg("closed ACP session after error frame — next prompt will respawn")
+							}
+						}
+						if err := h.server.AppDB().MarkTurnOutcome(context.Background(), sessionID, db.OutcomeErrored, errorFrameMsg, db.NowMs()); err != nil {
+							log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist errored outcome")
+						}
+						h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "result")
+					} else {
+						// Persist the completed outcome (clears is_processing, bumps last_message_at).
+						if err := h.server.AppDB().MarkTurnOutcome(context.Background(), sessionID, db.OutcomeCompleted, "", db.NowMs()); err != nil {
+							log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist completed outcome")
+						}
+						// Persist the new count so the unread dot survives a server restart.
+						if err := h.server.AppDB().UpdateAgentSessionResultCount(context.Background(), sessionID, newResultCount); err != nil {
+							log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist result count")
+						}
+						h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "result")
 					}
-					// Persist the new count so the unread dot survives a server restart.
-					if err := h.server.AppDB().UpdateAgentSessionResultCount(context.Background(), sessionID, newResultCount); err != nil {
-						log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist result count")
-					}
-					h.server.Notifications().NotifyAgentSessionUpdated(sessionID, "result")
 				}
 			}(acpSession, promptText, promptCtx, pCancel)
 
