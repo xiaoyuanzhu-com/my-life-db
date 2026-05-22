@@ -290,6 +290,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 						log.Warn().Err(err).Str("sessionId", sessionID).Str("model", modelForACP).Msg("failed to override model after LoadSession")
 					}
 					cancel()
+					applyModelEffort(sess, gatewayModels, defaultModel, sessionID)
 				}
 			}
 		})
@@ -708,6 +709,8 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 					log.Error().Err(err).Str("sessionId", sessionID).Str("model", modelForACP).Msg("failed to set model")
 				} else {
 					log.Info().Str("sessionId", sessionID).Str("model", modelForACP).Msg("model set via WebSocket")
+					gatewayModels := h.agentMgr.GatewayModels(agentTypeString(acpSession.AgentType()))
+					applyModelEffort(acpSession, gatewayModels, inMsg.ConfigValue, sessionID)
 				}
 			} else {
 				updatedOpts, err := acpSession.SetConfigOption(cfgCtx, inMsg.ConfigID, inMsg.ConfigValue)

@@ -97,12 +97,17 @@ type AgentLLMConfig struct {
 // Empty/omitted means the model is available to all agents.
 // ClaudeSmall optionally overrides ANTHROPIC_SMALL_FAST_MODEL when this model
 // is active in a Claude Code session; empty means reuse Value.
+// Effort, when set, overrides the claude-agent-acp "effort" config option
+// after model selection. Needed because the SDK defaults Opus to "xhigh",
+// which non-Anthropic gateways (GLM/Kimi/MiniMax/Doubao) reject — they expect
+// "max" or one of low/medium/high. Empty means leave the SDK default alone.
 type AgentModelInfo struct {
 	Value       string   `json:"value"`
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	Agents      []string `json:"agents,omitempty"`
 	ClaudeSmall string   `json:"claude_small,omitempty"`
+	Effort      string   `json:"effort,omitempty"`
 }
 
 // SupportsAgent returns true if this model can be used by the given agent type.

@@ -338,8 +338,40 @@ func (m *AgentManager) SetupACP(sess agentsdk.Session, sessionID, mode, defaultM
 		}
 	}
 
+	applyModelEffort(sess, gatewayModels, defaultModel, sessionID)
+
 	m.StoreSession(sessionID, sess)
 	return sessionState
+}
+
+// applyModelEffort pushes the selected gateway model's Effort override into
+// claude-agent-acp via SetConfigOption("effort", ...). Used right after
+// SetModel on both session boot and mid-session model changes.
+//
+// Background: claude-agent-acp defaults Opus to effort="xhigh", which only
+// Anthropic accepts. Non-Anthropic gateways (GLM, Kimi, MiniMax, Doubao)
+// reject xhigh and expect "max" or low/medium/high. Since effort is really a
+// per-model attribute (the SDK exposes it session-wide), each gateway model
+// in AGENT_MODELS declares its own Effort; we apply it after SetModel so the
+// first turn uses a compatible value. Models with Effort="" (e.g. Anthropic
+// proxied Opus, DeepSeek) are left alone.
+func applyModelEffort(sess agentsdk.Session, gatewayModels []server.AgentModelInfo, modelValue, sessionID string) {
+	if sess.AgentType() != agentsdk.AgentClaudeCode || modelValue == "" {
+		return
+	}
+	var effort string
+	for _, m := range gatewayModels {
+		if m.Value == modelValue {
+			effort = m.Effort
+			break
+		}
+	}
+	if effort == "" {
+		return
+	}
+	if _, err := sess.SetConfigOption(context.Background(), "effort", effort); err != nil {
+		log.Warn().Err(err).Str("sessionId", sessionID).Str("model", modelValue).Str("effort", effort).Msg("failed to apply model-specific effort override")
+	}
 }
 
 // rewriteModelOptions replaces the model config option in a config_option_update
