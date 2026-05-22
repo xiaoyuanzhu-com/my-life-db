@@ -9,7 +9,6 @@ import (
 
 	acp "github.com/coder/acp-go-sdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
-	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/mcptools"
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
@@ -511,126 +510,16 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 		// chunk carries no messageId field.
 		sessionState.AppendAndBroadcast(agentsdk.SynthUserMessageChunk(params.Message, ""))
 
-		go func(acpSess agentsdk.Session, prompt string) {
-			defer close(promptDone)
+		// Register promptDone with sessionState BEFORE launching the helper
+		// so a concurrent WaitForPrompt can't see PromptDone=nil and bypass
+		// serialization. See agent_prompt_turn.go for the rest of the turn
+		// lifecycle.
+		promptCtx, pCancel := context.WithCancel(m.shutdownCtx)
+		sessionState.Mu.Lock()
+		sessionState.RegisterPrompt(promptDone, pCancel)
+		sessionState.Mu.Unlock()
 
-			sessionState.Mu.Lock()
-			sessionState.SetProcessing(true, params.Source+"-prompt")
-			sessionState.IsActive = true
-			sessionState.TouchFrame()
-			sessionState.Mu.Unlock()
-			m.notifService.NotifyAgentSessionUpdated(sessionID, "working")
-
-			sendCtx, cancel := context.WithCancel(m.shutdownCtx)
-			defer cancel()
-
-			internalDone := make(chan struct{})
-			defer close(internalDone)
-			sessionState.Mu.Lock()
-			sessionState.RegisterPrompt(internalDone, cancel)
-			sessionState.Mu.Unlock()
-
-			go func() {
-				select {
-				case <-acpSess.Done():
-					log.Info().Str("sessionId", sessionID).Msg("agent process exited during prompt")
-					cancel()
-				case <-sendCtx.Done():
-				}
-			}()
-
-			if startBytes, err := json.Marshal(map[string]any{"type": "turn.start"}); err == nil {
-				sessionState.AppendAndBroadcast(startBytes)
-			}
-
-			events, err := acpSess.Send(sendCtx, prompt)
-			if err != nil {
-				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send prompt")
-				sessionState.Mu.Lock()
-				sessionState.SetProcessing(false, params.Source+"-prompt-send-error")
-				sessionState.Mu.Unlock()
-				if dbErr := m.srv.AppDB().MarkTurnOutcome(context.Background(), sessionID, db.OutcomeErrored, err.Error(), db.NowMs()); dbErr != nil {
-					log.Warn().Err(dbErr).Str("sessionId", sessionID).Msg("failed to persist errored outcome")
-				}
-				if errBytes, err := json.Marshal(map[string]any{
-					"type": "error", "message": "Failed to send message: " + err.Error(), "code": "SEND_ERROR",
-				}); err == nil {
-					sessionState.AppendAndBroadcast(errBytes)
-				}
-				m.notifService.NotifyAgentSessionUpdated(sessionID, "result")
-				return
-			}
-
-			sawErrorFrame := false
-			var errorFrameMsg string
-			for frame := range events {
-				// Detect error frames so we can persist OutcomeErrored and
-				// tear down the wedged ACP subprocess (same workaround as the
-				// WS prompt path; see agent_ws.go for the full explanation).
-				var ft struct {
-					Type    string `json:"type"`
-					Message string `json:"message"`
-				}
-				if json.Unmarshal(frame, &ft) == nil && ft.Type == "error" {
-					sawErrorFrame = true
-					errorFrameMsg = ft.Message
-					log.Info().
-						Str("sessionId", sessionID).
-						Str("errorMsg", errorFrameMsg).
-						Msg("ACP emitted error frame on initial prompt — will tear down session after channel close")
-				}
-				sessionState.AppendAndBroadcast(frame)
-			}
-
-			sessionState.Mu.Lock()
-			newResultCount := sessionState.ResultCount
-			// Don't count an errored turn as a "result" — there's nothing the
-			// user should treat as unread output.
-			if !sawErrorFrame {
-				sessionState.ResultCount++
-				newResultCount = sessionState.ResultCount
-			}
-			sessionState.SetProcessing(false, params.Source+"-prompt-complete")
-			sessionState.ClearPrompt()
-			sessionState.Mu.Unlock()
-
-			if sawErrorFrame {
-				// ACP wedge workaround: after conn.Prompt returns an error,
-				// claude-agent-acp's server is desynced; the next prompt
-				// returns end_turn with zero content and the actual reply
-				// leaks out on the prompt after that. Kill + remove so the
-				// next user prompt hits ensureLiveACPSession's respawn path
-				// with a fresh process. Same approach as session.cancel.
-				if existing, exists := m.GetSession(sessionID); exists {
-					m.RemoveSession(sessionID)
-					existing.CancelAllPermissions()
-					if err := existing.Close(); err != nil {
-						log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to close ACP session after error frame")
-					} else {
-						log.Info().Str("sessionId", sessionID).Msg("closed ACP session after error frame on initial prompt — next prompt will respawn")
-					}
-				}
-				if err := m.srv.AppDB().MarkTurnOutcome(context.Background(), sessionID, db.OutcomeErrored, errorFrameMsg, db.NowMs()); err != nil {
-					log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist errored outcome")
-				}
-				m.notifService.NotifyAgentSessionUpdated(sessionID, "result")
-			} else {
-				log.Info().
-					Str("sessionId", sessionID).
-					Int("resultCount", newResultCount).
-					Str("source", params.Source+"-prompt-complete").
-					Msg("[diag] turn complete: ResultCount++")
-				// Persist the completed outcome (also clears is_processing).
-				if err := m.srv.AppDB().MarkTurnOutcome(context.Background(), sessionID, db.OutcomeCompleted, "", db.NowMs()); err != nil {
-					log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist completed outcome")
-				}
-				// Persist the new count so the unread dot survives a server restart.
-				if err := m.srv.AppDB().UpdateAgentSessionResultCount(context.Background(), sessionID, newResultCount); err != nil {
-					log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist result count")
-				}
-				m.notifService.NotifyAgentSessionUpdated(sessionID, "result")
-			}
-		}(sess, params.Message)
+		go m.RunPromptTurn(promptCtx, pCancel, promptDone, sess, sessionState, sessionID, params.Message, params.Source)
 	}
 
 	return &SessionHandle{
