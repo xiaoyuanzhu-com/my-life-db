@@ -149,6 +149,13 @@ func (m *AgentManager) RunPromptTurn(
 		// ensureLiveACPSession respawn it on the next user prompt.
 		// LoadSession on the lazy-create path restores in-session
 		// conversation memory.
+		//
+		// Regression canary: agentsdk/acptest/behavior_wedge_test.go
+		// (TestACPPromptErrorWedge) reproduces this against a stub
+		// Anthropic endpoint. Re-run periodically (especially after
+		// bumping claude-agent-acp or @coder/acp-go-sdk) — if it fails
+		// because prompt 2 produces content, the wedge is fixed upstream
+		// and this whole branch can be deleted.
 		if existing, exists := m.GetSession(sessionID); exists {
 			m.RemoveSession(sessionID)
 			existing.CancelAllPermissions()

@@ -531,6 +531,14 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			//   3. If/when migrated, this whole branch goes back to the
 			//      old shape: Stop() + pc() + ack broadcast, no Close().
 			//
+			// Regression canary: agentsdk/acptest/behavior_wedge_test.go
+			// (TestACPPromptErrorWedge) reproduces the underlying wedge
+			// against a stub Anthropic endpoint. The error-path workaround
+			// in api/agent_prompt_turn.go (sawErrorFrame branch) shares the
+			// same root cause as this cancel-path workaround — re-run that
+			// test after bumping claude-agent-acp or @coder/acp-go-sdk; if
+			// it fails, both workarounds can likely come out together.
+			//
 			// See also: 3s sendKill safety net was removed from the frontend
 			// (use-agent-runtime.ts onCancel) at the same time as introducing
 			// this — it's redundant when cancel always reliably terminates,
