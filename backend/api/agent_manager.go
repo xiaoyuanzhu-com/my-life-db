@@ -338,7 +338,7 @@ func (m *AgentManager) SetupACP(sess agentsdk.Session, sessionID, mode, defaultM
 		}
 	}
 
-	applyModelEffort(sess, gatewayModels, defaultModel, sessionID)
+	applyModelEffort(sess, sessionState, gatewayModels, defaultModel, sessionID)
 
 	m.StoreSession(sessionID, sess)
 	return sessionState
@@ -355,7 +355,12 @@ func (m *AgentManager) SetupACP(sess agentsdk.Session, sessionID, mode, defaultM
 // in AGENT_MODELS declares its own Effort; we apply it after SetModel so the
 // first turn uses a compatible value. Models with Effort="" (e.g. Anthropic
 // proxied Opus, DeepSeek) are left alone.
-func applyModelEffort(sess agentsdk.Session, gatewayModels []server.AgentModelInfo, modelValue, sessionID string) {
+//
+// After the RPC, the updated options are fanned out as a synthetic
+// config_option_update frame because claude-agent-acp returns the new state
+// inline rather than emitting a session/update notification — same trick the
+// user-triggered setConfigOption handler uses to keep the UI in sync.
+func applyModelEffort(sess agentsdk.Session, sessionState *agentsdk.SessionState, gatewayModels []server.AgentModelInfo, modelValue, sessionID string) {
 	if sess.AgentType() != agentsdk.AgentClaudeCode || modelValue == "" {
 		return
 	}
@@ -369,9 +374,23 @@ func applyModelEffort(sess agentsdk.Session, gatewayModels []server.AgentModelIn
 	if effort == "" {
 		return
 	}
-	if _, err := sess.SetConfigOption(context.Background(), "effort", effort); err != nil {
+	updatedOpts, err := sess.SetConfigOption(context.Background(), "effort", effort)
+	if err != nil {
 		log.Warn().Err(err).Str("sessionId", sessionID).Str("model", modelValue).Str("effort", effort).Msg("failed to apply model-specific effort override")
+		return
 	}
+	if sessionState == nil {
+		return
+	}
+	frame, mErr := json.Marshal(map[string]any{
+		"sessionUpdate": "config_option_update",
+		"configOptions": updatedOpts,
+	})
+	if mErr != nil {
+		log.Warn().Err(mErr).Str("sessionId", sessionID).Msg("failed to marshal config_option_update after applyModelEffort")
+		return
+	}
+	sessionState.AppendAndBroadcast(frame)
 }
 
 // rewriteModelOptions replaces the model config option in a config_option_update
