@@ -18,6 +18,7 @@ import {
   type PermissionRequestFrame,
   type PermissionOption,
   type ErrorFrame,
+  type TurnCompleteFrame,
 } from "./use-agent-websocket"
 import { isSkippedXmlContent } from "~/lib/session-message-utils"
 import { generateUUID } from "~/lib/uuid"
@@ -747,35 +748,9 @@ export function useAgentRuntime(options: {
           break
         }
 
-        case "session.cancelled": {
-          // Server ack for session.cancel — immediately stop spinner and clear permissions.
-          // turn.complete from ACP will arrive later and is idempotent.
-          setIsRunning(false)
-          setPendingPermissions((prev) => {
-            if (prev.size === 0) return prev
-            return new Map()
-          })
-          setMessages((prev) => {
-            const updated = [...prev]
-            const last = findLastAssistant(updated)
-            if (!last) return prev
-            const content = last.content.map((part) => {
-              if (part.type === "tool-call" && part.result === undefined) {
-                return { ...part, result: "" }
-              }
-              return part
-            })
-            replaceLastAssistant(updated, {
-              ...last,
-              content,
-              status: { type: "complete", reason: "stop" },
-            })
-            return updated
-          })
-          break
-        }
-
         case "turn.complete": {
+          const f = frame as TurnCompleteFrame
+          const wasCancelled = f.stopReason === "cancelled"
           setIsRunning(false)
           // Clear all pending permissions — the turn is done
           setPendingPermissions((prev) => {
@@ -811,7 +786,9 @@ export function useAgentRuntime(options: {
                 updated[i] = {
                   ...msg,
                   content,
-                  status: { type: "complete", reason: "stop" },
+                  status: wasCancelled
+                    ? { type: "incomplete", reason: "cancelled" }
+                    : { type: "complete", reason: "stop" },
                 }
                 changed = true
               }

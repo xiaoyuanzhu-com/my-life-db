@@ -196,7 +196,7 @@ func (s *SessionState) LoadHistoricalFrames(frames [][]byte) {
 }
 
 // BroadcastToClients sends data to all connected clients without storing it.
-// Used for ephemeral frames (e.g. session.cancelled ack) that don't need replay.
+// Used for ephemeral frames that don't need replay.
 func (s *SessionState) BroadcastToClients(data []byte) {
 	s.Mu.Lock()
 	// Store as a regular message so cursor-based clients pick it up.

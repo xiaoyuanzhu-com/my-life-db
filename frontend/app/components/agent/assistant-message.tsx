@@ -119,6 +119,23 @@ function MessageError() {
   )
 }
 
+/** Inline marker shown when the turn ended via user cancel/kill */
+function MessageCancelled() {
+  const { t } = useTranslation('agent')
+  const messageState = useMessage()
+  const status = messageState.status
+  if (status?.type !== "incomplete" || status.reason !== "cancelled") return null
+
+  return (
+    <div className="mt-2 flex items-start gap-2">
+      <MessageDot type="tool-cancelled" />
+      <p className="text-sm text-muted-foreground">
+        {t('thread.cancelledByUser', 'Cancelled by user')}
+      </p>
+    </div>
+  )
+}
+
 export function createAssistantMessage(toolsConfig: AssistantMessageProps["toolsConfig"]) {
   return function AssistantMessage() {
     return (
@@ -137,6 +154,7 @@ export function createAssistantMessage(toolsConfig: AssistantMessageProps["tools
           </div>
           <StreamingCursor />
           <MessageError />
+          <MessageCancelled />
         </div>
       </MessagePrimitive.Root>
     )

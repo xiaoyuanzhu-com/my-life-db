@@ -572,15 +572,18 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist cancelled outcome")
 			}
 
-			// Send ack so the client can immediately update UI (stop
-			// spinner, clear permissions). turn.complete from the SDK will
-			// arrive later (synth turn.complete on ctx-cancel path) but the
-			// Killed flag suppresses its broadcast; session.cancelled is
-			// idempotent on the frontend.
-			if ackBytes, err := json.Marshal(map[string]any{
-				"type": "session.cancelled",
+			// Emit a persisted turn.complete with stopReason=cancelled so
+			// (a) live clients stop the spinner / mark the assistant message
+			// as cancelled, and (b) the cancel marker survives reload —
+			// allowing the frontend to render an inline "Cancelled by user"
+			// line at the right point in the conversation. The SDK's own
+			// synth turn.complete on the ctx-cancel path is suppressed by
+			// Killed=true above.
+			if completeBytes, err := json.Marshal(map[string]any{
+				"type":       "turn.complete",
+				"stopReason": "cancelled",
 			}); err == nil {
-				sessionState.BroadcastToClients(ackBytes)
+				sessionState.AppendAndBroadcast(completeBytes)
 			}
 
 		case "session.kill":
@@ -613,9 +616,12 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist cancelled outcome (kill)")
 			}
 
+			// Same rendering as cancel — kill is just the force version. The
+			// distinction (was it a clean cancel or a force-kill?) lives in
+			// server logs; the user-facing message is identical.
 			if completeBytes, err := json.Marshal(map[string]any{
 				"type":       "turn.complete",
-				"stopReason": "killed",
+				"stopReason": "cancelled",
 			}); err == nil {
 				sessionState.AppendAndBroadcast(completeBytes)
 			}

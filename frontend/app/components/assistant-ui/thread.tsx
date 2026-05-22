@@ -77,7 +77,7 @@ type ThreadProps = {
 }
 
 export const Thread: FC<ThreadProps> = ({ onAttachmentsStorageIdChange, existingStorageId }) => {
-  const { pendingPermissions, hasActiveSession, historyLoadError, sessionError, lastTurnOutcome, lastErrorMessage, lastPromptText, sessionSource, onResume, onDismissOutcome } = useAgentContext();
+  const { pendingPermissions, hasActiveSession, historyLoadError, sessionError, lastTurnOutcome, lastPromptText, sessionSource, onResume, onDismissOutcome } = useAgentContext();
   const { hybridTopInset } = useFeatureFlags();
   const hasSession = useAuiState((s) => !s.thread.isEmpty);
   const isRunning = useAuiState((s) => s.thread.isRunning);
@@ -127,11 +127,9 @@ export const Thread: FC<ThreadProps> = ({ onAttachmentsStorageIdChange, existing
         )}
         <InitialScrollToBottom />
 
-        {(lastTurnOutcome === 'interrupted' || lastTurnOutcome === 'cancelled' || lastTurnOutcome === 'errored') && sessionSource !== 'auto' && (
+        {lastTurnOutcome === 'interrupted' && sessionSource !== 'auto' && (
           <TurnOutcomeBanner
-            variant={lastTurnOutcome === 'errored' ? 'error' : lastTurnOutcome}
             lastPromptText={lastPromptText}
-            errorMessage={lastErrorMessage}
             onResume={onResume}
             onDismiss={onDismissOutcome}
           />
@@ -263,53 +261,24 @@ const ThreadSessionError: FC<{ message: string }> = ({ message }) => {
   );
 };
 
-type OutcomeVariant = 'interrupted' | 'cancelled' | 'error'
-
-const variantStyles: Record<OutcomeVariant, { container: string; title: string; body: string }> = {
-  interrupted: {
-    container: 'border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30',
-    title: 'text-amber-800 dark:text-amber-200',
-    body: 'text-amber-700/80 dark:text-amber-300/70',
-  },
-  cancelled: {
-    container: 'border-border bg-muted/40',
-    title: 'text-foreground',
-    body: 'text-muted-foreground',
-  },
-  error: {
-    container: 'border-destructive/30 bg-destructive/10',
-    title: 'text-destructive',
-    body: 'text-destructive/80',
-  },
-}
-
+// Banner shown only for 'interrupted' sessions — these have no in-thread
+// signal that the turn ended (the server crashed/restarted mid-turn) so the
+// user needs an explicit resume/dismiss control. Errored and cancelled turns
+// have their own inline markers (MessageError, MessageCancelled).
 const TurnOutcomeBanner: FC<{
-  variant: OutcomeVariant
   lastPromptText?: string | null
-  errorMessage?: string
   onResume?: () => void
   onDismiss?: () => void
-}> = ({ variant, lastPromptText, errorMessage, onResume, onDismiss }) => {
+}> = ({ lastPromptText, onResume, onDismiss }) => {
   const { t } = useTranslation('agent');
-  const styles = variantStyles[variant];
-  const titleKey = `thread.outcome.${variant}.title`;
-  const titleFallback =
-    variant === 'interrupted' ? 'Session interrupted'
-    : variant === 'cancelled' ? 'You stopped this turn'
-    : 'Something went wrong';
   return (
     <div className="mx-auto w-full max-w-(--thread-max-width) px-4 md:px-18 pt-2 pb-1">
-      <div className={`rounded-lg border ${styles.container} px-4 py-3`}>
-        <p className={`text-sm font-medium mb-1 ${styles.title}`}>
-          {t(titleKey, titleFallback)}
+      <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 px-4 py-3">
+        <p className="text-sm font-medium mb-1 text-amber-800 dark:text-amber-200">
+          {t('thread.outcome.interrupted.title', 'Session interrupted')}
         </p>
-        {variant === 'error' && errorMessage && (
-          <p className={`text-xs mb-2 break-words ${styles.body}`}>
-            {errorMessage}
-          </p>
-        )}
         {lastPromptText && (
-          <p className={`text-xs mb-2 truncate max-w-md ${styles.body}`}>
+          <p className="text-xs mb-2 truncate max-w-md text-amber-700/80 dark:text-amber-300/70">
             {t('thread.outcome.lastPrompt', 'Last prompt')}: {lastPromptText}
           </p>
         )}

@@ -60,6 +60,7 @@
     "addAttachment": "添加附件",
     "expandPreview": "展开预览",
     "restartSession": "重启会话",
+    "cancelledByUser": "已被用户取消",
     "interrupted": {
       "title": "会话已中断",
       "lastPrompt": "上次提示",

@@ -60,6 +60,7 @@
     "addAttachment": "Add Attachment",
     "expandPreview": "Expand preview",
     "restartSession": "Restart session",
+    "cancelledByUser": "Cancelled by user",
     "interrupted": {
       "title": "Session interrupted",
       "lastPrompt": "Last prompt",
