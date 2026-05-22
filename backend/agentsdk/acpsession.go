@@ -438,13 +438,19 @@ func (s *acpSession) SetModel(ctx context.Context, modelID string) error {
 }
 
 // SetConfigOption sets a generic config option via ACP SetSessionConfigOption.
-func (s *acpSession) SetConfigOption(ctx context.Context, configID string, value string) error {
-	_, err := s.conn.SetSessionConfigOption(ctx, acp.SetSessionConfigOptionRequest{
+// Returns the updated configOptions from the response so the caller can
+// rebroadcast them — claude-agent-acp returns the new state inline rather
+// than emitting a session/update notification.
+func (s *acpSession) SetConfigOption(ctx context.Context, configID string, value string) ([]acp.SessionConfigOption, error) {
+	resp, err := s.conn.SetSessionConfigOption(ctx, acp.SetSessionConfigOptionRequest{
 		SessionId: acp.SessionId(s.sessionID),
 		ConfigId:  acp.SessionConfigId(configID),
 		Value:     acp.SessionConfigValueId(value),
 	})
-	return err
+	if err != nil {
+		return nil, err
+	}
+	return resp.ConfigOptions, nil
 }
 
 // Stop cancels the current operation (sends SIGINT equivalent via ACP Cancel).

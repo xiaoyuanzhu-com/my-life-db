@@ -196,7 +196,10 @@ type Session interface {
 	// SetConfigOption sets a generic config option by ID and value.
 	// This is the unified ACP mechanism used by agents like Codex that
 	// report configOptions instead of separate mode/model concepts.
-	SetConfigOption(ctx context.Context, configID string, value string) error
+	// Returns the agent's updated configOptions list on success — callers
+	// must rebroadcast it since claude-agent-acp returns the new state in
+	// the RPC response body rather than as a session/update notification.
+	SetConfigOption(ctx context.Context, configID string, value string) ([]acp.SessionConfigOption, error)
 
 	// Stop cancels the current operation (SIGINT). Agent stays alive.
 	Stop() error

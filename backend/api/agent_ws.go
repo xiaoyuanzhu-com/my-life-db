@@ -409,97 +409,24 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				}
 			}
 
-			// Create ACP session lazily if needed
-			acpSession, exists := h.agentMgr.GetSession(sessionID)
-
-			// Diagnostic: check if existing session's process is still alive
-			if exists {
-				select {
-				case <-acpSession.Done():
-					log.Info().Str("sessionId", sessionID).Msg("[diag] existing ACP session process is dead, removing for lazy recreation")
-					h.agentMgr.RemoveSession(sessionID)
-					exists = false
-				default:
-					log.Info().Str("sessionId", sessionID).Msg("[diag] existing ACP session process is alive")
+			acpSession, err := h.ensureLiveACPSession(sessionID, sessionState)
+			if err != nil {
+				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to ensure live ACP session for prompt")
+				if errBytes, mErr := json.Marshal(map[string]any{
+					"type": "error", "message": "Failed to create agent session: " + err.Error(), "code": "SESSION_ERROR",
+				}); mErr == nil {
+					conn.Write(ctx, websocket.MessageText, errBytes)
 				}
+				continue
 			}
-
-			if !exists {
-				log.Info().Str("sessionId", sessionID).Msg("no ACP session in memory, creating lazily for prompt")
-				// Look up session metadata from DB for agent type, working dir, permission mode
-				agentType := agentsdk.AgentClaudeCode
-				workDir := ""
-				lazyStorageID := ""
-				if sessionRecord, _ := h.server.AppDB().GetAgentSession(sessionID); sessionRecord != nil {
-					if sessionRecord.AgentType == "codex" {
-						agentType = agentsdk.AgentCodex
-					}
-					workDir = sessionRecord.WorkingDir
-					lazyStorageID = sessionRecord.StorageID
+			if acpSession == nil {
+				log.Error().Str("sessionId", sessionID).Msg("no session record in DB for prompt")
+				if errBytes, mErr := json.Marshal(map[string]any{
+					"type": "error", "message": "Session not found", "code": "SESSION_NOT_FOUND",
+				}); mErr == nil {
+					conn.Write(ctx, websocket.MessageText, errBytes)
 				}
-				mode, _ := h.server.AppDB().GetAgentSessionPermissionMode(sessionID)
-
-				agentTypeStr := "claude_code"
-				if agentType == agentsdk.AgentCodex {
-					agentTypeStr = "codex"
-				}
-				gatewayModels := h.agentMgr.GatewayModels(agentTypeStr)
-				var defaultModel string
-				if len(gatewayModels) > 0 {
-					defaultModel = gatewayModels[0].Value
-				}
-				// Honor any per-session model preference saved while no ACP
-				// process was running (e.g. user changed the dropdown on a
-				// historical session before sending this first prompt).
-				persistedOpts, _ := h.server.AppDB().GetAgentSessionConfigOptions(sessionID)
-				if v := persistedOpts["model"]; v != "" {
-					defaultModel = v
-				}
-
-				// Create a new ACP session
-				sess, err := h.server.AgentClient().CreateSession(h.server.ShutdownContext(), agentsdk.SessionConfig{
-					Agent:        agentType,
-					Mode:         mode,
-					WorkingDir:   workDir,
-					Env:          h.agentMgr.BuildModelEnv(agentType, defaultModel, gatewayModels),
-					McpServers:   h.agentMgr.buildSessionMcpServers(lazyStorageID),
-					SystemPrompt: server.BuildAgentSystemPrompt(h.server.Cfg().UserDataDir, lazyStorageID),
-				})
-				if err != nil {
-					log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to create ACP session")
-					if errBytes, err := json.Marshal(map[string]any{
-						"type": "error", "message": "Failed to create agent session: " + err.Error(), "code": "SESSION_ERROR",
-					}); err == nil {
-						conn.Write(ctx, websocket.MessageText, errBytes)
-					}
-					continue
-				}
-
-				// If this session already has prior frames (rehydrated from disk
-				// frame_store, or carried over from a cancelled/dead-process
-				// turn), the fresh ACP subprocess won't share Claude Code's
-				// in-session conversation memory. Call LoadSession to make the
-				// agent inherit history from CC's own session storage.
-				//
-				// We install a noop OnFrame for the duration of LoadSession so
-				// the replayed frames don't dupe rawMessages or the on-disk
-				// JSONL — both already contain them. SetupACP below replaces
-				// the handler with the real broadcasting one, so SetMode /
-				// SetModel frames it triggers are still captured.
-				//
-				// LoadSession failure is non-fatal: log and proceed with a
-				// fresh-memory session (same degradation as before this fix).
-				if workDir != "" && sessionState.MessageCount() > 0 {
-					sess.SetOnFrame(func(_ []byte) {})
-					if err := sess.LoadSession(h.server.ShutdownContext(), sessionID, workDir); err != nil {
-						log.Warn().Err(err).Str("sessionId", sessionID).Msg("LoadSession failed on lazy create — agent will start with empty memory")
-					} else {
-						log.Info().Str("sessionId", sessionID).Msg("LoadSession succeeded on lazy create — agent memory restored")
-					}
-				}
-
-				h.agentMgr.SetupACP(sess, sessionID, mode, defaultModel)
-				acpSession = sess
+				continue
 			}
 
 			// Update the session's updated_at so the session list re-sorts
@@ -798,30 +725,30 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 
 		case "session.setMode":
 			// Mode uses legacy SetSessionMode RPC (only Claude Code has modes).
-			// Persist first so the choice survives even when no ACP process is
-			// alive yet — historical sessions only spawn ACP on the first prompt
-			// or via the history-load fallback. The lazy-spawn paths read
-			// permission_mode back via GetAgentSessionPermissionMode.
+			// Persist first so the choice survives a respawn — the lazy-spawn
+			// path inside ensureLiveACPSession reads permission_mode back via
+			// GetAgentSessionPermissionMode when it has to start a new agent.
 			if err := h.server.AppDB().SaveAgentSessionPermissionMode(ctx, sessionID, inMsg.ModeID); err != nil {
 				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist mode preference")
 			}
 
-			acpSession, exists := h.agentMgr.GetSession(sessionID)
-
-			if exists {
-				modeCtx, modeCancel := context.WithTimeout(context.Background(), 10*time.Second)
-				if err := acpSession.SetMode(modeCtx, inMsg.ModeID); err != nil {
-					log.Error().Err(err).Str("sessionId", sessionID).Str("modeId", inMsg.ModeID).Msg("failed to set mode")
-				} else {
-					log.Info().Str("sessionId", sessionID).Str("modeId", inMsg.ModeID).Msg("mode set via WebSocket")
-				}
-				modeCancel()
-			} else {
-				// No live ACP — synthesize a config_option_update frame so the
-				// dropdown reflects the new value. When ACP is later spawned,
-				// it'll emit its own authoritative frame on top of this.
-				h.broadcastConfigOptionsBaseline(sessionID, sessionState)
+			acpSession, err := h.ensureLiveACPSession(sessionID, sessionState)
+			if err != nil {
+				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to ensure live ACP session for setMode")
+				continue
 			}
+			if acpSession == nil {
+				log.Warn().Str("sessionId", sessionID).Msg("no session record for setMode")
+				continue
+			}
+
+			modeCtx, modeCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			if err := acpSession.SetMode(modeCtx, inMsg.ModeID); err != nil {
+				log.Error().Err(err).Str("sessionId", sessionID).Str("modeId", inMsg.ModeID).Msg("failed to set mode")
+			} else {
+				log.Info().Str("sessionId", sessionID).Str("modeId", inMsg.ModeID).Msg("mode set via WebSocket")
+			}
+			modeCancel()
 
 		case "session.setModel":
 			// Legacy message type — route through SetConfigOption
@@ -830,9 +757,8 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			fallthrough
 
 		case "session.setConfigOption":
-			// Persist first so the choice survives across ACP spawns (e.g. on
-			// historical sessions that haven't spawned ACP yet, or after a
-			// process restart). Lazy-spawn paths read these values back via
+			// Persist first so the choice survives a respawn. The lazy-spawn
+			// path inside ensureLiveACPSession reads these values back via
 			// GetAgentSessionConfigOptions / GetAgentSessionPermissionMode.
 			if inMsg.ConfigID == "mode" {
 				if err := h.server.AppDB().SaveAgentSessionPermissionMode(ctx, sessionID, inMsg.ConfigValue); err != nil {
@@ -844,49 +770,62 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				}
 			}
 
-			acpSession, exists := h.agentMgr.GetSession(sessionID)
+			acpSession, err := h.ensureLiveACPSession(sessionID, sessionState)
+			if err != nil {
+				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to ensure live ACP session for setConfigOption")
+				continue
+			}
+			if acpSession == nil {
+				log.Warn().Str("sessionId", sessionID).Msg("no session record for setConfigOption")
+				continue
+			}
 
-			if exists {
-				cfgCtx, cfgCancel := context.WithTimeout(context.Background(), 10*time.Second)
-				// Mode uses the legacy SetSessionMode RPC — SetSessionConfigOption
-				// in Claude Code only supports configId="model", not "mode".
-				// Model uses UnstableSetSessionModel to bypass claude-agent-acp's
-				// allowlist (which rejects custom gateway model names).
-				//
-				// Known limitation for qwen: this RPC call errors for qwen because
-				// qwen validates modelId against a static authType registry (see
-				// the long comment in AgentManager.SetupACP). The error surfaces
-				// to the frontend as a failed model change — mid-session model
-				// switching for qwen requires a process restart, which isn't wired
-				// up yet. For now, qwen users should pick the model at session
-				// creation; the dropdown in an existing session won't propagate.
-				if inMsg.ConfigID == "mode" {
-					if err := acpSession.SetMode(cfgCtx, inMsg.ConfigValue); err != nil {
-						log.Error().Err(err).Str("sessionId", sessionID).Str("mode", inMsg.ConfigValue).Msg("failed to set mode")
-					} else {
-						log.Info().Str("sessionId", sessionID).Str("mode", inMsg.ConfigValue).Msg("mode set via WebSocket")
-					}
-				} else if inMsg.ConfigID == "model" {
-					modelForACP := resolveACPModel(acpSession.AgentType(), inMsg.ConfigValue)
-					if err := acpSession.SetModel(cfgCtx, modelForACP); err != nil {
-						log.Error().Err(err).Str("sessionId", sessionID).Str("model", modelForACP).Msg("failed to set model")
-					} else {
-						log.Info().Str("sessionId", sessionID).Str("model", modelForACP).Msg("model set via WebSocket")
-					}
+			cfgCtx, cfgCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			// Mode uses the legacy SetSessionMode RPC — SetSessionConfigOption
+			// in Claude Code only supports configId="model", not "mode".
+			// Model uses UnstableSetSessionModel to bypass claude-agent-acp's
+			// allowlist (which rejects custom gateway model names).
+			//
+			// Known limitation for qwen: this RPC call errors for qwen because
+			// qwen validates modelId against a static authType registry (see
+			// the long comment in AgentManager.SetupACP). The error surfaces
+			// to the frontend as a failed model change — mid-session model
+			// switching for qwen requires a process restart, which isn't wired
+			// up yet. For now, qwen users should pick the model at session
+			// creation; the dropdown in an existing session won't propagate.
+			if inMsg.ConfigID == "mode" {
+				if err := acpSession.SetMode(cfgCtx, inMsg.ConfigValue); err != nil {
+					log.Error().Err(err).Str("sessionId", sessionID).Str("mode", inMsg.ConfigValue).Msg("failed to set mode")
 				} else {
-					if err := acpSession.SetConfigOption(cfgCtx, inMsg.ConfigID, inMsg.ConfigValue); err != nil {
-						log.Error().Err(err).Str("sessionId", sessionID).Str("configId", inMsg.ConfigID).Str("value", inMsg.ConfigValue).Msg("failed to set config option")
+					log.Info().Str("sessionId", sessionID).Str("mode", inMsg.ConfigValue).Msg("mode set via WebSocket")
+				}
+			} else if inMsg.ConfigID == "model" {
+				modelForACP := resolveACPModel(acpSession.AgentType(), inMsg.ConfigValue)
+				if err := acpSession.SetModel(cfgCtx, modelForACP); err != nil {
+					log.Error().Err(err).Str("sessionId", sessionID).Str("model", modelForACP).Msg("failed to set model")
+				} else {
+					log.Info().Str("sessionId", sessionID).Str("model", modelForACP).Msg("model set via WebSocket")
+				}
+			} else {
+				updatedOpts, err := acpSession.SetConfigOption(cfgCtx, inMsg.ConfigID, inMsg.ConfigValue)
+				if err != nil {
+					log.Error().Err(err).Str("sessionId", sessionID).Str("configId", inMsg.ConfigID).Str("value", inMsg.ConfigValue).Msg("failed to set config option")
+				} else {
+					log.Info().Str("sessionId", sessionID).Str("configId", inMsg.ConfigID).Str("value", inMsg.ConfigValue).Msg("config option set via WebSocket")
+					// claude-agent-acp returns the updated options inline
+					// instead of emitting a session/update notification, so
+					// fan it out ourselves to keep the UI in sync.
+					if frame, mErr := json.Marshal(map[string]any{
+						"sessionUpdate": "config_option_update",
+						"configOptions": updatedOpts,
+					}); mErr == nil {
+						sessionState.AppendAndBroadcast(frame)
 					} else {
-						log.Info().Str("sessionId", sessionID).Str("configId", inMsg.ConfigID).Str("value", inMsg.ConfigValue).Msg("config option set via WebSocket")
+						log.Warn().Err(mErr).Str("sessionId", sessionID).Msg("failed to marshal config_option_update after SetConfigOption")
 					}
 				}
-				cfgCancel()
-			} else {
-				// No live ACP — synthesize a config_option_update frame so the
-				// dropdown reflects the new value. When ACP is later spawned,
-				// it'll emit its own authoritative frame on top of this.
-				h.broadcastConfigOptionsBaseline(sessionID, sessionState)
 			}
+			cfgCancel()
 
 		case "permission.respond":
 			acpSession, exists := h.agentMgr.GetSession(sessionID)
@@ -915,45 +854,81 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 	<-pingDone
 }
 
-// broadcastConfigOptionsBaseline emits a synthesized config_option_update frame
-// reflecting the session's persisted config (mode + config_options map) on top
-// of the agent-type defaults. Called from the WS handler when the user changes
-// a config option but no live ACP process is around to echo its own frame.
+// ensureLiveACPSession returns a live ACP session for sessionID, spawning one
+// lazily if the existing entry is missing or its process has exited.
 //
-// Same shape as the ACP-native config_option_update frame, so the existing
-// frontend handler in use-agent-runtime.ts updates sessionMeta directly. When
-// ACP is later spawned, its own config_option_update will arrive and override
-// these values.
-func (h *Handlers) broadcastConfigOptionsBaseline(sessionID string, sessionState *agentsdk.SessionState) {
-	rec, err := h.server.AppDB().GetAgentSession(sessionID)
-	if err != nil || rec == nil {
-		return
-	}
-	opts := buildAgentConfigOptions(rec.AgentType, h.server.Cfg().AgentLLM.Models)
-	if len(opts) == 0 {
-		return
-	}
-	persisted, _ := h.server.AppDB().GetAgentSessionConfigOptions(sessionID)
-	persistedMode, _ := h.server.AppDB().GetAgentSessionPermissionMode(sessionID)
-	for i := range opts {
-		if opts[i].ID == "mode" {
-			if persistedMode != "" {
-				opts[i].CurrentValue = persistedMode
-			}
-			continue
-		}
-		if v, ok := persisted[opts[i].ID]; ok && v != "" {
-			opts[i].CurrentValue = v
+// Used by every user-initiated WS handler (prompt, setMode, setConfigOption)
+// so that any user input always lands on a live agent. The previous design
+// branched on existence and synthesized a fake config_option_update frame
+// when ACP was dead — which silently let session state desync from the
+// dropdown (model snapping back to gateway default, effort vanishing).
+//
+// Returns (nil, nil) when there is no session record in the DB; callers
+// should surface that distinctly from a spawn failure.
+//
+// Spawn parameters come from persisted state: agent type, working dir,
+// storage id, permission mode, and last-selected model. When the session
+// already has frames in memory, LoadSession is called so the new agent
+// process inherits conversation memory.
+func (h *Handlers) ensureLiveACPSession(sessionID string, sessionState *agentsdk.SessionState) (agentsdk.Session, error) {
+	if existing, ok := h.agentMgr.GetSession(sessionID); ok {
+		select {
+		case <-existing.Done():
+			log.Info().Str("sessionId", sessionID).Msg("existing ACP session process is dead, removing for lazy recreation")
+			h.agentMgr.RemoveSession(sessionID)
+		default:
+			return existing, nil
 		}
 	}
-	frame, err := json.Marshal(map[string]any{
-		"sessionUpdate": "config_option_update",
-		"configOptions": opts,
+
+	sessionRecord, _ := h.server.AppDB().GetAgentSession(sessionID)
+	if sessionRecord == nil {
+		return nil, nil
+	}
+
+	agentType := parseAgentType(sessionRecord.AgentType)
+	agentTypeStr := agentTypeString(agentType)
+	workDir := sessionRecord.WorkingDir
+	storageID := sessionRecord.StorageID
+	mode, _ := h.server.AppDB().GetAgentSessionPermissionMode(sessionID)
+
+	gatewayModels := h.agentMgr.GatewayModels(agentTypeStr)
+	var defaultModel string
+	if len(gatewayModels) > 0 {
+		defaultModel = gatewayModels[0].Value
+	}
+	persistedOpts, _ := h.server.AppDB().GetAgentSessionConfigOptions(sessionID)
+	if v := persistedOpts["model"]; v != "" {
+		defaultModel = v
+	}
+
+	log.Info().Str("sessionId", sessionID).Msg("no live ACP session, creating lazily")
+	sess, err := h.server.AgentClient().CreateSession(h.server.ShutdownContext(), agentsdk.SessionConfig{
+		Agent:        agentType,
+		Mode:         mode,
+		WorkingDir:   workDir,
+		Env:          h.agentMgr.BuildModelEnv(agentType, defaultModel, gatewayModels),
+		McpServers:   h.agentMgr.buildSessionMcpServers(storageID),
+		SystemPrompt: server.BuildAgentSystemPrompt(h.server.Cfg().UserDataDir, storageID),
 	})
 	if err != nil {
-		log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to marshal synthesized config_option_update")
-		return
+		return nil, err
 	}
-	sessionState.AppendAndBroadcast(frame)
+
+	// Restore conversation memory if frames already exist. Noop OnFrame for
+	// the duration of LoadSession so replayed frames don't dupe rawMessages
+	// or the on-disk JSONL — both already contain them. SetupACP below
+	// installs the real broadcasting handler.
+	if workDir != "" && sessionState.MessageCount() > 0 {
+		sess.SetOnFrame(func(_ []byte) {})
+		if err := sess.LoadSession(h.server.ShutdownContext(), sessionID, workDir); err != nil {
+			log.Warn().Err(err).Str("sessionId", sessionID).Msg("LoadSession failed on lazy create — agent will start with empty memory")
+		} else {
+			log.Info().Str("sessionId", sessionID).Msg("LoadSession succeeded on lazy create — agent memory restored")
+		}
+	}
+
+	h.agentMgr.SetupACP(sess, sessionID, mode, defaultModel)
+	return sess, nil
 }
 
