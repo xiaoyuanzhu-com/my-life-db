@@ -257,6 +257,26 @@ interface SessionRowProps {
   onPinSession: (id: string, pinned: boolean) => Promise<void> | void
 }
 
+// Decide which dot, if any, to render on a session row.
+//
+// 'working' is a live signal — shown whenever the agent is processing.
+// Everything else is an unread signal — suppressed once the user has caught up.
+// The currently-viewed row never shows a dot: the user is already there.
+function computeDotKind(
+  sessionState: SessionState | undefined,
+  hasUnread: boolean,
+  isActive: boolean,
+): 'working' | 'attention' | 'unread' | null {
+  if (isActive) return null
+  if (sessionState === 'working') return 'working'
+  if (!hasUnread) return null
+  if (sessionState === 'error' || sessionState === 'interrupted') return 'attention'
+  if (sessionState === 'idle') return 'unread'
+  if (sessionState === 'cancelled') return null
+  if (sessionState === 'archived') return null
+  return null
+}
+
 const SessionRow: FC<SessionRowProps> = ({
   session,
   activeSessionId,
@@ -279,22 +299,8 @@ const SessionRow: FC<SessionRowProps> = ({
   const sessionState = sessionStates?.[session.id]
   const hasUnread = !!sessionHasUnread?.[session.id]
   const isArchived = sessionState === 'archived'
-  // Dot logic:
-  //   hasUnread is the GATE. A session with nothing unread shows no dot at
-  //   all — the user has acknowledged whatever happened (resume/dismiss in
-  //   the in-thread banner handles errored/interrupted state once read).
-  //   When unread, the dot KIND reflects current state:
-  //     working           → amber (pulsing)
-  //     error|interrupted → red ("needs your attention")
-  //     else              → emerald (default unread color)
-  const needsAttention = sessionState === 'error' || sessionState === 'interrupted'
-  const dotKind: 'working' | 'attention' | 'unread' | null = !hasUnread
-    ? null
-    : sessionState === 'working' ? 'working'
-    : needsAttention ? 'attention'
-    : !isActive ? 'unread'
-    : null
-  const showDot = dotKind !== null && !(isActive && dotKind === 'working')
+  const dotKind = computeDotKind(sessionState, hasUnread, isActive)
+  const showDot = dotKind !== null
   const isAuto = sessionSources?.[session.id] === 'auto' || session.source === 'auto'
   const agentName = sessionAgentNames?.[session.id] ?? session.agentName
   const triggerLabel = sessionTriggerLabels?.[session.id]
