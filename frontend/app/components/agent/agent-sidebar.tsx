@@ -279,18 +279,20 @@ const SessionRow: FC<SessionRowProps> = ({
   const sessionState = sessionStates?.[session.id]
   const hasUnread = !!sessionHasUnread?.[session.id]
   const isArchived = sessionState === 'archived'
-  // Dot priority (top wins):
-  //   working          → amber (pulsing)
-  //   error|interrupted → red ("needs your attention")
-  //   hasUnread         → emerald (existing unread color)
-  //   cancelled/archived/idle → no dot (cancelled is silent because the user did it)
-  // Render dots even on the active row — long threads bury the in-thread
-  // banner; the sidebar dot is the only persistent attention signal.
+  // Dot logic:
+  //   hasUnread is the GATE. A session with nothing unread shows no dot at
+  //   all — the user has acknowledged whatever happened (resume/dismiss in
+  //   the in-thread banner handles errored/interrupted state once read).
+  //   When unread, the dot KIND reflects current state:
+  //     working           → amber (pulsing)
+  //     error|interrupted → red ("needs your attention")
+  //     else              → emerald (default unread color)
   const needsAttention = sessionState === 'error' || sessionState === 'interrupted'
-  const dotKind: 'working' | 'attention' | 'unread' | null =
-    sessionState === 'working' ? 'working'
+  const dotKind: 'working' | 'attention' | 'unread' | null = !hasUnread
+    ? null
+    : sessionState === 'working' ? 'working'
     : needsAttention ? 'attention'
-    : hasUnread && !isActive ? 'unread'
+    : !isActive ? 'unread'
     : null
   const showDot = dotKind !== null && !(isActive && dotKind === 'working')
   const isAuto = sessionSources?.[session.id] === 'auto' || session.source === 'auto'
