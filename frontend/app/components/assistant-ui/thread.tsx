@@ -486,7 +486,6 @@ const DraftPersistenceSync: FC = () => {
  *
  * Other features we drop intentionally vs. ComposerPrimitive.Input:
  *   - mention popover keyboard routing (we use our own popovers)
- *   - addAttachmentOnPaste (we accept files via drag-drop / picker only)
  *   - composer.cancel on Escape (no edit-then-cancel flow here)
  *   - focus-on-runStart / focus-on-scroll-to-bottom / focus-on-threadSwitched
  *     (minor UX; can be re-added with small effects if anyone misses them)
@@ -867,6 +866,22 @@ const Composer: FC<ComposerProps> = ({ onAttachmentsStorageIdChange, existingSto
     attachments.addFiles(arr);
   };
 
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const files: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === "file") {
+        const f = item.getAsFile();
+        if (f) files.push(f);
+      }
+    }
+    if (files.length === 0) return;
+    e.preventDefault();
+    handleFilesPicked(files);
+  };
+
   // iOS WKWebView blocks programmatic .click() on <input type=file> when
   // it's invoked from Radix's deferred dropdown onSelect (gesture token
   // expired by then). Route through the native bridge instead: Swift
@@ -1016,6 +1031,7 @@ const Composer: FC<ComposerProps> = ({ onAttachmentsStorageIdChange, existingSto
             rows={1}
             autoFocus={!hasTouch}
             aria-label={t('thread.messageInput')}
+            onPaste={handlePaste}
           />
           <div className="aui-composer-action-wrapper relative flex items-center justify-between">
             <div className="flex items-center gap-1">
