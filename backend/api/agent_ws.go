@@ -290,7 +290,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 						log.Warn().Err(err).Str("sessionId", sessionID).Str("model", modelForACP).Msg("failed to override model after LoadSession")
 					}
 					cancel()
-					applyModelEffort(sess, sessionState, gatewayModels, defaultModel, sessionID)
+					applyModelEffort(sess, sessionState, gatewayModels, defaultModel, sessionID, persistedOpts["effort"])
 				}
 			}
 		})
@@ -718,7 +718,21 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				} else {
 					log.Info().Str("sessionId", sessionID).Str("model", modelForACP).Msg("model set via WebSocket")
 					gatewayModels := h.agentMgr.GatewayModels(agentTypeString(acpSession.AgentType()))
-					applyModelEffort(acpSession, sessionState, gatewayModels, inMsg.ConfigValue, sessionID)
+					// override="" so we get the NEW model's declared Effort,
+					// not a stale value the user picked on the previous model.
+					appliedEffort := applyModelEffort(acpSession, sessionState, gatewayModels, inMsg.ConfigValue, sessionID, "")
+					// Keep config_options["effort"] in sync with what's actually
+					// running so resume doesn't restore a value from a model the
+					// session is no longer on.
+					if appliedEffort != "" {
+						if err := h.server.AppDB().SaveAgentSessionConfigOption(ctx, sessionID, "effort", appliedEffort); err != nil {
+							log.Warn().Err(err).Str("sessionId", sessionID).Str("effort", appliedEffort).Msg("failed to persist effort after model change")
+						}
+					} else {
+						if err := h.server.AppDB().DeleteAgentSessionConfigOption(ctx, sessionID, "effort"); err != nil {
+							log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to clear stale effort after model change")
+						}
+					}
 				}
 			} else {
 				updatedOpts, err := acpSession.SetConfigOption(cfgCtx, inMsg.ConfigID, inMsg.ConfigValue)

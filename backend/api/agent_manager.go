@@ -338,15 +338,27 @@ func (m *AgentManager) SetupACP(sess agentsdk.Session, sessionID, mode, defaultM
 		}
 	}
 
-	applyModelEffort(sess, sessionState, gatewayModels, defaultModel, sessionID)
+	// Restore the user's persisted effort pick on session boot so a resume
+	// stays on the same reasoning level. Empty override → applyModelEffort
+	// falls back to the model's declared Effort.
+	persistedOpts, _ := m.srv.AppDB().GetAgentSessionConfigOptions(sessionID)
+	applyModelEffort(sess, sessionState, gatewayModels, defaultModel, sessionID, persistedOpts["effort"])
 
 	m.StoreSession(sessionID, sess)
 	return sessionState
 }
 
-// applyModelEffort pushes the selected gateway model's Effort override into
-// claude-agent-acp via SetConfigOption("effort", ...). Used right after
-// SetModel on both session boot and mid-session model changes.
+// applyModelEffort pushes an "effort" config option into claude-agent-acp via
+// SetConfigOption. Used right after SetModel on both session boot and
+// mid-session model changes.
+//
+// When override is non-empty (e.g. a value persisted from a previous run via
+// the effort dropdown) it takes precedence over the model's declared Effort.
+// Otherwise the per-model Effort from AGENT_MODELS is used.
+//
+// Returns the effort string actually applied, or "" when nothing was sent
+// (non-claude_code agent, empty modelValue, or no effort to apply). Callers
+// use this to keep config_options in sync with what the agent is running.
 //
 // Background: claude-agent-acp defaults Opus to effort="xhigh", which only
 // Anthropic accepts. Non-Anthropic gateways (GLM, Kimi, MiniMax, Doubao)
@@ -360,37 +372,39 @@ func (m *AgentManager) SetupACP(sess agentsdk.Session, sessionID, mode, defaultM
 // config_option_update frame because claude-agent-acp returns the new state
 // inline rather than emitting a session/update notification — same trick the
 // user-triggered setConfigOption handler uses to keep the UI in sync.
-func applyModelEffort(sess agentsdk.Session, sessionState *agentsdk.SessionState, gatewayModels []server.AgentModelInfo, modelValue, sessionID string) {
+func applyModelEffort(sess agentsdk.Session, sessionState *agentsdk.SessionState, gatewayModels []server.AgentModelInfo, modelValue, sessionID, override string) string {
 	if sess.AgentType() != agentsdk.AgentClaudeCode || modelValue == "" {
-		return
+		return ""
 	}
-	var effort string
-	for _, m := range gatewayModels {
-		if m.Value == modelValue {
-			effort = m.Effort
-			break
+	effort := override
+	if effort == "" {
+		for _, m := range gatewayModels {
+			if m.Value == modelValue {
+				effort = m.Effort
+				break
+			}
 		}
 	}
 	if effort == "" {
-		return
+		return ""
 	}
 	updatedOpts, err := sess.SetConfigOption(context.Background(), "effort", effort)
 	if err != nil {
 		log.Warn().Err(err).Str("sessionId", sessionID).Str("model", modelValue).Str("effort", effort).Msg("failed to apply model-specific effort override")
-		return
+		return ""
 	}
-	if sessionState == nil {
-		return
+	if sessionState != nil {
+		frame, mErr := json.Marshal(map[string]any{
+			"sessionUpdate": "config_option_update",
+			"configOptions": updatedOpts,
+		})
+		if mErr != nil {
+			log.Warn().Err(mErr).Str("sessionId", sessionID).Msg("failed to marshal config_option_update after applyModelEffort")
+		} else {
+			sessionState.AppendAndBroadcast(frame)
+		}
 	}
-	frame, mErr := json.Marshal(map[string]any{
-		"sessionUpdate": "config_option_update",
-		"configOptions": updatedOpts,
-	})
-	if mErr != nil {
-		log.Warn().Err(mErr).Str("sessionId", sessionID).Msg("failed to marshal config_option_update after applyModelEffort")
-		return
-	}
-	sessionState.AppendAndBroadcast(frame)
+	return effort
 }
 
 // rewriteModelOptions replaces the model config option in a config_option_update
@@ -536,6 +550,17 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 
 	if params.PermissionMode != "" {
 		m.srv.AppDB().SaveAgentSessionPermissionMode(ctx, sessionID, params.PermissionMode)
+	}
+
+	// Persist the model so a server restart can resume the session on the same
+	// one. Without this, the lazy-spawn path in ensureLiveACPSession sees an
+	// empty config_options["model"] and falls back to gatewayModels[0], then
+	// SetupACP calls SetModel() with that default — silently overriding the
+	// model the session was created with.
+	if params.DefaultModel != "" {
+		if err := m.srv.AppDB().SaveAgentSessionConfigOption(ctx, sessionID, "model", params.DefaultModel); err != nil {
+			log.Warn().Err(err).Str("sessionId", sessionID).Str("model", params.DefaultModel).Msg("failed to persist initial model")
+		}
 	}
 
 	sessionState := m.SetupACP(sess, sessionID, params.PermissionMode, params.DefaultModel)

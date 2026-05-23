@@ -533,6 +533,46 @@ func (d *DB) SaveAgentSessionConfigOption(ctx context.Context, sessionID, config
 	})
 }
 
+// DeleteAgentSessionConfigOption removes a single configID entry from the
+// session's persisted config_options map. No-op if the session row or key
+// doesn't exist.
+func (d *DB) DeleteAgentSessionConfigOption(ctx context.Context, sessionID, configID string) error {
+	return d.Write(ctx, func(tx *sql.Tx) error {
+		var raw string
+		err := tx.QueryRow(
+			`SELECT config_options FROM agent_sessions WHERE session_id = ?`,
+			sessionID,
+		).Scan(&raw)
+		if err == sql.ErrNoRows {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if raw == "" {
+			return nil
+		}
+		opts := map[string]string{}
+		if err := json.Unmarshal([]byte(raw), &opts); err != nil {
+			return nil
+		}
+		if _, ok := opts[configID]; !ok {
+			return nil
+		}
+		delete(opts, configID)
+		merged, err := json.Marshal(opts)
+		if err != nil {
+			return err
+		}
+		_, err = tx.Exec(
+			`UPDATE agent_sessions SET config_options = ?, updated_at = ?
+			 WHERE session_id = ?`,
+			string(merged), NowMs(), sessionID,
+		)
+		return err
+	})
+}
+
 // ── Share operations ─────────────────────────────────────────────────────────
 
 // ShareAgentSession sets the share token for a session (upsert).
