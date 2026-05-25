@@ -328,6 +328,55 @@ export async function fetchFullContent(path: string): Promise<string | null> {
 }
 
 /**
+ * Fetch a byte range from a text file via HTTP Range request and decode it
+ * with the supplied streaming TextDecoder so multi-byte UTF-8 sequences split
+ * across the chunk boundary recombine correctly across sequential calls.
+ *
+ * Returns the decoded text and total file size (from Content-Range when the
+ * server returns 206, Content-Length when the file is small enough that the
+ * server ignored the Range and sent the whole body).
+ *
+ * After the final chunk the caller should run `decoder.decode()` once with no
+ * args to flush any buffered trailing bytes.
+ */
+export async function fetchTextRange(
+  path: string,
+  start: number,
+  end: number,
+  decoder: TextDecoder,
+): Promise<{ text: string; totalSize: number } | null> {
+  try {
+    const response = await api.get(`/raw/${path}`, {
+      headers: { Range: `bytes=${start}-${end}` },
+    });
+    if (!response.ok && response.status !== 206) return null;
+
+    const buf = new Uint8Array(await response.arrayBuffer());
+    const text = decoder.decode(buf, { stream: true });
+
+    let totalSize = 0;
+    const contentRange = response.headers.get('Content-Range');
+    if (contentRange) {
+      const slash = contentRange.lastIndexOf('/');
+      if (slash !== -1) {
+        const sizePart = contentRange.slice(slash + 1).trim();
+        const parsed = parseInt(sizePart, 10);
+        if (!Number.isNaN(parsed)) totalSize = parsed;
+      }
+    }
+    if (totalSize === 0) {
+      const cl = response.headers.get('Content-Length');
+      if (cl) totalSize = parseInt(cl, 10) || 0;
+    }
+
+    return { text, totalSize };
+  } catch (error) {
+    console.error('Failed to load text range:', error);
+    return null;
+  }
+}
+
+/**
  * Save file content
  * Returns true if successful
  */

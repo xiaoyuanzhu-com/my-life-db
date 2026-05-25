@@ -38,6 +38,7 @@ interface TextEditorProps {
   readOnly?: boolean;
   className?: string;
   onSave?: () => void;
+  onScroll?: (info: { scrollTop: number; scrollHeight: number; clientHeight: number }) => void;
 }
 
 const SUPPORTED_LANGS = new Set<string>([
@@ -178,6 +179,7 @@ export function TextEditor({
   readOnly = false,
   className,
   onSave,
+  onScroll,
 }: TextEditorProps) {
   const isDark = useIsDark();
   const taRef = useRef<HTMLTextAreaElement | null>(null);
@@ -235,7 +237,12 @@ export function TextEditor({
       pre.scrollTop = ta.scrollTop;
       pre.scrollLeft = ta.scrollLeft;
     }
-  }, []);
+    onScroll?.({
+      scrollTop: ta.scrollTop,
+      scrollHeight: ta.scrollHeight,
+      clientHeight: ta.clientHeight,
+    });
+  }, [onScroll]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
