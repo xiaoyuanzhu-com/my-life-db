@@ -101,6 +101,11 @@ func (h *Handlers) SharedSessionSubscribeWebSocket(c *gin.Context) {
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "")
 
+	// Match agent_ws.go's read limit — same default (32 KiB) would otherwise
+	// 1009 the connection on any oversized client frame, even though this
+	// surface only consumes messages to notice the close.
+	conn.SetReadLimit(8 << 20) // 8 MiB
+
 	// Abort Gin context to prevent middleware from writing headers on hijacked connection
 	c.Abort()
 

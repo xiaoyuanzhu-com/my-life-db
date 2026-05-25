@@ -43,6 +43,13 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "")
 
+	// Raise the per-message read limit well above the 32 KiB default. ACP
+	// session.prompt payloads routinely exceed that once the composer holds a
+	// large paste, an inline tool result, or quoted history — hitting the
+	// default triggers a StatusMessageTooBig (1009) close, which the frontend
+	// retries forever, creating a connect→send→1009→reconnect storm.
+	conn.SetReadLimit(8 << 20) // 8 MiB
+
 	// Abort Gin context to prevent middleware from writing headers on hijacked connection
 	c.Abort()
 
