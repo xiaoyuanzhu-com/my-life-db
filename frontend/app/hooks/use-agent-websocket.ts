@@ -149,6 +149,16 @@ interface UseAgentWebSocketOptions {
   token: string
   onFrame: (frame: AcpFrame) => void
   enabled?: boolean
+  /**
+   * Fired when the WebSocket closes with a code that signals a
+   * protocol-level failure the next reconnect cannot fix on its own — today
+   * just `1009` (Message Too Big). The reconnect itself still proceeds,
+   * but the runtime needs this hook to mark whichever outbox items were
+   * inflight as failed; otherwise the outbox would re-queue them, the
+   * server would close again on the same oversize frame, and the loop
+   * would never settle.
+   */
+  onPermanentClose?: (info: { code: number; reason: string }) => void
 }
 
 export function useAgentWebSocket({
@@ -156,6 +166,7 @@ export function useAgentWebSocket({
   token,
   onFrame,
   enabled = true,
+  onPermanentClose,
 }: UseAgentWebSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null)
   const [connected, setConnected] = useState(false)
@@ -165,6 +176,11 @@ export function useAgentWebSocket({
   // Use a ref for onFrame to prevent WS reconnects when the callback changes
   const onFrameRef = useRef(onFrame)
   onFrameRef.current = onFrame
+
+  // Mirror onPermanentClose into a ref so the close handler always sees the
+  // latest closure without forcing a tear-down/reconnect of the WS itself.
+  const onPermanentCloseRef = useRef(onPermanentClose)
+  onPermanentCloseRef.current = onPermanentClose
 
   // DIAG: identify which WS effect dep is flipping on mount (causing the
   // first WS to be torn down before its handshake completes — manifests as
@@ -305,6 +321,21 @@ export function useAgentWebSocket({
         if (isCurrent) {
           setConnected(false)
           wsRef.current = null
+        }
+        // 1009 (Message Too Big) is the only close code our server sends
+        // that survives a reconnect: whatever frame triggered it is still
+        // queued in the outbox and would re-flush on the next open, closing
+        // the socket again on the same byte. Notify the runtime *before*
+        // arming the reconnect so it can mark inflight items failed —
+        // outbox.connectionChanged("closed") (fired by the runtime's
+        // [connected] effect on the next render) would otherwise demote
+        // them back to pending and they'd re-flush on open.
+        if (ev.code === 1009 && onPermanentCloseRef.current) {
+          try {
+            onPermanentCloseRef.current({ code: ev.code, reason: ev.reason })
+          } catch (err) {
+            console.error(`[ws-conn] [${sessionId}] onPermanentClose handler threw`, err)
+          }
         }
         // Reconnect with exponential backoff. Refresh the access token first —
         // the cookie may have expired while the tab was idle, in which case

@@ -11,6 +11,13 @@
 
 let isRefreshing = false;
 let refreshPromise: Promise<boolean> | null = null;
+// Memoize a hard 404 on /api/system/oauth/refresh so we stop hammering
+// the endpoint on standalone backends that don't ship the OAuth gateway.
+// Without this, every WS reconnect (default 1s..30s exponential) re-tries
+// the refresh, adding a 404 to every reconnect cycle — visible in the
+// devtools console and tripping log aggregators on the gateway proxy.
+// A page reload resets this (per-tab state).
+let refreshEndpointMissing = false;
 
 /**
  * Attempt to refresh the access token.
@@ -33,6 +40,13 @@ export async function refreshAccessToken(): Promise<boolean> {
       }
 
       // Web: cookie-based refresh
+      if (refreshEndpointMissing) {
+        // Endpoint previously 404'd — assume this is a standalone backend
+        // without the OAuth gateway and short-circuit. Treat as "refresh
+        // not applicable, current credentials are what they are." Callers
+        // either succeed via the existing cookie or fall through to a 401.
+        return false;
+      }
       const response = await fetch('/api/system/oauth/refresh', {
         method: 'POST',
         credentials: 'same-origin',
@@ -41,6 +55,16 @@ export async function refreshAccessToken(): Promise<boolean> {
       if (response.ok) {
         console.log('✅ Token refreshed successfully');
         return true;
+      }
+
+      if (response.status === 404) {
+        // 404 is structural: route isn't registered. Latch so we don't
+        // log/retry every WS reconnect for the remainder of this tab.
+        refreshEndpointMissing = true;
+        console.warn(
+          '⚠️ /api/system/oauth/refresh returned 404 — standalone backend without OAuth gateway. Future refresh attempts will be skipped for this session.',
+        );
+        return false;
       }
 
       console.error('❌ Token refresh failed:', response.status);

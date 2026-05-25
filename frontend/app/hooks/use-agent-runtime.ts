@@ -950,12 +950,43 @@ export function useAgentRuntime(options: {
 
   // ── WebSocket Connection ──────────────────────────────────────────
 
+  // Use a ref so the onPermanentClose closure always reads the latest
+  // outbox snapshot — the WS hook captures this callback once per mount
+  // via its own ref, so we can't rely on a fresh closure each render.
+  const outboxRef = useRef(outbox)
+  outboxRef.current = outbox
+
+  const onPermanentClose = useCallback(
+    (info: { code: number; reason: string }) => {
+      const ob = outboxRef.current
+      if (!ob) return
+      // 1009 means the server rejected a frame as too big. Whatever items
+      // were inflight at close time would be demoted back to pending on
+      // the next connectionChanged("closed") and immediately re-flush on
+      // reconnect, closing the socket again on the same bytes. Mark them
+      // failed here — the user sees a retryable failure in the outbox UI
+      // (and can shorten/discard the offending message) instead of an
+      // invisible reconnect storm.
+      const reason =
+        info.code === 1009
+          ? `message too large for server (${info.reason || "1009"})`
+          : `connection closed (code ${info.code}: ${info.reason || "unknown"})`
+      for (const item of ob.outbox) {
+        if (item.state === "inflight") {
+          ob.notifyRejected(item.messageId, reason)
+        }
+      }
+    },
+    [],
+  )
+
   const { connected, sendPrompt, sendCancel, sendPermissionResponse, sendSetMode, sendSetModel, sendSetConfigOption, reconnect } =
     useAgentWebSocket({
       sessionId,
       token,
       onFrame,
       enabled,
+      onPermanentClose,
     })
 
   // isActiveRef is populated from session.info frame sent by backend on WS connect.
