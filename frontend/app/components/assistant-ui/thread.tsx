@@ -413,19 +413,24 @@ const DraftPersistenceSync: FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  // Persist as-you-type by forwarding into the outbox. Suppressed until the
-  // restore phase completes (so we don't immediately overwrite the restored
-  // draft with assistant-ui's transient initial empty text).
+  // Mirror composer text into the outbox. Suppressed until the restore phase
+  // completes so we don't overwrite the just-restored draft with assistant-ui's
+  // transient initial empty text.
   //
-  // NOTE: we deliberately do NOT mirror empty text → discardDraft. That is
-  // the empty-transient-wipe class of bug DESIGN.md was written to prevent
-  // (I2 in `draft-outbox/outbox.ts`): assistant-ui's auto-clear after submit
-  // also produces "", and discarding here would race the durable `submit` /
-  // create-session paths and silently destroy the user's input on a failed
-  // send. Drafts are removed only by `userDiscardedDraft` (atomic move into
-  // the outbox via `submit`) or by the runtime calling `discardDraft` after
-  // a confirmed-accepted send. The trade-off: text the user backspaced to
-  // empty without sending will reappear after a refresh.
+  // Expected UX:
+  //   - Type "hi"               → draft persists; switch away and back, "hi" is there
+  //   - Type "hi", delete it    → draft is gone; switch away and back, composer is empty
+  //   - Type "hi", hit send     → draft cleared atomically with the submit
+  //   - Send fails (new session) → runtime's catch calls outbox.restoreDraft(text),
+  //                                refilling both storage and the textarea
+  //
+  // Empty text routes through `discardDraft` — the user's intent when the
+  // textarea is empty is "no draft." The submit path also lands here (assistant-ui
+  // clears the composer after `onNew`), but by then `outbox.draft` is already ""
+  // (existing-session submit empties it synchronously in `onNew`), so
+  // `userDiscardedDraft`'s own `if (draft.length === 0) return` guard makes it
+  // a no-op. The new-session POST window is the one case where this path actually
+  // clears a live draft; the runtime's failed-POST `restoreDraft` covers that.
   const activeSessionRef = useRef(sessionId);
   useEffect(() => {
     if (!hasRestoredRef.current) return;
@@ -436,6 +441,8 @@ const DraftPersistenceSync: FC = () => {
     }
     if (text) {
       outbox.setDraft(text);
+    } else {
+      outbox.discardDraft();
     }
   }, [text, sessionId, outbox]);
 
