@@ -1797,7 +1797,7 @@ export default function AgentPage() {
         /* List view: full-screen session list (filtered by active tab) */
         <div className="flex flex-1 flex-col bg-muted/30 min-w-0 overflow-hidden">
           {renderSessionsHeader()}
-          <div className="flex-1 min-h-0 overflow-hidden p-2">
+          <div className="flex flex-1 min-h-0 flex-col overflow-hidden p-2">
             {sidebarView === 'agents' ? (
               <AutoAgentTree
                 sessions={visibleSessions}
