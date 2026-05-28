@@ -491,19 +491,15 @@ func (h *Handlers) GetAgentTurns(c *gin.Context) {
 	var currentStopReason string
 
 	for _, data := range raw {
-		var frame struct {
-			Type          string          `json:"type"`
-			SessionUpdate string          `json:"sessionUpdate"`
-			Content       json.RawMessage `json:"content"`
-			StopReason    string          `json:"stopReason"`
-		}
+		var frame map[string]any
 		if err := json.Unmarshal(data, &frame); err != nil {
 			continue
 		}
 
-		ft := frame.Type
+		// ACP-native frames use sessionUpdate; host-synthesized frames use type.
+		ft, _ := frame["type"].(string)
 		if ft == "" {
-			ft = frame.SessionUpdate
+			ft, _ = frame["sessionUpdate"].(string)
 		}
 
 		switch ft {
@@ -513,12 +509,14 @@ func (h *Handlers) GetAgentTurns(c *gin.Context) {
 			currentQuestion = ""
 			currentStopReason = ""
 		case "user_message_chunk":
-			if inTurn && currentQuestion == "" && len(frame.Content) > 0 {
-				currentQuestion = extractContentText(frame.Content)
+			if inTurn && currentQuestion == "" {
+				currentQuestion = extractContentText(frame["content"])
 			}
 		case "turn.complete":
 			if inTurn {
-				currentStopReason = frame.StopReason
+				if sr, ok := frame["stopReason"].(string); ok {
+					currentStopReason = sr
+				}
 				if currentQuestion == "" {
 					currentQuestion = "(non-text prompt)"
 				}
@@ -545,24 +543,20 @@ func (h *Handlers) GetAgentTurns(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"turns": turns})
 }
 
-// extractContentText pulls the first text snippet from a ContentBlock which
-// may appear as a single object {type, text} or a single-element array [{type, text}].
-func extractContentText(raw json.RawMessage) string {
-	// Try as single object first.
-	var obj struct {
-		Text string `json:"text"`
-	}
-	if json.Unmarshal(raw, &obj) == nil && obj.Text != "" {
-		return obj.Text
-	}
-	// Try as array of objects.
-	var arr []struct {
-		Text string `json:"text"`
-	}
-	if json.Unmarshal(raw, &arr) == nil {
-		for _, b := range arr {
-			if b.Text != "" {
-				return b.Text
+// extractContentText pulls the first text snippet from a ContentBlock.
+// Content may be a single object {type, text} or an array [{type, text}, ...].
+func extractContentText(content any) string {
+	switch c := content.(type) {
+	case map[string]any:
+		if text, ok := c["text"].(string); ok && text != "" {
+			return text
+		}
+	case []any:
+		for _, item := range c {
+			if obj, ok := item.(map[string]any); ok {
+				if text, ok := obj["text"].(string); ok && text != "" {
+					return text
+				}
 			}
 		}
 	}
