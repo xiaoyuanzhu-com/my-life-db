@@ -86,24 +86,31 @@ export const Thread: FC<ThreadProps> = ({ onAttachmentsStorageIdChange, existing
 
   // Turn-order tracking: each user message gets an incrementing index so
   // we can scroll to a specific turn via ?turn=N in the URL.
+  // Reset at render-start so the counter restarts cleanly on every render
+  // pass — this avoids double-counting across WS replay renders.
   const turnIndexRef = useRef({ current: 1 })
-  useEffect(() => { turnIndexRef.current.current = 1 }, [hasActiveSession])
+  turnIndexRef.current.current = 1
 
-  // Scroll to a specific turn when ?turn=N is present in the URL
+  // Scroll to a specific turn when ?turn=N is present in the URL.
+  // Poll for the target element to appear as messages stream in via WS replay.
   const [searchParams] = useSearchParams()
   const targetTurn = searchParams.get('turn')
   const scrolledRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!targetTurn || !hasSession || scrolledRef.current === targetTurn) return
-    const timer = setTimeout(() => {
+    const startTime = Date.now()
+    const interval = setInterval(() => {
       const el = document.querySelector(`[data-turn-order="${targetTurn}"]`)
       if (el) {
+        clearInterval(interval)
         el.scrollIntoView({ behavior: 'smooth', block: 'start' })
         scrolledRef.current = targetTurn
+      } else if (Date.now() - startTime > 10000) {
+        clearInterval(interval)
       }
-    }, 600)
-    return () => clearTimeout(timer)
+    }, 150)
+    return () => clearInterval(interval)
   }, [targetTurn, hasSession])
 
   // Show loading when we have an active session but messages haven't loaded into the store yet.

@@ -466,6 +466,16 @@ func (h *Handlers) GetAgentMessages(c *gin.Context) {
 func (h *Handlers) GetAgentTurns(c *gin.Context) {
 	sessionID := c.Param("id")
 	ss := h.agentMgr.GetOrCreateState(sessionID)
+
+	// If session has no messages in memory, try loading from disk first.
+	if ss.MessageCount() == 0 {
+		if fs := h.server.FrameStore(); fs != nil {
+			if frames, err := fs.Load(sessionID); err == nil && len(frames) > 0 {
+				ss.LoadHistoricalFrames(frames)
+			}
+		}
+	}
+
 	raw := ss.GetRecentMessages(0)
 
 	type TurnSummary struct {
@@ -482,13 +492,10 @@ func (h *Handlers) GetAgentTurns(c *gin.Context) {
 
 	for _, data := range raw {
 		var frame struct {
-			Type          string `json:"type"`
-			SessionUpdate string `json:"sessionUpdate"`
-			Content       struct {
-				Type string `json:"type"`
-				Text string `json:"text"`
-			} `json:"content"`
-			StopReason string `json:"stopReason"`
+			Type          string          `json:"type"`
+			SessionUpdate string          `json:"sessionUpdate"`
+			Content       json.RawMessage `json:"content"`
+			StopReason    string          `json:"stopReason"`
 		}
 		if err := json.Unmarshal(data, &frame); err != nil {
 			continue
@@ -506,8 +513,8 @@ func (h *Handlers) GetAgentTurns(c *gin.Context) {
 			currentQuestion = ""
 			currentStopReason = ""
 		case "user_message_chunk":
-			if inTurn && currentQuestion == "" && frame.Content.Text != "" {
-				currentQuestion = frame.Content.Text
+			if inTurn && currentQuestion == "" && len(frame.Content) > 0 {
+				currentQuestion = extractContentText(frame.Content)
 			}
 		case "turn.complete":
 			if inTurn {
@@ -536,6 +543,30 @@ func (h *Handlers) GetAgentTurns(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"turns": turns})
+}
+
+// extractContentText pulls the first text snippet from a ContentBlock which
+// may appear as a single object {type, text} or a single-element array [{type, text}].
+func extractContentText(raw json.RawMessage) string {
+	// Try as single object first.
+	var obj struct {
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(raw, &obj) == nil && obj.Text != "" {
+		return obj.Text
+	}
+	// Try as array of objects.
+	var arr []struct {
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(raw, &arr) == nil {
+		for _, b := range arr {
+			if b.Text != "" {
+				return b.Text
+			}
+		}
+	}
+	return ""
 }
 
 // DeactivateAgentSession is a no-op for ACP sessions (they're ephemeral).
