@@ -1251,6 +1251,15 @@ export default function AgentPage() {
     setEditingAgentName(null)
   }, [goToSession])
 
+  const handleNavigateToTurn = useCallback((sessionId: string, turnNumber: number) => {
+    const session = sessionsRef.current.find((s) => s.id === sessionId)
+    const useReplace = isNativeApp() || prevActiveSessionIdRef.current != null
+    const base = session?.source === 'auto' ? '/agent/auto' : '/agent'
+    navigate(`${base}/${sessionId}?turn=${turnNumber}`, { replace: useReplace })
+    setShowNewSessionMobile(false)
+    setEditingAgentName(null)
+  }, [navigate])
+
   // Update share fields on a session (called by ShareButton)
   const updateSessionShare = useCallback((sessionId: string, fields: Partial<Session>) => {
     setSessions((prev) =>
@@ -1660,6 +1669,7 @@ export default function AgentPage() {
                   onArchiveSession={archiveSession}
                   onUnarchiveSession={unarchiveSession}
                   onPinSession={handlePinSession}
+                  onNavigateToTurn={handleNavigateToTurn}
                 />
               )}
             </div>
@@ -1835,6 +1845,7 @@ export default function AgentPage() {
                 onArchiveSession={archiveSession}
                 onUnarchiveSession={unarchiveSession}
                 onPinSession={handlePinSession}
+                onNavigateToTurn={handleNavigateToTurn}
               />
             )}
           </div>

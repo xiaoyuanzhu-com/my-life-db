@@ -461,6 +461,83 @@ func (h *Handlers) GetAgentMessages(c *gin.Context) {
 	c.Writer.WriteString("]")
 }
 
+// GetAgentTurns returns turn summaries for a session.
+// GET /api/agent/sessions/:id/turns
+func (h *Handlers) GetAgentTurns(c *gin.Context) {
+	sessionID := c.Param("id")
+	ss := h.agentMgr.GetOrCreateState(sessionID)
+	raw := ss.GetRecentMessages(0)
+
+	type TurnSummary struct {
+		TurnNumber int    `json:"turnNumber"`
+		Question   string `json:"question"`
+		StopReason string `json:"stopReason,omitempty"`
+	}
+
+	var turns []TurnSummary
+	turnNum := 0
+	inTurn := false
+	var currentQuestion string
+	var currentStopReason string
+
+	for _, data := range raw {
+		var frame struct {
+			Type          string `json:"type"`
+			SessionUpdate string `json:"sessionUpdate"`
+			Content       struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
+			StopReason string `json:"stopReason"`
+		}
+		if err := json.Unmarshal(data, &frame); err != nil {
+			continue
+		}
+
+		ft := frame.Type
+		if ft == "" {
+			ft = frame.SessionUpdate
+		}
+
+		switch ft {
+		case "turn.start":
+			turnNum++
+			inTurn = true
+			currentQuestion = ""
+			currentStopReason = ""
+		case "user_message_chunk":
+			if inTurn && currentQuestion == "" && frame.Content.Text != "" {
+				currentQuestion = frame.Content.Text
+			}
+		case "turn.complete":
+			if inTurn {
+				currentStopReason = frame.StopReason
+				if currentQuestion == "" {
+					currentQuestion = "(non-text prompt)"
+				}
+				if len([]rune(currentQuestion)) > 80 {
+					q := []rune(currentQuestion)
+					currentQuestion = string(q[:80]) + "..."
+				}
+				turns = append(turns, TurnSummary{
+					TurnNumber: turnNum,
+					Question:   currentQuestion,
+					StopReason: currentStopReason,
+				})
+				inTurn = false
+				currentQuestion = ""
+				currentStopReason = ""
+			}
+		}
+	}
+	// Include in-progress turn if session is active
+	if inTurn && currentQuestion != "" {
+		turns = append(turns, TurnSummary{TurnNumber: turnNum, Question: currentQuestion})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"turns": turns})
+}
+
 // DeactivateAgentSession is a no-op for ACP sessions (they're ephemeral).
 // POST /api/agent/sessions/:id/deactivate
 func (h *Handlers) DeactivateAgentSession(c *gin.Context) {

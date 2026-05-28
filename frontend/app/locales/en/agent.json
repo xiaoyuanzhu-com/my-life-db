@@ -33,6 +33,12 @@
       "error": "Search failed",
       "loadMore": "Load more",
       "filterDisabled": "Filters are unavailable while searching"
+    },
+    "turns": {
+      "loading": "Loading turns...",
+      "noTurns": "No turns yet",
+      "loadError": "Failed to load turns",
+      "active": "Active"
     }
   },
   "thread": {
