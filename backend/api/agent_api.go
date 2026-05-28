@@ -461,6 +461,7 @@ func (h *Handlers) GetAgentTurns(c *gin.Context) {
 	}
 
 	raw := ss.GetRecentMessages(0)
+	log.Info().Str("sessionId", sessionID).Int("frameCount", len(raw)).Msg("GetAgentTurns: starting frame parse")
 
 	type TurnSummary struct {
 		TurnNumber int    `json:"turnNumber"`
@@ -494,7 +495,9 @@ func (h *Handlers) GetAgentTurns(c *gin.Context) {
 			currentStopReason = ""
 		case "user_message_chunk":
 			if inTurn && currentQuestion == "" {
+				log.Info().Str("sessionId", sessionID).Int("turnNum", turnNum).Interface("content", frame["content"]).Msg("GetAgentTurns: user_message_chunk content")
 				currentQuestion = extractContentText(frame["content"])
+				log.Info().Str("sessionId", sessionID).Int("turnNum", turnNum).Str("extracted", currentQuestion).Msg("GetAgentTurns: extracted question")
 			}
 		case "turn.complete":
 			if inTurn {
@@ -524,6 +527,7 @@ func (h *Handlers) GetAgentTurns(c *gin.Context) {
 		turns = append(turns, TurnSummary{TurnNumber: turnNum, Question: currentQuestion})
 	}
 
+	log.Info().Str("sessionId", sessionID).Int("turnCount", len(turns)).Msg("GetAgentTurns: done")
 	c.JSON(http.StatusOK, gin.H{"turns": turns})
 }
 
