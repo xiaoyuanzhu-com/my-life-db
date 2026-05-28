@@ -33,6 +33,12 @@
       "error": "搜索失败",
       "loadMore": "加载更多",
       "filterDisabled": "搜索时无法使用筛选"
+    },
+    "turns": {
+      "loading": "加载轮次中...",
+      "noTurns": "暂无轮次",
+      "loadError": "加载轮次失败",
+      "active": "进行中"
     }
   },
   "thread": {

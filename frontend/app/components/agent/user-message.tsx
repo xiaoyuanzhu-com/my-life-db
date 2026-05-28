@@ -7,13 +7,15 @@
  * - Proper max-width
  * - Optimistic messages at 70% opacity
  */
-import { useState, useMemo } from "react"
+import { useState, useMemo, createContext, useContext } from "react"
 import { MessagePrimitive } from "@assistant-ui/react"
 import { useMessage } from "@assistant-ui/react"
 import { cn } from "~/lib/utils"
 
 const MAX_LINES = 10
 const MAX_CHARS = 500
+
+export const TurnOrderContext = createContext<number | null>(null)
 
 interface UserTextPartProps {
   text: string
@@ -78,9 +80,13 @@ export function UserMessage() {
   const metadata = messageState.metadata as Record<string, unknown> | undefined
   const custom = metadata?.custom as Record<string, unknown> | undefined
   const isOptimistic = !!custom?.isOptimistic
+  const turnOrder = useContext(TurnOrderContext)
 
   return (
-    <MessagePrimitive.Root className={cn("flex justify-end mb-4", isOptimistic && "opacity-70")}>
+    <MessagePrimitive.Root
+      data-turn-order={turnOrder ?? undefined}
+      className={cn("flex justify-end mb-4", isOptimistic && "opacity-70")}
+    >
       <div className="max-w-[80%] rounded-2xl bg-primary px-4 py-2.5 text-sm break-words">
         <MessagePrimitive.Parts
           components={{
