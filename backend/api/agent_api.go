@@ -490,6 +490,7 @@ func (h *Handlers) GetAgentTurns(c *gin.Context) {
 	inTurn := false
 	var currentQuestion string
 	var currentStopReason string
+	frameTypeCounts := map[string]int{}
 
 	for _, data := range raw {
 		var frame map[string]any
@@ -501,6 +502,12 @@ func (h *Handlers) GetAgentTurns(c *gin.Context) {
 		ft, _ := frame["type"].(string)
 		if ft == "" {
 			ft, _ = frame["sessionUpdate"].(string)
+		}
+
+		// Log every distinct frame type (sampled: first 3 of each)
+		frameTypeCounts[ft]++
+		if frameTypeCounts[ft] <= 3 {
+			log.Info().Str("sessionId", sessionID).Int("frameIdx", i).Str("frameType", ft).Msg("GetAgentTurns: frame")
 		}
 
 		switch ft {
@@ -543,7 +550,7 @@ func (h *Handlers) GetAgentTurns(c *gin.Context) {
 		turns = append(turns, TurnSummary{TurnNumber: turnNum, Question: currentQuestion})
 	}
 
-	log.Info().Str("sessionId", sessionID).Int("turnCount", len(turns)).Msg("GetAgentTurns: done")
+	log.Info().Str("sessionId", sessionID).Int("turnCount", len(turns)).Interface("frameTypes", frameTypeCounts).Msg("GetAgentTurns: done")
 	c.JSON(http.StatusOK, gin.H{"turns": turns})
 }
 
