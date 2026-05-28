@@ -476,7 +476,7 @@ func (h *Handlers) GetAgentTurns(c *gin.Context) {
 	var currentStopReason string
 	frameTypeCounts := map[string]int{}
 
-	for _, data := range raw {
+	for i, data := range raw {
 		var frame map[string]any
 		if err := json.Unmarshal(data, &frame); err != nil {
 			continue
