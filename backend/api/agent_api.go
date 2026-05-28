@@ -477,7 +477,6 @@ func (h *Handlers) GetAgentTurns(c *gin.Context) {
 	}
 
 	raw := ss.GetRecentMessages(0)
-	log.Info().Str("sessionId", sessionID).Int("frameCount", len(raw)).Msg("GetAgentTurns: starting frame parse")
 
 	type TurnSummary struct {
 		TurnNumber int    `json:"turnNumber"`
@@ -490,9 +489,8 @@ func (h *Handlers) GetAgentTurns(c *gin.Context) {
 	inTurn := false
 	var currentQuestion string
 	var currentStopReason string
-	frameTypeCounts := map[string]int{}
 
-	for i, data := range raw {
+	for _, data := range raw {
 		var frame map[string]any
 		if err := json.Unmarshal(data, &frame); err != nil {
 			continue
@@ -504,23 +502,18 @@ func (h *Handlers) GetAgentTurns(c *gin.Context) {
 			ft, _ = frame["sessionUpdate"].(string)
 		}
 
-		// Log every distinct frame type (sampled: first 3 of each)
-		frameTypeCounts[ft]++
-		if frameTypeCounts[ft] <= 3 {
-			log.Info().Str("sessionId", sessionID).Int("frameIdx", i).Str("frameType", ft).Msg("GetAgentTurns: frame")
-		}
-
 		switch ft {
 		case "turn.start":
 			turnNum++
 			inTurn = true
-			currentQuestion = ""
+			// Don't reset currentQuestion — user_message_chunk arrives
+			// before turn.start (see agent_ws.go:450 vs RunPromptTurn:66).
 			currentStopReason = ""
 		case "user_message_chunk":
-			if inTurn && currentQuestion == "" {
-				log.Info().Str("sessionId", sessionID).Int("turnNum", turnNum).Interface("content", frame["content"]).Msg("GetAgentTurns: user_message_chunk content")
+			// Capture eagerly regardless of inTurn — user_message_chunk
+			// is emitted before turn.start in the frame order.
+			if currentQuestion == "" {
 				currentQuestion = extractContentText(frame["content"])
-				log.Info().Str("sessionId", sessionID).Int("turnNum", turnNum).Str("extracted", currentQuestion).Msg("GetAgentTurns: extracted question")
 			}
 		case "turn.complete":
 			if inTurn {
@@ -550,7 +543,6 @@ func (h *Handlers) GetAgentTurns(c *gin.Context) {
 		turns = append(turns, TurnSummary{TurnNumber: turnNum, Question: currentQuestion})
 	}
 
-	log.Info().Str("sessionId", sessionID).Int("turnCount", len(turns)).Interface("frameTypes", frameTypeCounts).Msg("GetAgentTurns: done")
 	c.JSON(http.StatusOK, gin.H{"turns": turns})
 }
 
