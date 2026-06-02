@@ -804,25 +804,27 @@ func (d *DB) RenameFilePath(ctx context.Context, oldPath, newPath, newName strin
 // DB, ATTACHed rw on the writer connection). All in one atomic transaction.
 func (d *DB) RenameFilePaths(ctx context.Context, oldPath, newPath string) error {
 	return d.Write(ctx, func(tx *sql.Tx) error {
-		// Update files table - all files and subfolders
+		// substr offset must be SQL length(oldPath)+1: SQLite substr counts
+		// characters on TEXT, while Go len() counts bytes — they diverge for
+		// any multi-byte (e.g. CJK) path and corrupt every child record.
 		if _, err := tx.Exec(`
 			UPDATE files
-			SET path = ? || substr(path, ?) ,
+			SET path = ? || substr(path, length(?) + 1) ,
 				name = CASE
 					WHEN path = ? THEN ?
 					ELSE name
 				END
 			WHERE path = ? OR path LIKE ? || '/%'
-		`, newPath, len(oldPath)+1, oldPath, filepath.Base(newPath), oldPath, oldPath); err != nil {
+		`, newPath, oldPath, oldPath, filepath.Base(newPath), oldPath, oldPath); err != nil {
 			return fmt.Errorf("failed to update files: %w", err)
 		}
 
 		// Update FTS5 search index
 		if _, err := tx.Exec(`
 			UPDATE files_fts
-			SET file_path = ? || substr(file_path, ?)
+			SET file_path = ? || substr(file_path, length(?) + 1)
 			WHERE file_path = ? OR file_path LIKE ? || '/%'
-		`, newPath, len(oldPath)+1, oldPath, oldPath); err != nil {
+		`, newPath, oldPath, oldPath, oldPath); err != nil {
 			return fmt.Errorf("failed to update files_fts: %w", err)
 		}
 
@@ -830,9 +832,9 @@ func (d *DB) RenameFilePaths(ctx context.Context, oldPath, newPath string) error
 		// so pins under a renamed folder follow it.
 		if _, err := tx.Exec(`
 			UPDATE app.pins
-			SET file_path = ? || substr(file_path, ?)
+			SET file_path = ? || substr(file_path, length(?) + 1)
 			WHERE file_path = ? OR file_path LIKE ? || '/%'
-		`, newPath, len(oldPath)+1, oldPath, oldPath); err != nil {
+		`, newPath, oldPath, oldPath, oldPath); err != nil {
 			return fmt.Errorf("failed to update app.pins: %w", err)
 		}
 
