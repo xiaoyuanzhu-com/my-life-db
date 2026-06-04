@@ -52,6 +52,25 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
     setIsLoading(true);
     setError(null);
 
+    const filenameMatch = filePath.match(/[^/]+$/);
+    const filename = filenameMatch ? filenameMatch[0] : 'file';
+
+    // Skip fetching binary files that we can't preview inline
+    // (Excel, Word, etc.). Avoids downloading the entire file
+    // just to show "Cannot Preview".
+    if (!isTextFile(null, filename) &&
+        !/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif|mp4|webm|mov|avi|mkv|mp3|wav|ogg|m4a|flac|pdf)$/i.test(filename)) {
+      setFileData({
+        path: filePath,
+        name: filename,
+        contentType: '',
+        size: 0,
+        modifiedAt: 0,
+      });
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const response = await fetch(`/raw/${filePath}`);
 
@@ -59,12 +78,8 @@ export function FileViewer({ filePath, onFileDataLoad, onContentChange, initialE
         throw new Error('Failed to load file');
       }
 
-      // Extract just the MIME type, stripping charset and other parameters
       const rawContentType = response.headers.get('content-type') || 'application/octet-stream';
       const contentType = rawContentType.split(';')[0].trim();
-      // Extract filename from path
-      const filenameMatch = filePath.match(/[^/]+$/);
-      const filename = filenameMatch ? filenameMatch[0] : 'file';
       const fileType = getFileType(contentType, filename);
 
       // For text files, decode the binary response as UTF-8
