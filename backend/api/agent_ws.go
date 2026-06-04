@@ -749,15 +749,11 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 					log.Info().Str("sessionId", sessionID).Str("configId", inMsg.ConfigID).Str("value", inMsg.ConfigValue).Msg("config option set via WebSocket")
 					// claude-agent-acp returns the updated options inline
 					// instead of emitting a session/update notification, so
-					// fan it out ourselves to keep the UI in sync.
-					if frame, mErr := json.Marshal(map[string]any{
-						"sessionUpdate": "config_option_update",
-						"configOptions": updatedOpts,
-					}); mErr == nil {
-						sessionState.AppendAndBroadcast(frame)
-					} else {
-						log.Warn().Err(mErr).Str("sessionId", sessionID).Msg("failed to marshal config_option_update after SetConfigOption")
-					}
+					// fan it out ourselves to keep the UI in sync. Rewrite the
+					// model dropdown to the gateway list — the inline response
+					// echoes the native CLI model options otherwise.
+					gatewayModels := h.agentMgr.GatewayModels(agentTypeString(acpSession.AgentType()))
+					broadcastConfigUpdate(sessionState, gatewayModels, updatedOpts, sessionID)
 				}
 			}
 			cfgCancel()

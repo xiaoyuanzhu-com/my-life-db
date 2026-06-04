@@ -479,17 +479,7 @@ func applyModelEffort(sess agentsdk.Session, sessionState *agentsdk.SessionState
 		log.Warn().Err(err).Str("sessionId", sessionID).Str("model", modelValue).Str("effort", effort).Msg("failed to apply model-specific effort override")
 		return ""
 	}
-	if sessionState != nil {
-		frame, mErr := json.Marshal(map[string]any{
-			"sessionUpdate": "config_option_update",
-			"configOptions": updatedOpts,
-		})
-		if mErr != nil {
-			log.Warn().Err(mErr).Str("sessionId", sessionID).Msg("failed to marshal config_option_update after applyModelEffort")
-		} else {
-			sessionState.AppendAndBroadcast(frame)
-		}
-	}
+	broadcastConfigUpdate(sessionState, gatewayModels, updatedOpts, sessionID)
 	return effort
 }
 
@@ -563,6 +553,29 @@ func rewriteModelOptions(data []byte, gatewayModels []server.AgentModelInfo) []b
 		return out
 	}
 	return data
+}
+
+// broadcastConfigUpdate fans out a synthetic config_option_update frame for
+// updatedOpts. claude-agent-acp's SetConfigOption echoes the native CLI model
+// dropdown in its inline response, so the frame must go through
+// rewriteModelOptions — exactly like live ACP frames in SetOnFrame — or it
+// clobbers the gateway-rewritten dropdown the UI already received.
+func broadcastConfigUpdate(sessionState *agentsdk.SessionState, gatewayModels []server.AgentModelInfo, updatedOpts any, sessionID string) {
+	if sessionState == nil {
+		return
+	}
+	frame, err := json.Marshal(map[string]any{
+		"sessionUpdate": "config_option_update",
+		"configOptions": updatedOpts,
+	})
+	if err != nil {
+		log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to marshal config_option_update")
+		return
+	}
+	if len(gatewayModels) > 0 {
+		frame = rewriteModelOptions(frame, gatewayModels)
+	}
+	sessionState.AppendAndBroadcast(frame)
 }
 
 // CreateSession spawns an ACP agent process, persists the session, wires
