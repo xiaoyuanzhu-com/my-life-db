@@ -15,6 +15,7 @@ func NewHandlers(srv *server.Server) *Handlers {
 	if fs := srv.FrameStore(); fs != nil {
 		mgr.SetFrameStore(fs)
 	}
+	mgr.StartIdleReaper()
 	return &Handlers{
 		server:   srv,
 		agentMgr: mgr,

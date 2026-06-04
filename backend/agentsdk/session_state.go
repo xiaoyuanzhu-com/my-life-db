@@ -253,6 +253,13 @@ func (s *SessionState) RemoveClient(c *WSClient) {
 	s.Mu.Unlock()
 }
 
+// HasClients reports whether any WebSocket client is currently connected.
+func (s *SessionState) HasClients() bool {
+	s.Mu.RLock()
+	defer s.Mu.RUnlock()
+	return len(s.clients) > 0
+}
+
 // GetRecentMessages returns the last n messages from the buffer.
 // If n <= 0 or n > len(rawMessages), returns all messages.
 func (s *SessionState) GetRecentMessages(n int) [][]byte {

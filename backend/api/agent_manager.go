@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	acp "github.com/coder/acp-go-sdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
@@ -181,6 +182,91 @@ func (m *AgentManager) CleanupSession(sessionID string) {
 	m.statesMu.Lock()
 	delete(m.states, sessionID)
 	m.statesMu.Unlock()
+}
+
+// Idle-session sweeper. Each live session pins an agent subprocess (~hundreds
+// of MB RSS) that otherwise survives until the user explicitly stops/deletes
+// it or the server restarts. Long-lived servers therefore accumulate one
+// process per session ever touched, even when only a handful are in use.
+//
+// The sweep is non-destructive: a reaped session is transparently respawned
+// from its persisted DB record + on-disk frames the next time the user
+// interacts with it (see ensureLiveACPSession).
+const (
+	reapSweepInterval = time.Hour
+	reapMaxIdle       = 3 * 24 * time.Hour
+)
+
+// StartIdleReaper launches the background sweep. It runs until the server's
+// shutdown context is cancelled. Call once during startup.
+func (m *AgentManager) StartIdleReaper() {
+	go func() {
+		ticker := time.NewTicker(reapSweepInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-m.shutdownCtx.Done():
+				return
+			case <-ticker.C:
+				m.reapIdleSessions(reapMaxIdle)
+			}
+		}
+	}()
+	log.Info().
+		Dur("interval", reapSweepInterval).
+		Dur("maxIdle", reapMaxIdle).
+		Msg("agent idle-session reaper started")
+}
+
+// reapIdleSessions closes the agent process for every session whose last ACP
+// frame is older than maxIdle. Two sessions are always spared:
+//   - one currently processing a turn (would abort a live agent run), and
+//   - one with a WebSocket client still attached (someone is watching).
+func (m *AgentManager) reapIdleSessions(maxIdle time.Duration) {
+	now := time.Now()
+
+	// Snapshot IDs under the lock; Close() happens outside it.
+	m.sessionsMu.Lock()
+	ids := make([]string, 0, len(m.sessions))
+	for id := range m.sessions {
+		ids = append(ids, id)
+	}
+	m.sessionsMu.Unlock()
+
+	reaped := 0
+	for _, id := range ids {
+		state := m.PeekState(id)
+		if state == nil {
+			continue
+		}
+
+		state.Mu.RLock()
+		last := state.LastFrameAt
+		processing := state.IsProcessing()
+		state.Mu.RUnlock()
+
+		switch {
+		case processing:
+			continue // never abort an in-flight turn
+		case state.HasClients():
+			continue // someone is still connected
+		case last.IsZero():
+			continue // no recorded activity yet — don't reap blind
+		case now.Sub(last) < maxIdle:
+			continue
+		}
+
+		log.Info().
+			Str("sessionId", id).
+			Dur("idle", now.Sub(last)).
+			Msg("reaping idle agent session")
+		m.CleanupSession(id)
+		reaped++
+	}
+
+	if reaped > 0 {
+		log.Info().Int("reaped", reaped).Int("scanned", len(ids)).Msg("idle agent-session sweep complete")
+	}
 }
 
 // RestartSession kills the existing ACP process and resets in-memory state
