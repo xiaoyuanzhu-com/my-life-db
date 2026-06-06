@@ -45,6 +45,7 @@ import {
 } from '~/components/ui/dropdown-menu'
 import { Input } from '~/components/ui/input'
 import { cn } from '~/lib/utils'
+import { SessionTurnsPopover } from '~/components/agent/session-turns-popover'
 import type { SessionLifecycleState } from '~/types/session'
 
 type SessionState = SessionLifecycleState
@@ -81,6 +82,7 @@ export interface AgentSidebarProps {
   onArchiveSession: (id: string) => Promise<void> | void
   onUnarchiveSession: (id: string) => Promise<void> | void
   onPinSession: (id: string, pinned: boolean) => Promise<void> | void
+  onNavigateToTurn?: (sessionId: string, turnNumber: number) => void
 }
 
 // ── Time bucketing ────────────────────────────────────────────────────────────
@@ -129,6 +131,7 @@ export const AgentSidebar: FC<AgentSidebarProps> = ({
   onArchiveSession,
   onUnarchiveSession,
   onPinSession,
+  onNavigateToTurn,
 }) => {
   const { t } = useTranslation('agent');
   // Bucket sessions: pinned (across all time), then by `lastActivity` time bucket.
@@ -186,6 +189,7 @@ export const AgentSidebar: FC<AgentSidebarProps> = ({
               onArchiveSession={onArchiveSession}
               onUnarchiveSession={onUnarchiveSession}
               onPinSession={onPinSession}
+              onNavigateToTurn={onNavigateToTurn}
             />
           ))}
         </Section>
@@ -212,6 +216,7 @@ export const AgentSidebar: FC<AgentSidebarProps> = ({
                 onArchiveSession={onArchiveSession}
                 onUnarchiveSession={onUnarchiveSession}
                 onPinSession={onPinSession}
+                onNavigateToTurn={onNavigateToTurn}
               />
             ))}
           </Section>
@@ -255,6 +260,7 @@ interface SessionRowProps {
   onArchiveSession: (id: string) => Promise<void> | void
   onUnarchiveSession: (id: string) => Promise<void> | void
   onPinSession: (id: string, pinned: boolean) => Promise<void> | void
+  onNavigateToTurn?: (sessionId: string, turnNumber: number) => void
 }
 
 // Decide which dot, if any, to render on a session row.
@@ -291,6 +297,7 @@ const SessionRow: FC<SessionRowProps> = ({
   onArchiveSession,
   onUnarchiveSession,
   onPinSession,
+  onNavigateToTurn,
 }) => {
   const { t } = useTranslation('agent');
   const isActive = session.id === activeSessionId
@@ -320,11 +327,15 @@ const SessionRow: FC<SessionRowProps> = ({
   }
 
   return (
-    <div
-      {...(isActive ? { 'data-active': 'true' } : {})}
-      {...(isRecentlyVisited ? { 'data-recently-visited': 'true' } : {})}
-      className="group relative flex h-8 items-center gap-1 rounded-md transition-colors duration-300 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none data-active:bg-foreground/10 data-[recently-visited=true]:bg-muted"
+    <SessionTurnsPopover
+      sessionId={session.id}
+      onNavigate={(turnNumber) => onNavigateToTurn?.(session.id, turnNumber)}
     >
+      <div
+        {...(isActive ? { 'data-active': 'true' } : {})}
+        {...(isRecentlyVisited ? { 'data-recently-visited': 'true' } : {})}
+        className="group relative flex h-8 items-center gap-1 rounded-md transition-colors duration-300 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none data-active:bg-foreground/10 data-[recently-visited=true]:bg-muted"
+      >
       {renaming ? (
         <div className="flex h-full min-w-0 flex-1 items-center px-2.5">
           <Input
@@ -449,5 +460,6 @@ const SessionRow: FC<SessionRowProps> = ({
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
+    </SessionTurnsPopover>
   )
 }
