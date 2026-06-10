@@ -37,6 +37,13 @@ type SessionState struct {
 	IsActive     bool // true after first prompt sent (vs replay-only)
 	Killed       bool // set by session.kill — suppresses Send() goroutine cleanup
 	ResultCount  int
+
+	// RespawnAfterTurn queues a kill+respawn of the agent process for when
+	// the in-flight turn completes (e.g. the user changed the model mid-turn —
+	// the new model only takes effect via spawn env). Set by the WS
+	// setConfigOption handler, consumed by RunPromptTurn on turn completion,
+	// cleared on every spawn in SetupACP. Guarded by Mu.
+	RespawnAfterTurn bool
 	HistoryOnce  sync.Once // ensures LoadSession runs at most once per session
 	HistoryError string    // non-empty if LoadSession failed (shared across connections)
 

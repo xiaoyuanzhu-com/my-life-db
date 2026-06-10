@@ -121,6 +121,7 @@ func (m *AgentManager) RunPromptTurn(
 	// Channel closed = turn complete.
 	sessionState.Mu.Lock()
 	killed := sessionState.Killed
+	respawnQueued := sessionState.RespawnAfterTurn
 	newResultCount := sessionState.ResultCount
 	if !killed {
 		// Don't count an errored turn as a "result" — there's nothing the
@@ -146,7 +147,7 @@ func (m *AgentManager) RunPromptTurn(
 		// internally and leaks out on the prompt AFTER that. Same desync
 		// as the cancel case (see session.cancel handler in agent_ws.go),
 		// so apply the same heavy-handed fix: kill the subprocess and let
-		// ensureLiveACPSession respawn it on the next user prompt.
+		// EnsureLiveSession respawn it on the next user prompt.
 		// LoadSession on the lazy-create path restores in-session
 		// conversation memory.
 		//
@@ -180,4 +181,27 @@ func (m *AgentManager) RunPromptTurn(
 		log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist result count")
 	}
 	m.notifService.NotifyAgentSessionUpdated(sessionID, "result")
+
+	// Apply a model change that was queued mid-turn (see the setConfigOption
+	// handler in agent_ws.go): kill the process and respawn it so it boots
+	// with the new model in its spawn env. EnsureLiveSession reads the
+	// persisted model back, LoadSession restores conversation memory, and
+	// SetupACP broadcasts the confirming config_option_update. On the killed
+	// and error paths above the process is already (being) torn down, so the
+	// next lazy spawn applies the persisted model on its own — SetupACP
+	// clears the flag on every spawn.
+	if respawnQueued {
+		if sess, ok := m.GetSession(sessionID); ok {
+			m.RemoveSession(sessionID)
+			sess.CancelAllPermissions()
+			if err := sess.Close(); err != nil {
+				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to close ACP session for queued model change")
+			}
+		}
+		if _, err := m.EnsureLiveSession(sessionID, sessionState); err != nil {
+			log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to respawn agent for queued model change — next prompt will retry lazily")
+		} else {
+			log.Info().Str("sessionId", sessionID).Str("source", sourceLabel).Msg("respawned agent process after turn completion to apply queued model change")
+		}
+	}
 }

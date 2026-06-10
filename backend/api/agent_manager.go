@@ -269,6 +269,85 @@ func (m *AgentManager) reapIdleSessions(maxIdle time.Duration) {
 	}
 }
 
+// EnsureLiveSession returns a live ACP session for sessionID, spawning one
+// lazily if the existing entry is missing or its process has exited.
+//
+// Used by every user-initiated WS handler (prompt, setMode, setConfigOption)
+// so that any user input always lands on a live agent, and by RunPromptTurn
+// to apply a model change queued mid-turn (RespawnAfterTurn). The previous
+// design branched on existence and synthesized a fake config_option_update
+// frame when ACP was dead — which silently let session state desync from the
+// dropdown (model snapping back to gateway default, effort vanishing).
+//
+// Returns (nil, nil) when there is no session record in the DB; callers
+// should surface that distinctly from a spawn failure.
+//
+// Spawn parameters come from persisted state: agent type, working dir,
+// storage id, permission mode, and last-selected model. When the session
+// already has frames in memory, LoadSession is called so the new agent
+// process inherits conversation memory.
+func (m *AgentManager) EnsureLiveSession(sessionID string, sessionState *agentsdk.SessionState) (agentsdk.Session, error) {
+	if existing, ok := m.GetSession(sessionID); ok {
+		select {
+		case <-existing.Done():
+			log.Info().Str("sessionId", sessionID).Msg("existing ACP session process is dead, removing for lazy recreation")
+			m.RemoveSession(sessionID)
+		default:
+			return existing, nil
+		}
+	}
+
+	sessionRecord, _ := m.srv.AppDB().GetAgentSession(sessionID)
+	if sessionRecord == nil {
+		return nil, nil
+	}
+
+	agentType := parseAgentType(sessionRecord.AgentType)
+	agentTypeStr := agentTypeString(agentType)
+	workDir := sessionRecord.WorkingDir
+	storageID := sessionRecord.StorageID
+	mode, _ := m.srv.AppDB().GetAgentSessionPermissionMode(sessionID)
+
+	gatewayModels := m.GatewayModels(agentTypeStr)
+	var defaultModel string
+	if len(gatewayModels) > 0 {
+		defaultModel = gatewayModels[0].Value
+	}
+	persistedOpts, _ := m.srv.AppDB().GetAgentSessionConfigOptions(sessionID)
+	if v := persistedOpts["model"]; v != "" {
+		defaultModel = v
+	}
+
+	log.Info().Str("sessionId", sessionID).Msg("no live ACP session, creating lazily")
+	sess, err := m.agentClient.CreateSession(m.shutdownCtx, agentsdk.SessionConfig{
+		Agent:        agentType,
+		Mode:         mode,
+		WorkingDir:   workDir,
+		Env:          m.BuildModelEnv(agentType, defaultModel, gatewayModels),
+		McpServers:   m.buildSessionMcpServers(storageID),
+		SystemPrompt: server.BuildAgentSystemPrompt(m.srv.Cfg().UserDataDir, storageID),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Restore conversation memory if frames already exist. Noop OnFrame for
+	// the duration of LoadSession so replayed frames don't dupe rawMessages
+	// or the on-disk JSONL — both already contain them. SetupACP below
+	// installs the real broadcasting handler.
+	if workDir != "" && sessionState.MessageCount() > 0 {
+		sess.SetOnFrame(func(_ []byte) {})
+		if err := sess.LoadSession(m.shutdownCtx, sessionID, workDir); err != nil {
+			log.Warn().Err(err).Str("sessionId", sessionID).Msg("LoadSession failed on lazy create — agent will start with empty memory")
+		} else {
+			log.Info().Str("sessionId", sessionID).Msg("LoadSession succeeded on lazy create — agent memory restored")
+		}
+	}
+
+	m.SetupACP(sess, sessionID, mode, defaultModel)
+	return sess, nil
+}
+
 // RestartSession kills the existing ACP process and resets in-memory state
 // so the session can be lazily recreated on the next prompt. The DB record
 // is preserved — only the live process and runtime state are cleared.
@@ -375,6 +454,12 @@ func (m *AgentManager) AllRuntimeStates() map[string]SessionRuntimeState {
 func (m *AgentManager) SetupACP(sess agentsdk.Session, sessionID, mode, defaultModel string) *agentsdk.SessionState {
 	gatewayModels := m.GatewayModels(agentTypeString(sess.AgentType()))
 	sessionState := m.GetOrCreateState(sessionID)
+
+	// A fresh spawn always boots with the latest persisted config, so any
+	// queued respawn-for-model-change is satisfied by reaching this point.
+	sessionState.Mu.Lock()
+	sessionState.RespawnAfterTurn = false
+	sessionState.Mu.Unlock()
 
 	sess.SetOnFrame(func(data []byte) {
 		if len(gatewayModels) > 0 {

@@ -417,26 +417,6 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				}
 			}
 
-			acpSession, err := h.ensureLiveACPSession(sessionID, sessionState)
-			if err != nil {
-				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to ensure live ACP session for prompt")
-				if errBytes, mErr := json.Marshal(map[string]any{
-					"type": "error", "message": "Failed to create agent session: " + err.Error(), "code": "SESSION_ERROR",
-				}); mErr == nil {
-					conn.Write(ctx, websocket.MessageText, errBytes)
-				}
-				continue
-			}
-			if acpSession == nil {
-				log.Error().Str("sessionId", sessionID).Msg("no session record in DB for prompt")
-				if errBytes, mErr := json.Marshal(map[string]any{
-					"type": "error", "message": "Session not found", "code": "SESSION_NOT_FOUND",
-				}); mErr == nil {
-					conn.Write(ctx, websocket.MessageText, errBytes)
-				}
-				continue
-			}
-
 			// Update the session's updated_at so the session list re-sorts
 			// by last user activity (agent responses don't touch this).
 			if err := h.server.AppDB().TouchAgentSession(ctx, sessionID); err != nil {
@@ -456,6 +436,30 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			// Uses shared SessionState tracking so WS handler can also wait for
 			// REST-initiated or auto-run goroutines.
 			sessionState.WaitForPrompt()
+
+			// Resolve the live session only AFTER WaitForPrompt: the previous
+			// turn's completion may have killed and respawned the process
+			// (RespawnAfterTurn — queued model change), so a handle grabbed
+			// earlier could point at a dead process.
+			acpSession, err := h.agentMgr.EnsureLiveSession(sessionID, sessionState)
+			if err != nil {
+				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to ensure live ACP session for prompt")
+				if errBytes, mErr := json.Marshal(map[string]any{
+					"type": "error", "message": "Failed to create agent session: " + err.Error(), "code": "SESSION_ERROR",
+				}); mErr == nil {
+					conn.Write(ctx, websocket.MessageText, errBytes)
+				}
+				continue
+			}
+			if acpSession == nil {
+				log.Error().Str("sessionId", sessionID).Msg("no session record in DB for prompt")
+				if errBytes, mErr := json.Marshal(map[string]any{
+					"type": "error", "message": "Session not found", "code": "SESSION_NOT_FOUND",
+				}); mErr == nil {
+					conn.Write(ctx, websocket.MessageText, errBytes)
+				}
+				continue
+			}
 
 			// Create a per-prompt context so session.cancel can abort it.
 			promptCtx, pCancel := context.WithCancel(h.server.ShutdownContext())
@@ -560,6 +564,10 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			// completion.
 			sessionState.Mu.Lock()
 			sessionState.Killed = true
+			// Reset the in-memory processing flag too (session.kill already
+			// does this; previously cancel only cleared the DB column via
+			// MarkTurnOutcome below, leaving stale in-memory "working" state).
+			sessionState.SetProcessing(false, "ws-cancel")
 			sessionState.Mu.Unlock()
 
 			if exists {
@@ -645,13 +653,13 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 		case "session.setMode":
 			// Mode uses legacy SetSessionMode RPC (only Claude Code has modes).
 			// Persist first so the choice survives a respawn — the lazy-spawn
-			// path inside ensureLiveACPSession reads permission_mode back via
+			// path inside EnsureLiveSession reads permission_mode back via
 			// GetAgentSessionPermissionMode when it has to start a new agent.
 			if err := h.server.AppDB().SaveAgentSessionPermissionMode(ctx, sessionID, inMsg.ModeID); err != nil {
 				log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist mode preference")
 			}
 
-			acpSession, err := h.ensureLiveACPSession(sessionID, sessionState)
+			acpSession, err := h.agentMgr.EnsureLiveSession(sessionID, sessionState)
 			if err != nil {
 				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to ensure live ACP session for setMode")
 				continue
@@ -677,7 +685,7 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 
 		case "session.setConfigOption":
 			// Persist first so the choice survives a respawn. The lazy-spawn
-			// path inside ensureLiveACPSession reads these values back via
+			// path inside EnsureLiveSession reads these values back via
 			// GetAgentSessionConfigOptions / GetAgentSessionPermissionMode.
 			if inMsg.ConfigID == "mode" {
 				if err := h.server.AppDB().SaveAgentSessionPermissionMode(ctx, sessionID, inMsg.ConfigValue); err != nil {
@@ -689,7 +697,76 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				}
 			}
 
-			acpSession, err := h.ensureLiveACPSession(sessionID, sessionState)
+			// Model changes are applied by RESPAWNING the agent process so it
+			// boots with the new model in its spawn env (BuildModelEnv) —
+			// the same path that makes fresh sessions correct. Conversation
+			// memory is restored by LoadSession inside EnsureLiveSession.
+			// If a turn is in flight, the running turn is NOT disturbed: the
+			// respawn is queued (RespawnAfterTurn) and applied by RunPromptTurn
+			// when the turn completes; until then the frontend shows the
+			// picked value optimistically.
+			//
+			// TODO(vendor): this respawn is a workaround for a claude-agent-acp
+			// bug — unstable_setSessionModel fuzzy-resolves model ids it
+			// doesn't know against the CLI's native model list
+			// (resolveModelPreference in acp-agent.js), so a gateway name like
+			// "claude-fable-5[1m]" silently matched native "opus[1m]" via its
+			// "1m" context-hint token: the session ran the wrong model and the
+			// echoed config_option_update (carrying the native id) was snapped
+			// back to gatewayModels[0] by rewriteModelOptions. Spawn env is the
+			// only channel the CLI accepts verbatim (it surfaces
+			// ANTHROPIC_MODEL as a custom entry, so SetupACP's SetModel then
+			// direct-matches). If claude-agent-acp ever passes unknown ids
+			// through verbatim or grows a strict no-fuzzy set-model, drop this
+			// respawn and call SetModel on the live process instead — that
+			// would preserve the warm process and apply instantly mid-turn.
+			// A respawn also keeps ANTHROPIC_SMALL_FAST_MODEL coherent and
+			// makes mid-session model switching work for qwen (env-driven
+			// only; see SetupACP) — both need solutions of their own before
+			// the respawn can go away.
+			if inMsg.ConfigID == "model" {
+				// Sync persisted effort to the new model's declared value
+				// (or clear it) BEFORE spawning, so SetupACP's boot-time
+				// applyModelEffort doesn't re-apply the previous model's
+				// effort level to the new model.
+				declaredEffort := ""
+				for _, mi := range h.server.Cfg().AgentLLM.Models {
+					if mi.Value == inMsg.ConfigValue {
+						declaredEffort = mi.Effort
+						break
+					}
+				}
+				if declaredEffort != "" {
+					if err := h.server.AppDB().SaveAgentSessionConfigOption(ctx, sessionID, "effort", declaredEffort); err != nil {
+						log.Warn().Err(err).Str("sessionId", sessionID).Str("effort", declaredEffort).Msg("failed to persist effort before model-change respawn")
+					}
+				} else {
+					if err := h.server.AppDB().DeleteAgentSessionConfigOption(ctx, sessionID, "effort"); err != nil {
+						log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to clear stale effort before model-change respawn")
+					}
+				}
+
+				sessionState.Mu.Lock()
+				if sessionState.IsProcessing() {
+					sessionState.RespawnAfterTurn = true
+					sessionState.Mu.Unlock()
+					log.Info().Str("sessionId", sessionID).Str("model", inMsg.ConfigValue).Msg("turn in flight — model change queued, agent process will respawn when the turn completes")
+					continue
+				}
+				sessionState.Mu.Unlock()
+
+				if sess, ok := h.agentMgr.GetSession(sessionID); ok {
+					h.agentMgr.RemoveSession(sessionID)
+					sess.CancelAllPermissions()
+					if err := sess.Close(); err != nil {
+						log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to close agent session for model change")
+					} else {
+						log.Info().Str("sessionId", sessionID).Str("model", inMsg.ConfigValue).Msg("killed live agent process for model change, respawning with new model env")
+					}
+				}
+			}
+
+			acpSession, err := h.agentMgr.EnsureLiveSession(sessionID, sessionState)
 			if err != nil {
 				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to ensure live ACP session for setConfigOption")
 				continue
@@ -702,44 +779,16 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			cfgCtx, cfgCancel := context.WithTimeout(context.Background(), 10*time.Second)
 			// Mode uses the legacy SetSessionMode RPC — SetSessionConfigOption
 			// in Claude Code only supports configId="model", not "mode".
-			// Model uses UnstableSetSessionModel to bypass claude-agent-acp's
-			// allowlist (which rejects custom gateway model names).
-			//
-			// Known limitation for qwen: this RPC call errors for qwen because
-			// qwen validates modelId against a static authType registry (see
-			// the long comment in AgentManager.SetupACP). The error surfaces
-			// to the frontend as a failed model change — mid-session model
-			// switching for qwen requires a process restart, which isn't wired
-			// up yet. For now, qwen users should pick the model at session
-			// creation; the dropdown in an existing session won't propagate.
-			if inMsg.ConfigID == "mode" {
+			if inMsg.ConfigID == "model" {
+				// Fresh process already booted with the new model env;
+				// SetupACP applied model + effort and broadcast the resulting
+				// config_option_update. Nothing more to send.
+				log.Info().Str("sessionId", sessionID).Str("model", inMsg.ConfigValue).Msg("model change applied via respawn")
+			} else if inMsg.ConfigID == "mode" {
 				if err := acpSession.SetMode(cfgCtx, inMsg.ConfigValue); err != nil {
 					log.Error().Err(err).Str("sessionId", sessionID).Str("mode", inMsg.ConfigValue).Msg("failed to set mode")
 				} else {
 					log.Info().Str("sessionId", sessionID).Str("mode", inMsg.ConfigValue).Msg("mode set via WebSocket")
-				}
-			} else if inMsg.ConfigID == "model" {
-				modelForACP := resolveACPModel(acpSession.AgentType(), inMsg.ConfigValue)
-				if err := acpSession.SetModel(cfgCtx, modelForACP); err != nil {
-					log.Error().Err(err).Str("sessionId", sessionID).Str("model", modelForACP).Msg("failed to set model")
-				} else {
-					log.Info().Str("sessionId", sessionID).Str("model", modelForACP).Msg("model set via WebSocket")
-					gatewayModels := h.agentMgr.GatewayModels(agentTypeString(acpSession.AgentType()))
-					// override="" so we get the NEW model's declared Effort,
-					// not a stale value the user picked on the previous model.
-					appliedEffort := applyModelEffort(acpSession, sessionState, gatewayModels, inMsg.ConfigValue, sessionID, "")
-					// Keep config_options["effort"] in sync with what's actually
-					// running so resume doesn't restore a value from a model the
-					// session is no longer on.
-					if appliedEffort != "" {
-						if err := h.server.AppDB().SaveAgentSessionConfigOption(ctx, sessionID, "effort", appliedEffort); err != nil {
-							log.Warn().Err(err).Str("sessionId", sessionID).Str("effort", appliedEffort).Msg("failed to persist effort after model change")
-						}
-					} else {
-						if err := h.server.AppDB().DeleteAgentSessionConfigOption(ctx, sessionID, "effort"); err != nil {
-							log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to clear stale effort after model change")
-						}
-					}
 				}
 			} else {
 				updatedOpts, err := acpSession.SetConfigOption(cfgCtx, inMsg.ConfigID, inMsg.ConfigValue)
@@ -783,83 +832,5 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 
 	<-pollDone
 	<-pingDone
-}
-
-// ensureLiveACPSession returns a live ACP session for sessionID, spawning one
-// lazily if the existing entry is missing or its process has exited.
-//
-// Used by every user-initiated WS handler (prompt, setMode, setConfigOption)
-// so that any user input always lands on a live agent. The previous design
-// branched on existence and synthesized a fake config_option_update frame
-// when ACP was dead — which silently let session state desync from the
-// dropdown (model snapping back to gateway default, effort vanishing).
-//
-// Returns (nil, nil) when there is no session record in the DB; callers
-// should surface that distinctly from a spawn failure.
-//
-// Spawn parameters come from persisted state: agent type, working dir,
-// storage id, permission mode, and last-selected model. When the session
-// already has frames in memory, LoadSession is called so the new agent
-// process inherits conversation memory.
-func (h *Handlers) ensureLiveACPSession(sessionID string, sessionState *agentsdk.SessionState) (agentsdk.Session, error) {
-	if existing, ok := h.agentMgr.GetSession(sessionID); ok {
-		select {
-		case <-existing.Done():
-			log.Info().Str("sessionId", sessionID).Msg("existing ACP session process is dead, removing for lazy recreation")
-			h.agentMgr.RemoveSession(sessionID)
-		default:
-			return existing, nil
-		}
-	}
-
-	sessionRecord, _ := h.server.AppDB().GetAgentSession(sessionID)
-	if sessionRecord == nil {
-		return nil, nil
-	}
-
-	agentType := parseAgentType(sessionRecord.AgentType)
-	agentTypeStr := agentTypeString(agentType)
-	workDir := sessionRecord.WorkingDir
-	storageID := sessionRecord.StorageID
-	mode, _ := h.server.AppDB().GetAgentSessionPermissionMode(sessionID)
-
-	gatewayModels := h.agentMgr.GatewayModels(agentTypeStr)
-	var defaultModel string
-	if len(gatewayModels) > 0 {
-		defaultModel = gatewayModels[0].Value
-	}
-	persistedOpts, _ := h.server.AppDB().GetAgentSessionConfigOptions(sessionID)
-	if v := persistedOpts["model"]; v != "" {
-		defaultModel = v
-	}
-
-	log.Info().Str("sessionId", sessionID).Msg("no live ACP session, creating lazily")
-	sess, err := h.server.AgentClient().CreateSession(h.server.ShutdownContext(), agentsdk.SessionConfig{
-		Agent:        agentType,
-		Mode:         mode,
-		WorkingDir:   workDir,
-		Env:          h.agentMgr.BuildModelEnv(agentType, defaultModel, gatewayModels),
-		McpServers:   h.agentMgr.buildSessionMcpServers(storageID),
-		SystemPrompt: server.BuildAgentSystemPrompt(h.server.Cfg().UserDataDir, storageID),
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// Restore conversation memory if frames already exist. Noop OnFrame for
-	// the duration of LoadSession so replayed frames don't dupe rawMessages
-	// or the on-disk JSONL — both already contain them. SetupACP below
-	// installs the real broadcasting handler.
-	if workDir != "" && sessionState.MessageCount() > 0 {
-		sess.SetOnFrame(func(_ []byte) {})
-		if err := sess.LoadSession(h.server.ShutdownContext(), sessionID, workDir); err != nil {
-			log.Warn().Err(err).Str("sessionId", sessionID).Msg("LoadSession failed on lazy create — agent will start with empty memory")
-		} else {
-			log.Info().Str("sessionId", sessionID).Msg("LoadSession succeeded on lazy create — agent memory restored")
-		}
-	}
-
-	h.agentMgr.SetupACP(sess, sessionID, mode, defaultModel)
-	return sess, nil
 }
 

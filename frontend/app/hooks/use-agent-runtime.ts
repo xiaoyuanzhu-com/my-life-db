@@ -1219,6 +1219,28 @@ export function useAgentRuntime(options: {
     [sendPermissionResponse]
   )
 
+  // Optimistically reflect a config pick in the dropdown. A model change is
+  // applied by the backend via process respawn — queued until the current
+  // turn completes when one is running — so the confirming
+  // config_option_update frame can arrive much later. Without this patch the
+  // controlled dropdown would snap back to the old value and look like the
+  // change failed. Later frames overwrite this value.
+  const handleSetConfigOption = useCallback(
+    (configId: string, value: string) => {
+      setSessionMeta((prev) => {
+        if (!prev.configOptions) return prev
+        return {
+          ...prev,
+          configOptions: prev.configOptions.map((o) =>
+            o.id === configId ? { ...o, currentValue: value } : o
+          ),
+        }
+      })
+      sendSetConfigOption(configId, value)
+    },
+    [sendSetConfigOption]
+  )
+
   return {
     runtime,
     connected,
@@ -1228,7 +1250,7 @@ export function useAgentRuntime(options: {
     sendPermissionResponse: handlePermissionResponse,
     sendSetMode,
     sendSetModel,
-    sendSetConfigOption,
+    sendSetConfigOption: handleSetConfigOption,
     historyLoadError,
     sessionError,
     subagentChildrenMap,
