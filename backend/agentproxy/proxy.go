@@ -94,6 +94,13 @@ func (p *Proxy) director(r *http.Request) {
 	r.URL.Host = p.upstream.Host
 	r.Host = p.upstream.Host
 
+	// Prepend the upstream path prefix (e.g. /anthropic) to the request path.
+	upstreamPath := strings.TrimRight(p.upstream.Path, "/")
+	r.URL.Path = upstreamPath + r.URL.Path
+	if r.URL.RawPath != "" {
+		r.URL.RawPath = upstreamPath + r.URL.RawPath
+	}
+
 	// Strip whatever the agent presented and substitute real credentials.
 	r.Header.Del("x-api-key")
 	r.Header.Del("Authorization")
