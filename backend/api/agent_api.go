@@ -445,6 +445,111 @@ func (h *Handlers) GetAgentMessages(c *gin.Context) {
 	c.Writer.WriteString("]")
 }
 
+// GetAgentTurns returns turn summaries for a session.
+// GET /api/agent/sessions/:id/turns
+func (h *Handlers) GetAgentTurns(c *gin.Context) {
+	sessionID := c.Param("id")
+	ss := h.agentMgr.GetOrCreateState(sessionID)
+
+	// If session has no messages in memory, try loading from disk first.
+	if ss.MessageCount() == 0 {
+		if fs := h.server.FrameStore(); fs != nil {
+			if frames, err := fs.Load(sessionID); err == nil && len(frames) > 0 {
+				ss.LoadHistoricalFrames(frames)
+			}
+		}
+	}
+
+	raw := ss.GetRecentMessages(0)
+
+	type TurnSummary struct {
+		TurnNumber int    `json:"turnNumber"`
+		Question   string `json:"question"`
+		StopReason string `json:"stopReason,omitempty"`
+	}
+
+	var turns []TurnSummary
+	turnNum := 0
+	inTurn := false
+	var currentQuestion string
+	var currentStopReason string
+
+	for _, data := range raw {
+		var frame map[string]any
+		if err := json.Unmarshal(data, &frame); err != nil {
+			continue
+		}
+
+		// ACP-native frames use sessionUpdate; host-synthesized frames use type.
+		ft, _ := frame["type"].(string)
+		if ft == "" {
+			ft, _ = frame["sessionUpdate"].(string)
+		}
+
+		switch ft {
+		case "turn.start":
+			turnNum++
+			inTurn = true
+			// Don't reset currentQuestion — user_message_chunk arrives
+			// before turn.start (see agent_ws.go:450 vs RunPromptTurn:66).
+			currentStopReason = ""
+		case "user_message_chunk":
+			// Capture eagerly regardless of inTurn — user_message_chunk
+			// is emitted before turn.start in the frame order.
+			if currentQuestion == "" {
+				currentQuestion = extractContentText(frame["content"])
+			}
+		case "turn.complete":
+			if inTurn {
+				if sr, ok := frame["stopReason"].(string); ok {
+					currentStopReason = sr
+				}
+				if currentQuestion == "" {
+					currentQuestion = "(non-text prompt)"
+				}
+				if len([]rune(currentQuestion)) > 80 {
+					q := []rune(currentQuestion)
+					currentQuestion = string(q[:80]) + "..."
+				}
+				turns = append(turns, TurnSummary{
+					TurnNumber: turnNum,
+					Question:   currentQuestion,
+					StopReason: currentStopReason,
+				})
+				inTurn = false
+				currentQuestion = ""
+				currentStopReason = ""
+			}
+		}
+	}
+	// Include in-progress turn if session is active
+	if inTurn && currentQuestion != "" {
+		turns = append(turns, TurnSummary{TurnNumber: turnNum, Question: currentQuestion})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"turns": turns})
+}
+
+// extractContentText pulls the first text snippet from a ContentBlock.
+// Content may be a single object {type, text} or an array [{type, text}, ...].
+func extractContentText(content any) string {
+	switch c := content.(type) {
+	case map[string]any:
+		if text, ok := c["text"].(string); ok && text != "" {
+			return text
+		}
+	case []any:
+		for _, item := range c {
+			if obj, ok := item.(map[string]any); ok {
+				if text, ok := obj["text"].(string); ok && text != "" {
+					return text
+				}
+			}
+		}
+	}
+	return ""
+}
+
 // DeactivateAgentSession is a no-op for ACP sessions (they're ephemeral).
 // POST /api/agent/sessions/:id/deactivate
 func (h *Handlers) DeactivateAgentSession(c *gin.Context) {

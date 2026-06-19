@@ -31,16 +31,16 @@ import {
   SquareIcon,
   SquareSlash,
 } from "lucide-react";
-import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, type FC } from "react";
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, createContext, useContext, type FC } from "react";
 import TextareaAutosize, { type TextareaAutosizeProps } from "react-textarea-autosize";
 import { useMessageInputKeyboard } from "~/hooks/use-message-input-keyboard";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import type { PlanEntry } from "~/hooks/use-agent-runtime";
 import { useHasTouch } from "~/hooks/use-has-touch";
 
 // Our custom message components (with tool dispatch, markdown, reasoning, etc.)
 import { createAssistantMessage } from "~/components/agent/assistant-message";
-import { UserMessage as AcpUserMessage } from "~/components/agent/user-message";
+import { UserMessage as AcpUserMessage, TurnOrderContext } from "~/components/agent/user-message";
 import { acpToolsConfig } from "~/components/agent/tool-dispatch";
 import { ConnectionStatusBanner } from "~/components/agent/connection-status-banner";
 import { PlanView } from "~/components/agent/plan-view";
@@ -69,6 +69,8 @@ import {
 // Create the AssistantMessage with our ACP tool renderers baked in
 const AcpAssistantMessage = createAssistantMessage(acpToolsConfig);
 
+const TurnIndexContext = createContext<{ current: number } | null>(null)
+
 type ThreadProps = {
   onAttachmentsStorageIdChange?: (storageId: string | null) => void
   /** When rendering for an existing session, the session's persisted
@@ -81,6 +83,35 @@ export const Thread: FC<ThreadProps> = ({ onAttachmentsStorageIdChange, existing
   const { hybridTopInset } = useFeatureFlags();
   const hasSession = useAuiState((s) => !s.thread.isEmpty);
   const isRunning = useAuiState((s) => s.thread.isRunning);
+
+  // Turn-order tracking: each user message gets an incrementing index so
+  // we can scroll to a specific turn via ?turn=N in the URL.
+  // Reset at render-start so the counter restarts cleanly on every render
+  // pass — this avoids double-counting across WS replay renders.
+  const turnIndexRef = useRef({ current: 1 })
+  turnIndexRef.current.current = 1
+
+  // Scroll to a specific turn when ?turn=N is present in the URL.
+  // Poll for the target element to appear as messages stream in via WS replay.
+  const [searchParams] = useSearchParams()
+  const targetTurn = searchParams.get('turn')
+  const scrolledRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!targetTurn || !hasSession || scrolledRef.current === targetTurn) return
+    const startTime = Date.now()
+    const interval = setInterval(() => {
+      const el = document.querySelector(`[data-turn-order="${targetTurn}"]`)
+      if (el) {
+        clearInterval(interval)
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        scrolledRef.current = targetTurn
+      } else if (Date.now() - startTime > 10000) {
+        clearInterval(interval)
+      }
+    }, 150)
+    return () => clearInterval(interval)
+  }, [targetTurn, hasSession])
 
   // Show loading when we have an active session but messages haven't loaded into the store yet.
   // Covers both "WS connecting" and "WS connected, replay in progress".
@@ -136,9 +167,11 @@ export const Thread: FC<ThreadProps> = ({ onAttachmentsStorageIdChange, existing
         )}
 
         <div className="mx-auto w-full max-w-(--thread-max-width) px-4 md:px-18">
-          <ThreadPrimitive.Messages>
-            {() => <ThreadMessage />}
-          </ThreadPrimitive.Messages>
+          <TurnIndexContext.Provider value={turnIndexRef.current}>
+            <ThreadPrimitive.Messages>
+              {() => <ThreadMessage />}
+            </ThreadPrimitive.Messages>
+          </TurnIndexContext.Provider>
         </div>
 
         {isRunning && pendingPermissions.size === 0 && (
@@ -161,6 +194,7 @@ export const Thread: FC<ThreadProps> = ({ onAttachmentsStorageIdChange, existing
 const ThreadMessage: FC = () => {
   const role = useAuiState((s) => s.message.role);
   const message = useMessage();
+  const turnIndex = useContext(TurnIndexContext)
   const planEntries = (message as { metadata?: { custom?: { planEntries?: PlanEntry[] } } }).metadata?.custom?.planEntries;
   if (planEntries && planEntries.length > 0) {
     return (
@@ -169,7 +203,14 @@ const ThreadMessage: FC = () => {
       </div>
     );
   }
-  if (role === "user") return <AcpUserMessage />;
+  if (role === "user") {
+    const turnNum = turnIndex ? turnIndex.current++ : null
+    return (
+      <TurnOrderContext.Provider value={turnNum}>
+        <AcpUserMessage />
+      </TurnOrderContext.Provider>
+    );
+  }
   return <AcpAssistantMessage />;
 };
 
