@@ -446,8 +446,9 @@ func (m *AgentManager) AllRuntimeStates() map[string]SessionRuntimeState {
 // in the in-memory map. Single entrypoint for setup after ACP process creation
 // — used by CreateSession, history-load, and lazy-create paths.
 //
-// Model is set via UnstableSetSessionModel (bypasses the CLI allowlist so
-// arbitrary gateway names work). Mode uses SetSessionMode (Claude Code only).
+// Model is set via SetModel, which (since ACP v0.13.5) writes the "model"
+// session config option — this bypasses the CLI allowlist so arbitrary gateway
+// names work. Mode uses SetSessionMode (Claude Code only).
 //
 // When gateway models are configured, model options in config_option_update
 // frames are rewritten so the UI only offers proxy-available models.
@@ -480,9 +481,9 @@ func (m *AgentManager) SetupACP(sess agentsdk.Session, sessionID, mode, defaultM
 	// Model selection, per agent:
 	//
 	//   claude_code / codex / gemini:
-	//     ACP session/set_model accepts arbitrary gateway-proxied names
-	//     (claude-agent-acp uses UnstableSetSessionModel which bypasses the
-	//     CLI allowlist). Call SetModel so both new sessions and mid-session
+	//     The "model" session config option accepts arbitrary gateway-proxied
+	//     names (claude-agent-acp's set-config-option bypasses the CLI
+	//     allowlist). Call SetModel so both new sessions and mid-session
 	//     dropdown changes propagate to the agent.
 	//
 	//   opencode:

@@ -601,7 +601,7 @@ func TestACPLoadHistoricalSessionFromDisk(t *testing.T) {
 
 	// If we get here, it worked!
 	t.Log("FINDING: LoadSession with historical session ID SUCCEEDED!")
-	t.Logf("Modes: %v, Models: %v", loadResp.Modes != nil, loadResp.Models != nil)
+	t.Logf("Modes: %v, ConfigOptions: %d", loadResp.Modes != nil, len(loadResp.ConfigOptions))
 
 	// Wait for replay events
 	time.Sleep(5 * time.Second)

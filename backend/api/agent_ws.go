@@ -188,7 +188,9 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				// This prevents a race where the write loop marks a result as "read"
 				// right as the user navigates away, causing working→idle instead of
 				// working→unread.
-				var mt struct{ Type string `json:"type"` }
+				var mt struct {
+					Type string `json:"type"`
+				}
 				if json.Unmarshal(data, &mt) == nil && mt.Type == "turn.complete" {
 					seenResultCount.Add(1)
 				}
@@ -282,8 +284,8 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			} else {
 				log.Info().Str("sessionId", sessionID).Msg("historical session replay complete")
 				// Override the loaded session's stored model with a gateway-compatible one.
-				// Use UnstableSetSessionModel (SetModel) to bypass claude-agent-acp's
-				// allowlist check, which would reject custom gateway model names.
+				// SetModel writes the "model" session config option (ACP v0.13.5) to bypass
+				// claude-agent-acp's allowlist check, which would reject custom gateway model names.
 				// qwen skipped here for the same reason as AgentManager.SetupACP:
 				// its ACP session/set_model validates against a static authType
 				// registry that doesn't know our gateway-proxied model names.
@@ -833,4 +835,3 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 	<-pollDone
 	<-pingDone
 }
-

@@ -13,6 +13,7 @@ import {
   useId,
   useRef,
   useState,
+  type ComponentProps,
   type FC,
   type ReactNode,
 } from "react";
@@ -288,7 +289,7 @@ const CustomCode: FC<{
 const MarkdownTextImpl = () => {
   return (
     <StreamdownTextPrimitive
-      components={{ code: CustomCode }}
+      components={{ code: CustomCode } as ComponentProps<typeof StreamdownTextPrimitive>["components"]}
       plugins={{ math: mathPlugin }}
       controls={{ table: false }}
     />

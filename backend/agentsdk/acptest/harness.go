@@ -123,7 +123,7 @@ func NewHarness(t *testing.T, opts ...HarnessOption) *Harness {
 	initResp, err := conn.Initialize(ctx, acp.InitializeRequest{
 		ProtocolVersion: acp.ProtocolVersionNumber,
 		ClientCapabilities: acp.ClientCapabilities{
-			Fs: acp.FileSystemCapability{
+			Fs: acp.FileSystemCapabilities{
 				ReadTextFile:  true,
 				WriteTextFile: true,
 			},
@@ -171,16 +171,6 @@ func NewHarness(t *testing.T, opts ...HarnessOption) *Harness {
 				current = " (current)"
 			}
 			t.Logf("  - %s: %s%s", m.Id, m.Name, current)
-		}
-	}
-	if sessResp.Models != nil {
-		t.Logf("Available models:")
-		for _, m := range sessResp.Models.AvailableModels {
-			current := ""
-			if m.ModelId == sessResp.Models.CurrentModelId {
-				current = " (current)"
-			}
-			t.Logf("  - %s: %s%s", m.ModelId, m.Name, current)
 		}
 	}
 
@@ -323,7 +313,7 @@ type recordingClient struct {
 	// This mirrors the fix in production acpclient.go.
 	frameSeq atomic.Int64 // next seq to assign (via Add(1))
 	emitMu   sync.Mutex   // protects emitNext + emitCond
-	emitNext int64         // next seq to emit (starts at 1)
+	emitNext int64        // next seq to emit (starts at 1)
 	emitCond *sync.Cond   // signaled when emitNext advances
 }
 
@@ -630,9 +620,9 @@ func (c *recordingClient) TerminalOutput(ctx context.Context, params acp.Termina
 	return resp, nil
 }
 
-func (c *recordingClient) KillTerminalCommand(ctx context.Context, params acp.KillTerminalCommandRequest) (acp.KillTerminalCommandResponse, error) {
+func (c *recordingClient) KillTerminal(ctx context.Context, params acp.KillTerminalRequest) (acp.KillTerminalResponse, error) {
 	c.t.Logf("[terminal] kill: %s", params.TerminalId)
-	return acp.KillTerminalCommandResponse{}, nil
+	return acp.KillTerminalResponse{}, nil
 }
 
 func (c *recordingClient) ReleaseTerminal(ctx context.Context, params acp.ReleaseTerminalRequest) (acp.ReleaseTerminalResponse, error) {

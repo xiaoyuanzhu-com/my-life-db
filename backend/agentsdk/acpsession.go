@@ -32,8 +32,7 @@ type acpSession struct {
 	mcpServers []acp.McpServer
 
 	// Cached from NewSessionResponse, emitted on first Send()
-	initialModes  *SessionMeta
-	initialModels *SessionMeta
+	initialModes *SessionMeta
 }
 
 // warmConn is a pre-warmed ACP process with Initialize already complete.
@@ -43,7 +42,7 @@ type warmConn struct {
 	conn          *acp.ClientSideConnection
 	client        *acpClient
 	done          <-chan struct{} // closed when agent process exits
-	supportsClose bool           // agent advertised session/close capability
+	supportsClose bool            // agent advertised session/close capability
 }
 
 // spawnWarmConn launches an agent binary and completes the Initialize handshake.
@@ -99,7 +98,7 @@ func spawnWarmConn(ctx context.Context, agentCfg AgentConfig, env map[string]str
 	initResp, err := conn.Initialize(ctx, acp.InitializeRequest{
 		ProtocolVersion: acp.ProtocolVersionNumber,
 		ClientCapabilities: acp.ClientCapabilities{
-			Fs: acp.FileSystemCapability{
+			Fs: acp.FileSystemCapabilities{
 				ReadTextFile:  true,
 				WriteTextFile: true,
 			},
@@ -217,19 +216,10 @@ func newSessionFromWarm(ctx context.Context, warm *warmConn, agentCfg AgentConfi
 		}
 	}
 
-	if sessResp.Models != nil {
-		models := make([]map[string]any, len(sessResp.Models.AvailableModels))
-		for i, m := range sessResp.Models.AvailableModels {
-			models[i] = map[string]any{
-				"modelId": string(m.ModelId), "name": m.Name,
-			}
-		}
-		modelsJSON, _ := json.Marshal(models)
-		session.initialModels = &SessionMeta{
-			ModelID:         string(sessResp.Models.CurrentModelId),
-			AvailableModels: modelsJSON,
-		}
-	}
+	// NOTE: ACP v0.13.5 removed the native model concept (NewSessionResponse.Models).
+	// Models now arrive as a SessionConfigOption with category "model" and are
+	// surfaced to the UI via the config_option_update path (see api/agent_config.go
+	// and rewriteModelOptions), so there is no native models snapshot to cache here.
 
 	go func() {
 		<-warm.conn.Done()
@@ -277,24 +267,13 @@ func (s *acpSession) Send(ctx context.Context, prompt string) (<-chan []byte, er
 	// Emit cached session metadata on first prompt
 	s.mu.Lock()
 	modes := s.initialModes
-	models := s.initialModels
 	s.initialModes = nil // only emit once
-	s.initialModels = nil
 	s.mu.Unlock()
 
 	if modes != nil {
 		payload := map[string]any{"type": "session.modeUpdate", "modeId": modes.ModeID}
 		if modes.AvailableModes != nil {
 			payload["availableModes"] = json.RawMessage(modes.AvailableModes)
-		}
-		if data, err := json.Marshal(payload); err == nil {
-			events <- data
-		}
-	}
-	if models != nil {
-		payload := map[string]any{"type": "session.modelsUpdate", "modelId": models.ModelID}
-		if models.AvailableModels != nil {
-			payload["availableModels"] = json.RawMessage(models.AvailableModels)
 		}
 		if data, err := json.Marshal(payload); err == nil {
 			events <- data
@@ -430,10 +409,18 @@ func (s *acpSession) SetMode(ctx context.Context, modeID string) error {
 }
 
 // SetModel changes the active model for this session.
+//
+// ACP v0.13.5 removed the dedicated (unstable) set-model RPC and folded model
+// selection into the session config-option mechanism: the model is the config
+// option with category "model" (id "model"). Setting it is therefore a
+// SetSessionConfigOption call.
 func (s *acpSession) SetModel(ctx context.Context, modelID string) error {
-	_, err := s.conn.UnstableSetSessionModel(ctx, acp.UnstableSetSessionModelRequest{
-		SessionId: acp.SessionId(s.sessionID),
-		ModelId:   acp.UnstableModelId(modelID),
+	_, err := s.conn.SetSessionConfigOption(ctx, acp.SetSessionConfigOptionRequest{
+		ValueId: &acp.SetSessionConfigOptionValueId{
+			SessionId: acp.SessionId(s.sessionID),
+			ConfigId:  acp.SessionConfigId("model"),
+			Value:     acp.SessionConfigValueId(modelID),
+		},
 	})
 	return err
 }
@@ -444,9 +431,11 @@ func (s *acpSession) SetModel(ctx context.Context, modelID string) error {
 // than emitting a session/update notification.
 func (s *acpSession) SetConfigOption(ctx context.Context, configID string, value string) ([]acp.SessionConfigOption, error) {
 	resp, err := s.conn.SetSessionConfigOption(ctx, acp.SetSessionConfigOptionRequest{
-		SessionId: acp.SessionId(s.sessionID),
-		ConfigId:  acp.SessionConfigId(configID),
-		Value:     acp.SessionConfigValueId(value),
+		ValueId: &acp.SetSessionConfigOptionValueId{
+			SessionId: acp.SessionId(s.sessionID),
+			ConfigId:  acp.SessionConfigId(configID),
+			Value:     acp.SessionConfigValueId(value),
+		},
 	})
 	if err != nil {
 		return nil, err

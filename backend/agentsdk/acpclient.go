@@ -321,8 +321,8 @@ func (c *acpClient) TerminalOutput(ctx context.Context, params acp.TerminalOutpu
 	return resp, nil
 }
 
-func (c *acpClient) KillTerminalCommand(ctx context.Context, params acp.KillTerminalCommandRequest) (acp.KillTerminalCommandResponse, error) {
-	log.Debug().Str("id", params.TerminalId).Msg("ACP KillTerminalCommand")
+func (c *acpClient) KillTerminal(ctx context.Context, params acp.KillTerminalRequest) (acp.KillTerminalResponse, error) {
+	log.Debug().Str("id", params.TerminalId).Msg("ACP KillTerminal")
 	terminalsMu.Lock()
 	state, ok := terminals[params.TerminalId]
 	terminalsMu.Unlock()
@@ -330,7 +330,7 @@ func (c *acpClient) KillTerminalCommand(ctx context.Context, params acp.KillTerm
 	if ok && state.cmd != nil && state.cmd.Process != nil {
 		state.cmd.Process.Kill()
 	}
-	return acp.KillTerminalCommandResponse{}, nil
+	return acp.KillTerminalResponse{}, nil
 }
 
 func (c *acpClient) ReleaseTerminal(ctx context.Context, params acp.ReleaseTerminalRequest) (acp.ReleaseTerminalResponse, error) {

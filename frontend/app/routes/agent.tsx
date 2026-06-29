@@ -38,7 +38,7 @@ import { api } from '~/lib/api'
 import { isNativeApp } from '~/lib/native-bridge'
 import { fetchWithRefresh } from '~/lib/fetch-with-refresh'
 import { toast } from 'sonner'
-import '@fontsource/jetbrains-mono'
+import '@fontsource/jetbrains-mono/index.css'
 import type { SessionLifecycleState } from '~/types/session'
 
 interface Session {

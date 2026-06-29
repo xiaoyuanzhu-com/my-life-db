@@ -210,6 +210,7 @@ const SubagentMessage = memo(function SubagentMessage({
               }
               addResult={() => {}}
               resume={() => {}}
+              respondToApproval={() => {}}
             />
           )
         }
