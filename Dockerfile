@@ -62,7 +62,7 @@ WORKDIR /home/xiaoyuanzhu/my-life-db
 # / playwright) + Node.js + npm (for the ACP agent ecosystem). Combined into
 # ONE apt-get to avoid duplicate index downloads and an extra layer.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates tzdata curl bash git openssh-client \
+    ca-certificates tzdata curl bash git openssh-client sudo \
     python3 python3-pip python3-venv python3-dev gcc \
     nodejs npm \
     && rm -rf /var/lib/apt/lists/*
@@ -90,6 +90,16 @@ RUN npm install -g \
 
 # Create non-root user with UID/GID 1000 for better host compatibility.
 RUN groupadd -g 1000 xiaoyuanzhu && useradd -u 1000 -g xiaoyuanzhu -m xiaoyuanzhu
+
+# Passwordless sudo for the runtime user so the agent can install system
+# packages on demand (e.g. `sudo apt-get update && sudo apt-get install -y ...`).
+# The app itself still runs as UID 1000 (below), so files it writes into the
+# bind-mounted data dir stay user-owned on the host — only privileged installs
+# use root, and those land in the container's ephemeral writable layer. In-
+# container root == host root numerically, so keep this container non-privileged
+# and never mount the docker socket into it.
+RUN echo 'xiaoyuanzhu ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/xiaoyuanzhu \
+    && chmod 0440 /etc/sudoers.d/xiaoyuanzhu
 
 # Create data directories and .claude directory with proper permissions.
 RUN mkdir -p /home/xiaoyuanzhu/my-life-db/data \
