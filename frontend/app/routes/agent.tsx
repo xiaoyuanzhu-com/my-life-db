@@ -1089,6 +1089,7 @@ export default function AgentPage() {
         prefs[id] || opts.find(o => o.id === id)?.currentValue
       const effectiveMode = effectiveValue('mode')
       const effectiveModel = effectiveValue('model')
+      const effectiveEffort = effectiveValue('effort')
 
       const response = await api.post('/api/agent/sessions', {
         title: message,
@@ -1097,6 +1098,7 @@ export default function AgentPage() {
         permissionMode: effectiveMode || undefined,
         agentType: newSessionAgentType,
         model: effectiveModel || undefined,
+        effort: effectiveEffort || undefined,
         storageId: draftStorageIdRef.current ?? undefined,
       })
 

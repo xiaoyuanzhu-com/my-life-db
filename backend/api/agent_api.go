@@ -46,6 +46,7 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 		AgentType      string `json:"agentType"`
 		PermissionMode string `json:"permissionMode"`
 		Model          string `json:"model"`
+		Effort         string `json:"effort"` // optional; claude_code reasoning effort (low/medium/high/max)
 		StorageID      string `json:"storageId"` // optional — set when client did an upload first
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -85,6 +86,20 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 		model = gatewayModels[0].Value
 	}
 
+	// Reasoning effort is a claude_code option. Validate against the allowed set
+	// so a stale localStorage value can't get persisted and pushed to
+	// claude-agent-acp as a bad SetConfigOption. Empty = fall back to the model's
+	// declared Effort (applyModelEffort).
+	effort := req.Effort
+	if effort != "" {
+		switch effort {
+		case "low", "medium", "high", "max":
+		default:
+			log.Warn().Str("requestedEffort", effort).Msg("invalid effort, ignoring")
+			effort = ""
+		}
+	}
+
 	handle, err := h.agentMgr.CreateSession(
 		context.Background(), // ACP process must outlive this HTTP request
 		SessionParams{
@@ -94,6 +109,7 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 			Message:        req.Message,
 			PermissionMode: req.PermissionMode,
 			DefaultModel:   model,
+			Effort:         effort,
 			Source:         "user",
 			StorageID:      req.StorageID,
 		},

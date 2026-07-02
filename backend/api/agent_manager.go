@@ -532,13 +532,12 @@ func (m *AgentManager) SetupACP(sess agentsdk.Session, sessionID, mode, defaultM
 // (non-claude_code agent, empty modelValue, or no effort to apply). Callers
 // use this to keep config_options in sync with what the agent is running.
 //
-// Background: claude-agent-acp defaults Opus to effort="xhigh", which only
-// Anthropic accepts. Non-Anthropic gateways (GLM, Kimi, MiniMax, Doubao)
-// reject xhigh and expect "max" or low/medium/high. Since effort is really a
-// per-model attribute (the SDK exposes it session-wide), each gateway model
-// in AGENT_MODELS declares its own Effort; we apply it after SetModel so the
-// first turn uses a compatible value. Models with Effort="" (e.g. Anthropic
-// proxied Opus, DeepSeek) are left alone.
+// Background: claude-agent-acp defaults Opus to effort="xhigh". Not every
+// gateway model accepts "xhigh" (some only support low/medium/high plus a
+// "max" top tier). Since effort is really a per-model attribute (the SDK
+// exposes it session-wide), each gateway model in AGENT_MODELS can declare its
+// own Effort; we apply it after SetModel so the first turn uses a value the
+// model supports. Models with Effort="" are left alone.
 //
 // After the RPC, the updated options are fanned out as a synthetic
 // config_option_update frame because claude-agent-acp returns the new state
@@ -745,6 +744,15 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 	if params.DefaultModel != "" {
 		if err := m.srv.AppDB().SaveAgentSessionConfigOption(ctx, sessionID, "model", params.DefaultModel); err != nil {
 			log.Warn().Err(err).Str("sessionId", sessionID).Str("model", params.DefaultModel).Msg("failed to persist initial model")
+		}
+	}
+
+	// Persist the user's effort pick BEFORE SetupACP so its boot-time
+	// applyModelEffort picks it up as the override (takes precedence over the
+	// model's declared Effort). Empty = leave it to the per-model default.
+	if params.Effort != "" {
+		if err := m.srv.AppDB().SaveAgentSessionConfigOption(ctx, sessionID, "effort", params.Effort); err != nil {
+			log.Warn().Err(err).Str("sessionId", sessionID).Str("effort", params.Effort).Msg("failed to persist initial effort")
 		}
 	}
 

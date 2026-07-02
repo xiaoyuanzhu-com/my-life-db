@@ -40,6 +40,17 @@ var defaultConfigOptions = map[string][]configOption{
 			},
 		},
 		{
+			ID: "effort", Category: "thought_level", Name: "Effort", Type: "select",
+			Description:  "How much reasoning effort the model should use",
+			CurrentValue: "high",
+			Options: []configOptionChoice{
+				{Value: "low", Name: "Low", Description: "Fast responses with lighter reasoning"},
+				{Value: "medium", Name: "Medium", Description: "Balances speed and reasoning depth for everyday tasks"},
+				{Value: "high", Name: "High", Description: "Greater reasoning depth for complex problems"},
+				{Value: "max", Name: "Max", Description: "Maximum reasoning depth"},
+			},
+		},
+		{
 			ID: "mode", Category: "mode", Name: "Mode", Type: "select",
 			Description:  "Session permission mode",
 			CurrentValue: "bypassPermissions",

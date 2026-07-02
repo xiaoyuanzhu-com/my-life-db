@@ -12,6 +12,7 @@ type SessionParams struct {
 	Message        string // initial prompt; empty = no prompt sent
 	PermissionMode string // e.g. "bypassPermissions"; empty = default
 	DefaultModel   string // default model to set via ACP (from AGENT_MODELS)
+	Effort         string // reasoning effort override (low/medium/high/max); empty = model's declared default
 	Source         string // "user" or "auto"
 	AgentName      string // agent folder name (auto-run only)
 	TriggerKind    string // event type that fired the session, e.g. "cron.tick", "file.created" (auto-run only)
