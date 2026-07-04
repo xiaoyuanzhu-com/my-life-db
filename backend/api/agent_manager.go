@@ -464,8 +464,9 @@ func (m *AgentManager) SetupACP(sess agentsdk.Session, sessionID, mode, defaultM
 
 	sess.SetOnFrame(func(data []byte) {
 		if len(gatewayModels) > 0 {
-			data = rewriteModelOptions(data, gatewayModels)
+			data = rewriteModelOptions(data, gatewayModels, defaultModel)
 		}
+		data = filterHiddenConfigOptions(data)
 		sessionState.Mu.Lock()
 		sessionState.TouchFrame()
 		sessionState.Mu.Unlock()
@@ -564,21 +565,87 @@ func applyModelEffort(sess agentsdk.Session, sessionState *agentsdk.SessionState
 		log.Warn().Err(err).Str("sessionId", sessionID).Str("model", modelValue).Str("effort", effort).Msg("failed to apply model-specific effort override")
 		return ""
 	}
-	broadcastConfigUpdate(sessionState, gatewayModels, updatedOpts, sessionID)
+	broadcastConfigUpdate(sessionState, gatewayModels, updatedOpts, sessionID, modelValue)
 	return effort
 }
 
-// rewriteModelOptions replaces the model config option in a config_option_update
-// frame with the gateway model list. Non-config_option_update frames pass
-// through unchanged. Ensures the UI only shows models available through the
-// LLM proxy.
-func rewriteModelOptions(data []byte, gatewayModels []server.AgentModelInfo) []byte {
+// hiddenConfigOptionIDs are config options emitted by the underlying ACP agent
+// (claude-agent-acp) that we do not want to surface to clients. "fast" is the
+// native Claude Code "Fast mode" toggle; it isn't part of our gateway-facing
+// config surface, so we strip it from every config_option_update frame.
+var hiddenConfigOptionIDs = map[string]bool{
+	"fast": true,
+}
+
+// filterHiddenConfigOptions drops any option in hiddenConfigOptionIDs from a
+// config_option_update frame. Non-config_option_update frames pass through
+// unchanged. This is the single choke point for live ACP frames (SetOnFrame),
+// so filtering here hides the option from all clients regardless of agent type.
+func filterHiddenConfigOptions(data []byte) []byte {
 	var frame struct {
 		SessionUpdate string            `json:"sessionUpdate"`
 		ConfigOptions []json.RawMessage `json:"configOptions"`
 	}
 	if err := json.Unmarshal(data, &frame); err != nil || frame.SessionUpdate != "config_option_update" {
 		return data
+	}
+
+	kept := make([]json.RawMessage, 0, len(frame.ConfigOptions))
+	removed := false
+	for _, raw := range frame.ConfigOptions {
+		var opt struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(raw, &opt); err == nil && hiddenConfigOptionIDs[opt.ID] {
+			removed = true
+			continue
+		}
+		kept = append(kept, raw)
+	}
+	if !removed {
+		return data
+	}
+
+	if out, err := json.Marshal(map[string]any{
+		"sessionUpdate": frame.SessionUpdate,
+		"configOptions": kept,
+	}); err == nil {
+		return out
+	}
+	return data
+}
+
+// rewriteModelOptions replaces the model config option in a config_option_update
+// frame with the gateway model list. Non-config_option_update frames pass
+// through unchanged. Ensures the UI only shows models available through the
+// LLM proxy.
+//
+// selectedModel is the gateway model this session was actually spawned with
+// (from persisted config / spawn env). It is the source of truth for the
+// dropdown's current value: the agent CLI reports a display alias for the
+// active model that varies by version (claude-agent-acp 0.36.1 echoed the full
+// gateway id "claude-opus-4-8[1m]" verbatim; 0.55.0 reports the short alias
+// "opus[1m]"), so an exact string match against the gateway list is unreliable.
+// When the reported value isn't a literal gateway value we fall back to
+// selectedModel — NOT gatewayModels[0] — so a session running a non-default
+// model no longer displays as the default (the "opus snaps to deepseek" bug).
+func rewriteModelOptions(data []byte, gatewayModels []server.AgentModelInfo, selectedModel string) []byte {
+	var frame struct {
+		SessionUpdate string            `json:"sessionUpdate"`
+		ConfigOptions []json.RawMessage `json:"configOptions"`
+	}
+	if err := json.Unmarshal(data, &frame); err != nil || frame.SessionUpdate != "config_option_update" {
+		return data
+	}
+
+	// selectedModel is only trustworthy if it's actually one of the gateway
+	// models; ignore a stale/empty value.
+	selectedValid := false
+	for _, mi := range gatewayModels {
+		if mi.Value == selectedModel {
+			selectedValid = true
+			break
+		}
 	}
 
 	modified := false
@@ -603,11 +670,11 @@ func rewriteModelOptions(data []byte, gatewayModels []server.AgentModelInfo) []b
 		}
 		full["options"] = opts
 
-		// Preserve the agent-reported currentValue if it's a known gateway
-		// model. Fall back to gatewayModels[0] only when the agent reports
-		// something unknown (e.g., SDK default "default" or "claude-sonnet-4-6"),
-		// otherwise switching to a non-first gateway model would appear to the
-		// UI as still-selecting the first one.
+		// Keep the agent-reported currentValue only if it's a literal gateway
+		// model (older agents echo the full id). Otherwise it's a version-
+		// specific display alias we can't map — trust the model we spawned the
+		// session with (selectedModel), and fall back to gatewayModels[0] only
+		// when we genuinely don't know the session's model.
 		currentVal, _ := full["currentValue"].(string)
 		known := false
 		for _, mi := range gatewayModels {
@@ -617,7 +684,11 @@ func rewriteModelOptions(data []byte, gatewayModels []server.AgentModelInfo) []b
 			}
 		}
 		if !known {
-			full["currentValue"] = gatewayModels[0].Value
+			if selectedValid {
+				full["currentValue"] = selectedModel
+			} else {
+				full["currentValue"] = gatewayModels[0].Value
+			}
 		}
 
 		if rewritten, err := json.Marshal(full); err == nil {
@@ -645,7 +716,7 @@ func rewriteModelOptions(data []byte, gatewayModels []server.AgentModelInfo) []b
 // dropdown in its inline response, so the frame must go through
 // rewriteModelOptions — exactly like live ACP frames in SetOnFrame — or it
 // clobbers the gateway-rewritten dropdown the UI already received.
-func broadcastConfigUpdate(sessionState *agentsdk.SessionState, gatewayModels []server.AgentModelInfo, updatedOpts any, sessionID string) {
+func broadcastConfigUpdate(sessionState *agentsdk.SessionState, gatewayModels []server.AgentModelInfo, updatedOpts any, sessionID, selectedModel string) {
 	if sessionState == nil {
 		return
 	}
@@ -658,8 +729,9 @@ func broadcastConfigUpdate(sessionState *agentsdk.SessionState, gatewayModels []
 		return
 	}
 	if len(gatewayModels) > 0 {
-		frame = rewriteModelOptions(frame, gatewayModels)
+		frame = rewriteModelOptions(frame, gatewayModels, selectedModel)
 	}
+	frame = filterHiddenConfigOptions(frame)
 	sessionState.AppendAndBroadcast(frame)
 }
 

@@ -804,7 +804,12 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 					// model dropdown to the gateway list — the inline response
 					// echoes the native CLI model options otherwise.
 					gatewayModels := h.agentMgr.GatewayModels(agentTypeString(acpSession.AgentType()))
-					broadcastConfigUpdate(sessionState, gatewayModels, updatedOpts, sessionID)
+					// The session's model isn't changing here (model changes go
+					// through the respawn path above), so the current dropdown
+					// value is the persisted model — pass it so rewriteModelOptions
+					// doesn't snap the display to the gateway default.
+					persistedOpts, _ := h.server.AppDB().GetAgentSessionConfigOptions(sessionID)
+					broadcastConfigUpdate(sessionState, gatewayModels, updatedOpts, sessionID, persistedOpts["model"])
 				}
 			}
 			cfgCancel()
