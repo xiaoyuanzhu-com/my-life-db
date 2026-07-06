@@ -177,6 +177,9 @@ func installMCPJSON(dataDir string, port int) {
 	}
 	mld["type"] = "http"
 	mld["url"] = fmt.Sprintf("http://localhost:%d/api/mcp", port)
+	mld["timeout"] = 3_600_000           // 1h — Claude Code (ms)
+	mld["connect_timeout_sec"] = 3600    // 1h — Codex (seconds)
+	mld["initialize_timeout_sec"] = 3600 // 1h — Codex (seconds)
 	servers["mylifedb-builtin"] = mld
 
 	// Drop legacy server keys that previous MyLifeDB versions wrote so
