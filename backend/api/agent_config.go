@@ -70,6 +70,9 @@ var defaultConfigOptions = map[string][]configOption{
 			Description:  "Choose which model Codex should use",
 			CurrentValue: "gpt-5.4",
 			Options: []configOptionChoice{
+				{Value: "gpt-5.6-sol", Name: "gpt-5.6-sol", Description: "Frontier agentic coding model."},
+				{Value: "gpt-5.6-terra", Name: "gpt-5.6-terra", Description: "Frontier agentic coding model."},
+				{Value: "gpt-5.6-luna", Name: "gpt-5.6-luna", Description: "Frontier agentic coding model."},
 				{Value: "gpt-5.3-codex", Name: "gpt-5.3-codex", Description: "Latest frontier agentic coding model."},
 				{Value: "gpt-5.4", Name: "gpt-5.4", Description: "Latest frontier agentic coding model."},
 				{Value: "gpt-5.2-codex", Name: "gpt-5.2-codex", Description: "Frontier agentic coding model."},
