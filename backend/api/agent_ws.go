@@ -295,8 +295,11 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				if defaultModel != "" && sess.AgentType() != agentsdk.AgentQwen {
 					modelCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 					modelForACP := resolveACPModel(sess.AgentType(), defaultModel)
-					if err := sess.SetModel(modelCtx, modelForACP); err != nil {
+					updatedOpts, err := sess.SetModel(modelCtx, modelForACP)
+					if err != nil {
 						log.Warn().Err(err).Str("sessionId", sessionID).Str("model", modelForACP).Msg("failed to override model after LoadSession")
+					} else {
+						broadcastConfigUpdate(sessionState, gatewayModels, updatedOpts, sessionID, defaultModel)
 					}
 					cancel()
 					applyModelEffort(sess, sessionState, gatewayModels, defaultModel, sessionID, persistedOpts["effort"])

@@ -414,21 +414,13 @@ func (s *acpSession) SetMode(ctx context.Context, modeID string) error {
 // selection into the session config-option mechanism: the model is the config
 // option with category "model" (id "model"). Setting it is therefore a
 // SetSessionConfigOption call.
-func (s *acpSession) SetModel(ctx context.Context, modelID string) error {
-	_, err := s.conn.SetSessionConfigOption(ctx, acp.SetSessionConfigOptionRequest{
-		ValueId: &acp.SetSessionConfigOptionValueId{
-			SessionId: acp.SessionId(s.sessionID),
-			ConfigId:  acp.SessionConfigId("model"),
-			Value:     acp.SessionConfigValueId(modelID),
-		},
-	})
-	return err
+func (s *acpSession) SetModel(ctx context.Context, modelID string) ([]acp.SessionConfigOption, error) {
+	return s.SetConfigOption(ctx, "model", modelID)
 }
 
 // SetConfigOption sets a generic config option via ACP SetSessionConfigOption.
 // Returns the updated configOptions from the response so the caller can
-// rebroadcast them — claude-agent-acp returns the new state inline rather
-// than emitting a session/update notification.
+// rebroadcast the authoritative state for this client-initiated change.
 func (s *acpSession) SetConfigOption(ctx context.Context, configID string, value string) ([]acp.SessionConfigOption, error) {
 	resp, err := s.conn.SetSessionConfigOption(ctx, acp.SetSessionConfigOptionRequest{
 		ValueId: &acp.SetSessionConfigOptionValueId{

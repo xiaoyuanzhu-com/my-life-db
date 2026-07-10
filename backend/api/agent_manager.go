@@ -506,8 +506,11 @@ func (m *AgentManager) SetupACP(sess agentsdk.Session, sessionID, mode, defaultM
 	//     We skip the call to avoid a misleading warning.
 	if defaultModel != "" && sess.AgentType() != agentsdk.AgentQwen {
 		modelForACP := resolveACPModel(sess.AgentType(), defaultModel)
-		if err := sess.SetModel(context.Background(), modelForACP); err != nil {
+		updatedOpts, err := sess.SetModel(context.Background(), modelForACP)
+		if err != nil {
 			log.Warn().Err(err).Str("sessionId", sessionID).Str("model", modelForACP).Msg("failed to set initial model")
+		} else {
+			broadcastConfigUpdate(sessionState, gatewayModels, updatedOpts, sessionID, defaultModel)
 		}
 	}
 
@@ -711,11 +714,10 @@ func rewriteModelOptions(data []byte, gatewayModels []server.AgentModelInfo, sel
 	return data
 }
 
-// broadcastConfigUpdate fans out a synthetic config_option_update frame for
-// updatedOpts. claude-agent-acp's SetConfigOption echoes the native CLI model
-// dropdown in its inline response, so the frame must go through
-// rewriteModelOptions — exactly like live ACP frames in SetOnFrame — or it
-// clobbers the gateway-rewritten dropdown the UI already received.
+// broadcastConfigUpdate fans out the authoritative config options returned by
+// a client-initiated ACP update. The response may contain the agent's native
+// model dropdown, so the frame must go through rewriteModelOptions exactly like
+// live ACP frames in SetOnFrame or it can clobber the gateway-rewritten list.
 func broadcastConfigUpdate(sessionState *agentsdk.SessionState, gatewayModels []server.AgentModelInfo, updatedOpts any, sessionID, selectedModel string) {
 	if sessionState == nil {
 		return

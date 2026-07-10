@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/server"
 )
 
@@ -52,6 +53,48 @@ func TestRewriteModelOptions_CurrentValue(t *testing.T) {
 				t.Fatalf("reported=%q selected=%q: got currentValue=%q, want %q", tc.reported, tc.selected, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestBroadcastConfigUpdate_UsesSetModelResponse(t *testing.T) {
+	state := agentsdk.NewSessionState("session-1")
+	models := []server.AgentModelInfo{
+		{Value: "gpt-5.5", Name: "GPT-5.5"},
+		{Value: "gpt-5.6-sol", Name: "GPT-5.6 Sol"},
+	}
+	updatedOpts := []map[string]any{
+		{
+			"id":           "model",
+			"category":     "model",
+			"currentValue": "gpt-5.6-sol",
+		},
+	}
+
+	broadcastConfigUpdate(state, models, updatedOpts, "session-1", "gpt-5.6-sol")
+
+	frames := state.GetRecentMessages(1)
+	if len(frames) != 1 {
+		t.Fatalf("expected one config update frame, got %d", len(frames))
+	}
+
+	var frame struct {
+		SessionUpdate string `json:"sessionUpdate"`
+		ConfigOptions []struct {
+			ID           string `json:"id"`
+			CurrentValue string `json:"currentValue"`
+		} `json:"configOptions"`
+	}
+	if err := json.Unmarshal(frames[0], &frame); err != nil {
+		t.Fatalf("unmarshal config update: %v", err)
+	}
+	if frame.SessionUpdate != "config_option_update" {
+		t.Fatalf("unexpected sessionUpdate %q", frame.SessionUpdate)
+	}
+	if len(frame.ConfigOptions) != 1 || frame.ConfigOptions[0].ID != "model" {
+		t.Fatalf("unexpected config options: %+v", frame.ConfigOptions)
+	}
+	if got := frame.ConfigOptions[0].CurrentValue; got != "gpt-5.6-sol" {
+		t.Fatalf("model currentValue=%q, want gpt-5.6-sol", got)
 	}
 }
 

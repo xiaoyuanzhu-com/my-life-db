@@ -190,15 +190,18 @@ type Session interface {
 	// SetMode changes the active mode for this session.
 	SetMode(ctx context.Context, modeID string) error
 
-	// SetModel changes the active model for this session.
-	SetModel(ctx context.Context, modelID string) error
+	// SetModel changes the active model for this session and returns the
+	// authoritative config options from the ACP response. Callers must
+	// rebroadcast them because agents are not required to emit a separate
+	// config_option_update for client-initiated changes.
+	SetModel(ctx context.Context, modelID string) ([]acp.SessionConfigOption, error)
 
 	// SetConfigOption sets a generic config option by ID and value.
 	// This is the unified ACP mechanism used by agents like Codex that
 	// report configOptions instead of separate mode/model concepts.
 	// Returns the agent's updated configOptions list on success — callers
-	// must rebroadcast it since claude-agent-acp returns the new state in
-	// the RPC response body rather than as a session/update notification.
+	// must rebroadcast the authoritative RPC response for client-initiated
+	// changes instead of waiting for a session/update notification.
 	SetConfigOption(ctx context.Context, configID string, value string) ([]acp.SessionConfigOption, error)
 
 	// Stop cancels the current operation (SIGINT). Agent stays alive.
