@@ -39,12 +39,15 @@ import "encoding/json"
 //       which the frontend reads from)
 //
 //   Edit:
-//     - content[*].oldText, content[*].newText
 //     - rawInput.old_string, rawInput.new_string
 //     - toolResponse.oldString, toolResponse.newString,
 //       toolResponse.originalFile
-//     (toolResponse.structuredPatch is preserved — bounded by edit size and
-//     used by the frontend renderer to display the diff)
+//     (toolResponse.structuredPatch AND the top-level content[] diff block —
+//     content[*].oldText/newText — are BOTH preserved. Both are bounded by the
+//     edit size and used by the frontend renderer to display the diff. The
+//     content block is the fallback for edits where the CLI omits
+//     structuredPatch. originalFile — the whole pre-edit file — is still
+//     stripped as it is unbounded.)
 //
 //   Write:
 //     - content[*].newText (the diff block)
@@ -122,9 +125,9 @@ func StripHeavyToolCallContent(data []byte) []byte {
 		}
 
 	case "Edit":
-		if stripDiffContent(msg) {
-			stripped = true
-		}
+		// Note: the top-level content[] diff block (oldText/newText) is left
+		// intact — it is the frontend's fallback diff source when the CLI omits
+		// structuredPatch. It is bounded by the edit size, not the file size.
 		if rawInput, ok := msg["rawInput"].(map[string]interface{}); ok {
 			if deleteIfPresent(rawInput, "old_string") {
 				stripped = true

@@ -478,8 +478,9 @@ func TestStrip_BashRunning_PassesThrough(t *testing.T) {
 }
 
 func TestStrip_EditRawInput_StripsDiffContent(t *testing.T) {
-	// Edit tool_call_update without toolResponse: strip rawInput diff strings
-	// AND content[*].oldText/newText.
+	// Edit tool_call_update without toolResponse: strip rawInput diff strings,
+	// but PRESERVE the content[*].oldText/newText diff block — it is the
+	// frontend's fallback diff source when the CLI omits structuredPatch.
 	frame := map[string]interface{}{
 		"sessionUpdate": "tool_call_update",
 		"toolCallId":    "tc-edit-1",
@@ -514,14 +515,15 @@ func TestStrip_EditRawInput_StripsDiffContent(t *testing.T) {
 	var result map[string]interface{}
 	json.Unmarshal(stripped, &result)
 
-	// content[0] must keep path/type but lose oldText/newText.
+	// content[0] must be preserved intact — it carries the diff the renderer
+	// falls back to when structuredPatch is absent.
 	contents := result["content"].([]interface{})
 	first := contents[0].(map[string]interface{})
-	if _, has := first["oldText"]; has {
-		t.Error("Edit: content[0].oldText should be stripped")
+	if first["oldText"] != strings.Repeat("a", 50000) {
+		t.Error("Edit: content[0].oldText should be preserved")
 	}
-	if _, has := first["newText"]; has {
-		t.Error("Edit: content[0].newText should be stripped")
+	if first["newText"] != strings.Repeat("b", 50000) {
+		t.Error("Edit: content[0].newText should be preserved")
 	}
 	if first["path"] != "/src/api.ts" {
 		t.Error("Edit: content[0].path should be preserved")
@@ -557,9 +559,9 @@ func TestStrip_EditRawInput_StripsDiffContent(t *testing.T) {
 }
 
 func TestStrip_EditToolResponse_StripsResponseAndDiff(t *testing.T) {
-	// Edit tool_call_update with toolResponse: strip heavy diff fields
-	// (oldString, newString, originalFile) and the content[*] diff blocks,
-	// but PRESERVE structuredPatch so the renderer can display the diff.
+	// Edit tool_call_update with toolResponse: strip heavy toolResponse fields
+	// (oldString, newString, originalFile), but PRESERVE structuredPatch AND the
+	// content[*] diff block so the renderer can display the diff either way.
 	frame := map[string]interface{}{
 		"sessionUpdate": "tool_call_update",
 		"toolCallId":    "tc-edit-2",
@@ -605,11 +607,11 @@ func TestStrip_EditToolResponse_StripsResponseAndDiff(t *testing.T) {
 
 	contents := result["content"].([]interface{})
 	first := contents[0].(map[string]interface{})
-	if _, has := first["oldText"]; has {
-		t.Error("Edit: content[0].oldText should be stripped")
+	if first["oldText"] != strings.Repeat("a", 50000) {
+		t.Error("Edit: content[0].oldText should be preserved")
 	}
-	if _, has := first["newText"]; has {
-		t.Error("Edit: content[0].newText should be stripped")
+	if first["newText"] != strings.Repeat("b", 50000) {
+		t.Error("Edit: content[0].newText should be preserved")
 	}
 
 	cc := result["_meta"].(map[string]interface{})["claudeCode"].(map[string]interface{})

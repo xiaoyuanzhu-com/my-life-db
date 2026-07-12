@@ -583,8 +583,31 @@ export function useAgentRuntime(options: {
               const meta = f._meta as Record<string, unknown> | undefined
               const acpMeta = meta?.claudeCode as Record<string, unknown> | undefined // protocol field
               const acpToolName = typeof acpMeta?.toolName === "string" ? acpMeta.toolName : undefined
-              if (acpMeta?.toolResponse != null) {
-                patch.result = acpMeta.toolResponse
+              const toolResponse = acpMeta?.toolResponse as Record<string, unknown> | undefined
+              const respHasPatch =
+                toolResponse != null &&
+                Array.isArray((toolResponse as { structuredPatch?: unknown }).structuredPatch) &&
+                (toolResponse as { structuredPatch: unknown[] }).structuredPatch.length > 0
+              // Edit ships its diff as a top-level content[] block
+              // {type:"diff", oldText, newText}. Prefer structuredPatch when the
+              // CLI sends it; otherwise fall back to this block so the diff still
+              // renders. (Edit only — Write's block is the whole file body and is
+              // stripped by the backend.) The edit-tool renderer reads oldText/
+              // newText from a {type:"diff"} result directly.
+              const editDiffBlock =
+                acpToolName === "Edit" && Array.isArray(f.content)
+                  ? (f.content as Array<Record<string, unknown>>).find(
+                      (b) =>
+                        b?.type === "diff" &&
+                        (typeof b.oldText === "string" || typeof b.newText === "string")
+                    )
+                  : undefined
+              if (respHasPatch) {
+                patch.result = toolResponse
+              } else if (editDiffBlock) {
+                patch.result = editDiffBlock
+              } else if (toolResponse != null) {
+                patch.result = toolResponse
               } else if (acpToolName === "ExitPlanMode" && Array.isArray(f.content)) {
                 // ExitPlanMode ships its primary payload — the plan markdown —
                 // as a top-level content[] block, not via rawOutput/toolResponse.
