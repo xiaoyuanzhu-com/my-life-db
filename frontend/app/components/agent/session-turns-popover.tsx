@@ -13,12 +13,14 @@ interface TurnSummary {
 interface SessionTurnsPopoverProps {
   sessionId: string
   onNavigate: (turnNumber: number) => void
+  disabled?: boolean
   children: ReactNode
 }
 
 export const SessionTurnsPopover: FC<SessionTurnsPopoverProps> = ({
   sessionId,
   onNavigate,
+  disabled = false,
   children,
 }) => {
   const { t } = useTranslation("agent")
@@ -30,6 +32,8 @@ export const SessionTurnsPopover: FC<SessionTurnsPopoverProps> = ({
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const leaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const disabledRef = useRef(disabled)
+  disabledRef.current = disabled
 
   const clearTimers = useCallback(() => {
     if (hoverTimerRef.current) {
@@ -85,18 +89,27 @@ export const SessionTurnsPopover: FC<SessionTurnsPopoverProps> = ({
     setError(null)
   }, [sessionId])
 
+  // Close popover when the three-dot menu opens (prevents flicker fight)
+  useEffect(() => {
+    if (disabled && open) {
+      clearTimers()
+      setOpen(false)
+    }
+  }, [disabled, open, clearTimers])
+
   const handleMouseEnter = useCallback(() => {
     if (leaveTimerRef.current) {
       clearTimeout(leaveTimerRef.current)
       leaveTimerRef.current = null
     }
+    if (disabled) return
     if (!open && !hoverTimerRef.current) {
       hoverTimerRef.current = setTimeout(() => {
         hoverTimerRef.current = null
-        setOpen(true)
+        if (!disabledRef.current) setOpen(true)
       }, 400)
     }
-  }, [open])
+  }, [open, disabled])
 
   const handleMouseLeave = useCallback(() => {
     if (hoverTimerRef.current) {
@@ -119,7 +132,12 @@ export const SessionTurnsPopover: FC<SessionTurnsPopoverProps> = ({
   }, [])
 
   const handlePopoverLeave = useCallback(() => {
-    setOpen(false)
+    if (!leaveTimerRef.current) {
+      leaveTimerRef.current = setTimeout(() => {
+        leaveTimerRef.current = null
+        setOpen(false)
+      }, 200)
+    }
   }, [])
 
   const handleNavigate = useCallback(

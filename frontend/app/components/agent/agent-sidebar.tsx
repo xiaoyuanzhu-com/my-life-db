@@ -316,6 +316,7 @@ const SessionRow: FC<SessionRowProps> = ({
 
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState(session.title)
+  const [menuOpen, setMenuOpen] = useState(false)
   useEffect(() => setRenameValue(session.title), [session.title])
 
   const submitRename = async () => {
@@ -330,6 +331,7 @@ const SessionRow: FC<SessionRowProps> = ({
     <SessionTurnsPopover
       sessionId={session.id}
       onNavigate={(turnNumber) => onNavigateToTurn?.(session.id, turnNumber)}
+      disabled={menuOpen || renaming}
     >
       <div
         {...(isActive ? { 'data-active': 'true' } : {})}
@@ -424,7 +426,7 @@ const SessionRow: FC<SessionRowProps> = ({
         </button>
       )}
 
-      <DropdownMenu>
+      <DropdownMenu onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
