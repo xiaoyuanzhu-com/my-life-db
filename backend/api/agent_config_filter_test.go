@@ -148,3 +148,131 @@ func TestFilterHiddenConfigOptions_PassThrough(t *testing.T) {
 		t.Fatalf("frame without fast mutated: %s", got)
 	}
 }
+
+// TestClaudeCodeEffortMatchesAgentNative locks in the effort levels
+// claude-agent-acp actually reports. The static list used to omit "default" and
+// "xhigh" — both routine persisted values — which was masked only because a
+// stale config_option_update was replayed from disk. With that frame gone, a
+// missing level means the picker silently renders the first choice instead of
+// the session's real one.
+func TestClaudeCodeEffortMatchesAgentNative(t *testing.T) {
+	opts := buildAgentConfigOptions("claude_code", nil)
+	var effort *configOption
+	for i := range opts {
+		if opts[i].ID == "effort" {
+			effort = &opts[i]
+			break
+		}
+	}
+	if effort == nil {
+		t.Fatal("claude_code has no effort option")
+	}
+	got := make(map[string]bool, len(effort.Options))
+	for _, c := range effort.Options {
+		got[c.Value] = true
+	}
+	for _, want := range []string{"default", "low", "medium", "high", "xhigh", "max"} {
+		if !got[want] {
+			t.Errorf("effort level %q missing from options", want)
+		}
+	}
+}
+
+// TestResolveSessionModel covers resuming a session after AGENT_MODELS changed.
+func TestResolveSessionModel(t *testing.T) {
+	models := []server.AgentModelInfo{
+		{Value: "claude-opus-5", Name: "Opus 5"},
+		{Value: "gpt-5.6-sol", Name: "GPT"},
+	}
+	cases := []struct {
+		name, persisted string
+		models          []server.AgentModelInfo
+		want            string
+		wantFellBack    bool
+	}{
+		{"no gateway list → passthrough", "opus[1m]", nil, "opus[1m]", false},
+		{"no gateway list, nothing persisted", "", nil, "", false},
+		{"nothing persisted → gateway default", "", models, "claude-opus-5", false},
+		{"still available → unchanged", "gpt-5.6-sol", models, "gpt-5.6-sol", false},
+		{"removed model → gateway default", "claude-opus-4-8", models, "claude-opus-5", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, fellBack := resolveSessionModel(tc.persisted, tc.models)
+			if got != tc.want || fellBack != tc.wantFellBack {
+				t.Fatalf("resolveSessionModel(%q) = (%q, %v), want (%q, %v)",
+					tc.persisted, got, fellBack, tc.want, tc.wantFellBack)
+			}
+		})
+	}
+}
+
+// TestOverlayPersistedConfigOptions_RejectsNonMemberValue verifies the
+// invariant that currentValue is always a member of options. A saved value that
+// no longer exists must fall through to the default rather than becoming a
+// phantom the frontend selector silently misrenders.
+func TestOverlayPersistedConfigOptions_RejectsNonMemberValue(t *testing.T) {
+	models := []server.AgentModelInfo{
+		{Value: "claude-opus-5", Name: "Opus 5"},
+		{Value: "gpt-5.6-sol", Name: "GPT"},
+	}
+	currentValues := func(opts []configOption) map[string]string {
+		out := make(map[string]string, len(opts))
+		for _, o := range opts {
+			out[o.ID] = o.CurrentValue
+		}
+		return out
+	}
+
+	t.Run("removed model falls back to gateway default", func(t *testing.T) {
+		opts := buildAgentConfigOptions("claude_code", models)
+		got := currentValues(overlayPersistedConfigOptions(opts,
+			map[string]string{"model": "claude-opus-4-8"}, ""))
+		if got["model"] != "claude-opus-5" {
+			t.Fatalf("model currentValue = %q, want gateway default", got["model"])
+		}
+	})
+
+	t.Run("available model is honoured", func(t *testing.T) {
+		opts := buildAgentConfigOptions("claude_code", models)
+		got := currentValues(overlayPersistedConfigOptions(opts,
+			map[string]string{"model": "gpt-5.6-sol"}, ""))
+		if got["model"] != "gpt-5.6-sol" {
+			t.Fatalf("model currentValue = %q, want gpt-5.6-sol", got["model"])
+		}
+	})
+
+	t.Run("xhigh effort is honoured", func(t *testing.T) {
+		opts := buildAgentConfigOptions("claude_code", models)
+		got := currentValues(overlayPersistedConfigOptions(opts,
+			map[string]string{"effort": "xhigh"}, ""))
+		if got["effort"] != "xhigh" {
+			t.Fatalf("effort currentValue = %q, want xhigh", got["effort"])
+		}
+	})
+
+	t.Run("bogus effort falls back to static default", func(t *testing.T) {
+		opts := buildAgentConfigOptions("claude_code", models)
+		got := currentValues(overlayPersistedConfigOptions(opts,
+			map[string]string{"effort": "ludicrous"}, ""))
+		if got["effort"] != "high" {
+			t.Fatalf("effort currentValue = %q, want static default high", got["effort"])
+		}
+	})
+
+	t.Run("mode comes from its own column", func(t *testing.T) {
+		opts := buildAgentConfigOptions("claude_code", models)
+		got := currentValues(overlayPersistedConfigOptions(opts, nil, "plan"))
+		if got["mode"] != "plan" {
+			t.Fatalf("mode currentValue = %q, want plan", got["mode"])
+		}
+	})
+
+	t.Run("bogus mode falls back to static default", func(t *testing.T) {
+		opts := buildAgentConfigOptions("claude_code", models)
+		got := currentValues(overlayPersistedConfigOptions(opts, nil, "notAMode"))
+		if got["mode"] != "bypassPermissions" {
+			t.Fatalf("mode currentValue = %q, want bypassPermissions", got["mode"])
+		}
+	})
+}

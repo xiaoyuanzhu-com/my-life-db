@@ -121,24 +121,9 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 	if rec, err := h.server.AppDB().GetAgentSession(sessionID); err == nil && rec != nil {
 		infoFields["agentType"] = rec.AgentType
 		if opts := buildAgentConfigOptions(rec.AgentType, h.server.Cfg().AgentLLM.Models); len(opts) > 0 {
-			// Overlay persisted per-session preferences so the dropdown opens on
-			// the user's saved value instead of the agent-type default. Mode
-			// lives in its own column for legacy reasons; everything else is in
-			// config_options.
 			persisted, _ := h.server.AppDB().GetAgentSessionConfigOptions(sessionID)
 			persistedMode, _ := h.server.AppDB().GetAgentSessionPermissionMode(sessionID)
-			for i := range opts {
-				if opts[i].ID == "mode" {
-					if persistedMode != "" {
-						opts[i].CurrentValue = persistedMode
-					}
-					continue
-				}
-				if v, ok := persisted[opts[i].ID]; ok && v != "" {
-					opts[i].CurrentValue = v
-				}
-			}
-			infoFields["defaultConfigOptions"] = opts
+			infoFields["defaultConfigOptions"] = overlayPersistedConfigOptions(opts, persisted, persistedMode)
 		}
 		// Outcome of the most recent turn — surfaced to the frontend so it can
 		// render the Resume banner for interrupted/cancelled/errored states.
@@ -238,18 +223,13 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			agentType := parseAgentType(sessionRecord.AgentType)
 			mode, _ := h.server.AppDB().GetAgentSessionPermissionMode(sessionID)
 
-			// Resolve the model to spawn with: per-session preference if set,
-			// else the agent type's gateway default. Env vars from BuildModelEnv
-			// make the process boot directly with the right model.
+			// Resolve the model to spawn with: per-session preference if it's
+			// still on offer, else the agent type's gateway default. Env vars
+			// from BuildModelEnv make the process boot directly with the right
+			// model.
 			gatewayModels := h.agentMgr.GatewayModels(sessionRecord.AgentType)
-			var defaultModel string
-			if len(gatewayModels) > 0 {
-				defaultModel = gatewayModels[0].Value
-			}
 			persistedOpts, _ := h.server.AppDB().GetAgentSessionConfigOptions(sessionID)
-			if v := persistedOpts["model"]; v != "" {
-				defaultModel = v
-			}
+			defaultModel, modelFellBack := resolveSessionModel(persistedOpts["model"], gatewayModels)
 
 			sess, err := h.server.AgentClient().CreateSession(h.server.ShutdownContext(), agentsdk.SessionConfig{
 				Agent:        agentType,
@@ -272,8 +252,9 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			}
 
 			// Pass empty defaultModel here — LoadSession would overwrite it anyway.
-			// We re-apply the model explicitly AFTER LoadSession so legacy sessions
-			// that stored an old (now-unavailable) model get reset to a valid one.
+			// We re-apply the model explicitly AFTER LoadSession, which is what
+			// resets legacy sessions that stored a now-unavailable model
+			// (resolveSessionModel above already picked the replacement).
 			h.agentMgr.SetupACP(sess, sessionID, mode, "")
 
 			if err := sess.LoadSession(h.server.ShutdownContext(), sessionID, sessionRecord.WorkingDir); err != nil {
@@ -302,7 +283,13 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 						broadcastConfigUpdate(sessionState, gatewayModels, updatedOpts, sessionID, defaultModel)
 					}
 					cancel()
-					applyModelEffort(sess, sessionState, gatewayModels, defaultModel, sessionID, persistedOpts["effort"])
+					// The saved effort belongs to the saved model; if that
+					// model is gone, let the replacement's declared Effort win.
+					effortOverride := persistedOpts["effort"]
+					if modelFellBack {
+						effortOverride = ""
+					}
+					applyModelEffort(sess, sessionState, gatewayModels, defaultModel, sessionID, effortOverride)
 				}
 			}
 		})
@@ -810,9 +797,12 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 					// The session's model isn't changing here (model changes go
 					// through the respawn path above), so the current dropdown
 					// value is the persisted model — pass it so rewriteModelOptions
-					// doesn't snap the display to the gateway default.
+					// doesn't snap the display to the gateway default. Resolved
+					// rather than raw, so the display matches what a resume
+					// would actually spawn.
 					persistedOpts, _ := h.server.AppDB().GetAgentSessionConfigOptions(sessionID)
-					broadcastConfigUpdate(sessionState, gatewayModels, updatedOpts, sessionID, persistedOpts["model"])
+					selectedModel, _ := resolveSessionModel(persistedOpts["model"], gatewayModels)
+					broadcastConfigUpdate(sessionState, gatewayModels, updatedOpts, sessionID, selectedModel)
 				}
 			}
 			cfgCancel()

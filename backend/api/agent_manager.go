@@ -71,6 +71,36 @@ func (m *AgentManager) GatewayModels(agentType string) []server.AgentModelInfo {
 	return server.FilterModelsForAgent(m.srv.Cfg().AgentLLM.Models, agentType)
 }
 
+// resolveSessionModel picks the model a session should actually run with,
+// given the value persisted in agent_sessions.config_options and the models
+// currently on offer. Returns the resolved model and whether it fell back.
+//
+// AGENT_MODELS changes between runs, so a session resumed months later can
+// carry a model the gateway no longer serves. Resuming on it puts a dead name
+// into the spawn env and fails on the first completion, so the persisted value
+// is only honoured while it remains a member of the live list. Mirrors the
+// validation CreateAgentSession already does for freshly requested models.
+//
+// An empty gateway list means AGENT_MODELS is unset or nothing is tagged for
+// this agent type; the agent's own native default is authoritative there, so
+// pass the persisted value through untouched rather than inventing one.
+func resolveSessionModel(persisted string, gatewayModels []server.AgentModelInfo) (string, bool) {
+	if len(gatewayModels) == 0 {
+		return persisted, false
+	}
+	if persisted == "" {
+		return gatewayModels[0].Value, false
+	}
+	for _, mi := range gatewayModels {
+		if mi.Value == persisted {
+			return persisted, false
+		}
+	}
+	log.Warn().Str("persistedModel", persisted).Str("fallback", gatewayModels[0].Value).
+		Msg("persisted model no longer in gateway list, falling back to default")
+	return gatewayModels[0].Value, true
+}
+
 // BuildModelEnv returns the env var overrides needed so a freshly spawned
 // agent process boots with the chosen gateway model. Returns nil when the
 // model matches the agent type's default (gatewayModels[0]) — leaving env
@@ -309,14 +339,8 @@ func (m *AgentManager) EnsureLiveSession(sessionID string, sessionState *agentsd
 	mode, _ := m.srv.AppDB().GetAgentSessionPermissionMode(sessionID)
 
 	gatewayModels := m.GatewayModels(agentTypeStr)
-	var defaultModel string
-	if len(gatewayModels) > 0 {
-		defaultModel = gatewayModels[0].Value
-	}
 	persistedOpts, _ := m.srv.AppDB().GetAgentSessionConfigOptions(sessionID)
-	if v := persistedOpts["model"]; v != "" {
-		defaultModel = v
-	}
+	defaultModel, _ := resolveSessionModel(persistedOpts["model"], gatewayModels)
 
 	log.Info().Str("sessionId", sessionID).Msg("no live ACP session, creating lazily")
 	sess, err := m.agentClient.CreateSession(m.shutdownCtx, agentsdk.SessionConfig{
@@ -517,8 +541,17 @@ func (m *AgentManager) SetupACP(sess agentsdk.Session, sessionID, mode, defaultM
 	// Restore the user's persisted effort pick on session boot so a resume
 	// stays on the same reasoning level. Empty override → applyModelEffort
 	// falls back to the model's declared Effort.
+	//
+	// The saved effort belongs to the saved model, so if we're booting on a
+	// different one — resolveSessionModel dropped a model the gateway no longer
+	// serves — carrying the old level over would push it at a model that may
+	// not offer it. Let the new model's declared Effort win instead.
 	persistedOpts, _ := m.srv.AppDB().GetAgentSessionConfigOptions(sessionID)
-	applyModelEffort(sess, sessionState, gatewayModels, defaultModel, sessionID, persistedOpts["effort"])
+	effortOverride := persistedOpts["effort"]
+	if defaultModel != "" && persistedOpts["model"] != "" && persistedOpts["model"] != defaultModel {
+		effortOverride = ""
+	}
+	applyModelEffort(sess, sessionState, gatewayModels, defaultModel, sessionID, effortOverride)
 
 	m.StoreSession(sessionID, sess)
 	return sessionState

@@ -46,7 +46,7 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 		AgentType      string `json:"agentType"`
 		PermissionMode string `json:"permissionMode"`
 		Model          string `json:"model"`
-		Effort         string `json:"effort"` // optional; claude_code reasoning effort (low/medium/high/max)
+		Effort         string `json:"effort"` // optional; claude_code reasoning effort (default/low/medium/high/xhigh/max)
 		StorageID      string `json:"storageId"` // optional — set when client did an upload first
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -89,11 +89,13 @@ func (h *Handlers) CreateAgentSession(c *gin.Context) {
 	// Reasoning effort is a claude_code option. Validate against the allowed set
 	// so a stale localStorage value can't get persisted and pushed to
 	// claude-agent-acp as a bad SetConfigOption. Empty = fall back to the model's
-	// declared Effort (applyModelEffort).
+	// declared Effort (applyModelEffort). Keep this set in lockstep with the
+	// claude_code "effort" options in defaultConfigOptions, or the dropdown
+	// offers a level that create then rejects.
 	effort := req.Effort
 	if effort != "" {
 		switch effort {
-		case "low", "medium", "high", "max":
+		case "default", "low", "medium", "high", "xhigh", "max":
 		default:
 			log.Warn().Str("requestedEffort", effort).Msg("invalid effort, ignoring")
 			effort = ""

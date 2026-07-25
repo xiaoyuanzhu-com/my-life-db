@@ -2,6 +2,7 @@ package agentsdk
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -43,9 +44,43 @@ func NewFrameStore(appDataDir string) *FrameStore {
 	}
 }
 
+// ephemeralMarker is the substring probe for isEphemeralFrame's fast path.
+var ephemeralMarker = []byte("config_option_update")
+
+// isEphemeralFrame reports whether a frame is live UI state rather than
+// conversation content, and so must never be written to or read back from disk.
+//
+// config_option_update carries a point-in-time snapshot of the whole model /
+// mode / effort dropdown, built from AGENT_MODELS at the moment it was sent.
+// Persisting it means a historical session replays a model list from whenever
+// it last ran — offering models that no longer exist at the gateway. The live
+// list already reaches the client via session.info on every connect, so the
+// persisted copy is pure staleness with no upside.
+//
+// The substring check is only a fast path: real conversation frames can quote
+// the marker (a session about this very code does), so a match must be
+// confirmed against the actual sessionUpdate field. A frame we can't parse is
+// never dropped.
+func isEphemeralFrame(frame []byte) bool {
+	if !bytes.Contains(frame, ephemeralMarker) {
+		return false
+	}
+	var envelope struct {
+		SessionUpdate string `json:"sessionUpdate"`
+	}
+	if err := json.Unmarshal(frame, &envelope); err != nil {
+		return false
+	}
+	return envelope.SessionUpdate == "config_option_update"
+}
+
 // Append enqueues a frame for the given session. Non-blocking: if the
 // channel is full the frame is silently dropped (with a warning log).
+// Ephemeral frames are discarded before a writer is even created.
 func (s *FrameStore) Append(sessionID string, frame []byte) {
+	if isEphemeralFrame(frame) {
+		return
+	}
 	w := s.getOrCreateWriter(sessionID)
 	select {
 	case w.ch <- frame:
@@ -69,6 +104,7 @@ func (s *FrameStore) Load(sessionID string) ([][]byte, error) {
 	defer f.Close()
 
 	var frames [][]byte
+	ephemeral := 0
 	scanner := bufio.NewScanner(f)
 	// Allow up to 10 MB per line to handle large frames
 	buf := make([]byte, 0, 64*1024)
@@ -84,6 +120,13 @@ func (s *FrameStore) Load(sessionID string) ([][]byte, error) {
 			log.Info().Str("sessionId", sessionID).Int("lineLen", len(line)).Msg("frame_store: skipping invalid JSON line during load")
 			continue
 		}
+		// Files written before Append learned to reject these still contain
+		// them, so filtering on the way out is what actually heals existing
+		// sessions — no migration needed.
+		if isEphemeralFrame(line) {
+			ephemeral++
+			continue
+		}
 		// Copy to avoid aliasing from scanner's internal buffer
 		cp := make([]byte, len(line))
 		copy(cp, line)
@@ -93,7 +136,7 @@ func (s *FrameStore) Load(sessionID string) ([][]byte, error) {
 		return nil, err
 	}
 
-	log.Info().Str("sessionId", sessionID).Int("frameCount", len(frames)).Msg("frame_store: loaded frames from disk")
+	log.Info().Str("sessionId", sessionID).Int("frameCount", len(frames)).Int("ephemeralSkipped", ephemeral).Msg("frame_store: loaded frames from disk")
 	return frames, nil
 }
 

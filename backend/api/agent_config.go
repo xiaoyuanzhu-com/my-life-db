@@ -43,10 +43,16 @@ var defaultConfigOptions = map[string][]configOption{
 			ID: "effort", Category: "thought_level", Name: "Effort", Type: "select",
 			Description:  "How much reasoning effort the model should use",
 			CurrentValue: "high",
+			// Must mirror the levels claude-agent-acp itself reports, or a
+			// session persisted at one of the missing values ("xhigh",
+			// "default") has a currentValue absent from its own options and
+			// the picker silently renders the first entry instead.
 			Options: []configOptionChoice{
+				{Value: "default", Name: "Default", Description: "Use the model's own default effort level"},
 				{Value: "low", Name: "Low", Description: "Fast responses with lighter reasoning"},
 				{Value: "medium", Name: "Medium", Description: "Balances speed and reasoning depth for everyday tasks"},
 				{Value: "high", Name: "High", Description: "Greater reasoning depth for complex problems"},
+				{Value: "xhigh", Name: "Xhigh", Description: "Extra high reasoning depth for complex problems"},
 				{Value: "max", Name: "Max", Description: "Maximum reasoning depth"},
 			},
 		},
@@ -193,6 +199,42 @@ func buildAgentConfigOptions(agentType string, allModels []server.AgentModelInfo
 		if opt.Category == "model" {
 			opts[i].Options = replacementOptions
 			opts[i].CurrentValue = agentModels[0].Value
+		}
+	}
+	return opts
+}
+
+// overlayPersistedConfigOptions applies a session's saved picks onto a freshly
+// built option list, so its dropdowns open on the user's choices instead of the
+// agent-type defaults. Mode lives in its own DB column for legacy reasons;
+// everything else comes from config_options.
+//
+// A saved value is only honoured when it's still one of that option's choices.
+// The options themselves are rebuilt from current config on every connect, so a
+// session saved before AGENT_MODELS changed — or before an effort level was
+// renamed — can hold a value that no longer exists. Assigning it anyway leaves
+// currentValue outside options, and the frontend selector responds by silently
+// rendering the first choice with no checkmark, showing a model the session
+// isn't running. Falling through to the default keeps the invariant that
+// currentValue is always a member of options.
+//
+// Mutates and returns opts; callers pass the fresh slice from
+// buildAgentConfigOptions. Only CurrentValue is touched — never Options, whose
+// backing array is shared with the package-level defaults.
+func overlayPersistedConfigOptions(opts []configOption, persisted map[string]string, persistedMode string) []configOption {
+	for i := range opts {
+		saved := persisted[opts[i].ID]
+		if opts[i].ID == "mode" {
+			saved = persistedMode
+		}
+		if saved == "" {
+			continue
+		}
+		for _, choice := range opts[i].Options {
+			if choice.Value == saved {
+				opts[i].CurrentValue = saved
+				break
+			}
 		}
 	}
 	return opts
