@@ -11,19 +11,22 @@
 
 let isRefreshing = false;
 let refreshPromise: Promise<boolean> | null = null;
-// Memoize a hard 404 on /api/system/oauth/refresh so we stop hammering
-// the endpoint on standalone backends that don't ship the OAuth gateway.
-// Without this, every WS reconnect (default 1s..30s exponential) re-tries
-// the refresh, adding a 404 to every reconnect cycle — visible in the
-// devtools console and tripping log aggregators on the gateway proxy.
-// A page reload resets this (per-tab state).
-let refreshEndpointMissing = false;
 
 /**
  * Attempt to refresh the access token.
- * - Native WebView: delegates to native bridge (requestTokenRefresh)
- * - Web browser: cookie-based POST to /api/system/oauth/refresh
- * Exported for use by WebSocket reconnection logic
+ *
+ * - Native WebView: delegates to the native bridge (requestTokenRefresh).
+ *   The native AuthManager owns the OIDC refresh and pushes fresh cookies
+ *   back into the WebView, so this is a real refresh.
+ *
+ * - Web browser: not possible, by design. The gateway session is an opaque
+ *   HttpOnly `mxy_session` cookie that this origin's JS can neither read nor
+ *   renew, and the gateway strips it before proxying to the instance. There
+ *   is no refresh endpoint on either side — the backend's used to live at
+ *   /api/system/oauth/refresh and was removed in 70a5cb3a, and the gateway
+ *   never implemented one. Re-auth means a full navigation to /gw/auth/login.
+ *
+ * Exported for use by WebSocket reconnection logic.
  */
 export async function refreshAccessToken(): Promise<boolean> {
   // If already refreshing, wait for that to complete
@@ -31,44 +34,16 @@ export async function refreshAccessToken(): Promise<boolean> {
     return refreshPromise;
   }
 
+  // Web: nothing to refresh. Return synchronously so WS reconnect loops
+  // don't serialize on a pointless promise.
+  if (!(window as any).isNativeApp) {
+    return false;
+  }
+
   isRefreshing = true;
   refreshPromise = (async () => {
     try {
-      // In native app context, delegate refresh to native via bridge
-      if ((window as any).isNativeApp) {
-        return await refreshViaNativeBridge();
-      }
-
-      // Web: cookie-based refresh
-      if (refreshEndpointMissing) {
-        // Endpoint previously 404'd — assume this is a standalone backend
-        // without the OAuth gateway and short-circuit. Treat as "refresh
-        // not applicable, current credentials are what they are." Callers
-        // either succeed via the existing cookie or fall through to a 401.
-        return false;
-      }
-      const response = await fetch('/api/system/oauth/refresh', {
-        method: 'POST',
-        credentials: 'same-origin',
-      });
-
-      if (response.ok) {
-        console.log('✅ Token refreshed successfully');
-        return true;
-      }
-
-      if (response.status === 404) {
-        // 404 is structural: route isn't registered. Latch so we don't
-        // log/retry every WS reconnect for the remainder of this tab.
-        refreshEndpointMissing = true;
-        console.warn(
-          '⚠️ /api/system/oauth/refresh returned 404 — standalone backend without OAuth gateway. Future refresh attempts will be skipped for this session.',
-        );
-        return false;
-      }
-
-      console.error('❌ Token refresh failed:', response.status);
-      return false;
+      return await refreshViaNativeBridge();
     } catch (error) {
       console.error('❌ Token refresh error:', error);
       return false;

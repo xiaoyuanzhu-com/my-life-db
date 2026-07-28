@@ -21,9 +21,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const checkAuth = async () => {
     try {
       const response = await api.get('/api/system/settings');
-      setIsAuthenticated(response.ok);
+      // In cloud mode the gateway gates every /api/system/* request before
+      // it reaches this instance, so 401 is an authoritative "not signed in"
+      // and 200 is an authoritative "signed in".
+      //
+      // Anything else (502/503 while the container is waking, a gateway
+      // recover cycle) says nothing about the session — leave the last known
+      // state alone rather than downgrading it.
+      if (response.ok || response.status === 401) {
+        setIsAuthenticated(response.ok);
+      }
     } catch {
-      setIsAuthenticated(false);
+      // Transport failure, not a logout. This used to setIsAuthenticated(false),
+      // which meant a single dropped request bounced an authenticated user to
+      // the welcome screen — indistinguishable from a real sign-out.
     } finally {
       setIsLoading(false);
     }
@@ -43,11 +54,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('native-recheck-auth', handler);
   }, []);
 
-  // Re-check auth when the tab becomes visible again. Without this, a
-  // long-lived tab whose access token expired stays stuck on the welcome
-  // screen until a hard reload — even though /api/system/oauth/refresh
-  // would succeed. The fetch goes through fetchWithRefresh, so a 401
-  // triggers a refresh-and-retry transparently.
+  // Re-check auth when the tab becomes visible again, so a tab whose gateway
+  // session expired while backgrounded doesn't sit on a stale view until a
+  // hard reload.
   useEffect(() => {
     const handler = () => {
       if (document.visibilityState === 'visible') checkAuth();
@@ -56,9 +65,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => document.removeEventListener('visibilitychange', handler);
   }, []);
 
+  // Owner login lives on the cloud gateway, not on this backend — the
+  // backend's /api/system/oauth/* routes were removed in 70a5cb3a. `/gw/*`
+  // is explicitly never proxied to the instance, so this hits the gateway's
+  // Authentik OIDC handoff. The native apps use the same URL.
   const login = (returnTo?: string) => {
-    const url = new URL('/api/system/oauth/authorize', window.location.origin);
-    if (returnTo) url.searchParams.set('return_to', returnTo);
+    const url = new URL('/gw/auth/login', window.location.origin);
+    if (returnTo) url.searchParams.set('next', returnTo);
     window.location.href = url.pathname + url.search;
   };
 
