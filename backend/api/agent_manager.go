@@ -227,6 +227,12 @@ const (
 	reapMaxIdle       = 3 * 24 * time.Hour
 )
 
+// promptDrainTimeout bounds how long a caller waits for an in-flight prompt
+// goroutine to unwind after its context has been cancelled. A healthy turn
+// unwinds in milliseconds; anything past this means the agent process is alive
+// but no longer answering, and the only way forward is to tear it down.
+const promptDrainTimeout = 5 * time.Second
+
 // StartIdleReaper launches the background sweep. It runs until the server's
 // shutdown context is cancelled. Call once during startup.
 func (m *AgentManager) StartIdleReaper() {
@@ -376,10 +382,19 @@ func (m *AgentManager) EnsureLiveSession(sessionID string, sessionState *agentsd
 // so the session can be lazily recreated on the next prompt. The DB record
 // is preserved — only the live process and runtime state are cleared.
 func (m *AgentManager) RestartSession(sessionID string) error {
-	// Wait for any in-flight prompt to finish before tearing down.
+	// Give any in-flight prompt a bounded window to unwind before tearing
+	// down. Bounded, not open-ended: if the agent has stopped answering, the
+	// prompt goroutine only unblocks once Close() below kills the process, so
+	// waiting for it first would deadlock the one control the user has for
+	// recovering a stuck session.
 	state := m.PeekState(sessionID)
 	if state != nil {
-		state.WaitForPrompt()
+		if !state.WaitForPrompt(promptDrainTimeout) {
+			log.Warn().
+				Str("sessionId", sessionID).
+				Dur("waited", promptDrainTimeout).
+				Msg("in-flight prompt did not drain — restarting session anyway")
+		}
 	}
 
 	// Kill the ACP process.

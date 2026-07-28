@@ -121,10 +121,21 @@ func (s *SessionState) TouchFrame() {
 	s.LastFrameAt = time.Now()
 }
 
-// WaitForPrompt waits for any in-flight prompt goroutine to finish.
-// If there's no active prompt, returns immediately.
-// Cancels the old prompt's context first to unblock it.
-func (s *SessionState) WaitForPrompt() {
+// WaitForPrompt cancels any in-flight prompt's context and waits up to timeout
+// for its goroutine to finish. Returns true if it drained (or there was none),
+// false if the timeout elapsed while it was still running.
+//
+// The timeout is mandatory by design. A cancelled context normally unwinds
+// conn.Prompt in milliseconds, but when the agent process is alive and simply
+// stops answering, it never returns at all — and then an unbounded wait here
+// deadlocks the caller. Both callers are recovery paths (restart the session,
+// send the next prompt), so an unbounded wait meant a wedged agent could not be
+// recovered from the UI at all.
+//
+// A false return is not a reason to give up: closing the ACP process is what
+// actually unblocks the prompt goroutine, so callers should proceed with
+// teardown rather than wait longer.
+func (s *SessionState) WaitForPrompt(timeout time.Duration) bool {
 	s.Mu.Lock()
 	cancel := s.PromptCancel
 	done := s.PromptDone
@@ -133,9 +144,27 @@ func (s *SessionState) WaitForPrompt() {
 	if cancel != nil {
 		cancel()
 	}
-	if done != nil {
-		<-done
+	if done == nil {
+		return true
 	}
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-done:
+		return true
+	case <-timer.C:
+		return false
+	}
+}
+
+// IsCurrentPrompt reports whether done is still the registered in-flight
+// prompt. A prompt goroutine that outlives its registration has been
+// superseded — the session was force-stopped and a newer turn took over — and
+// must not write completion state belonging to that newer turn.
+// Caller must hold Mu.RLock() or Mu.Lock().
+func (s *SessionState) IsCurrentPrompt(done chan struct{}) bool {
+	return s.PromptDone == done
 }
 
 // RegisterPrompt stores the done channel and cancel func for the current prompt.

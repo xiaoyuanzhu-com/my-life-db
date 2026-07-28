@@ -614,13 +614,24 @@ func (s *Server) setupRouter() {
 
 	// Gzip compression (skip SSE, WebSocket, and TUS upload endpoints)
 	// Note: WithExcludedPathsRegexs is used for routes with dynamic parameters
+	//
+	// KEEP IN SYNC WITH backend/api/routes.go. A stale entry here fails
+	// silently — both of these pointed at pre-/api/data-namespace paths for
+	// months and nothing complained. The TUS one is the expensive mistake:
+	// gin-contrib/gzip's gzipWriter has no Unwrap(), so once it wraps the
+	// writer, http.ResponseController can no longer reach gin's (which does
+	// implement Unwrap), and tusd's SetReadDeadline fails with
+	// http.ErrNotSupported — "feature not supported" — on every read of
+	// every upload body. That warning storm is loud enough to rotate a
+	// container's whole log window out in minutes.
 	s.router.Use(gzip.Gzip(gzip.DefaultCompression,
 		gzip.WithExcludedPaths([]string{
-			"/api/notifications/stream", // SSE - needs streaming
-			"/api/upload/tus/",          // TUS - needs ResponseController for timeout extension
+			"/api/data/events",        // SSE - needs streaming
+			"/api/data/uploads/tus/",  // TUS - needs ResponseController for timeout extension
 		}),
 		gzip.WithExcludedPathsRegexs([]string{
-			"/api/agent/sessions/.*/subscribe",  // WebSocket - agent session updates
+			"/api/agent/sessions/.*/subscribe", // WebSocket - agent session updates
+			"/api/agent/share/.*/subscribe",    // WebSocket - shared session updates
 		}),
 	))
 

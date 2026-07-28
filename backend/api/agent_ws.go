@@ -427,7 +427,19 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			// empty responses for the second call).
 			// Uses shared SessionState tracking so WS handler can also wait for
 			// REST-initiated or auto-run goroutines.
-			sessionState.WaitForPrompt()
+			//
+			// The wait is bounded because this sits in the read loop: block
+			// here and the socket stops reading anything else, including the
+			// session.cancel the user sends when they notice nothing is
+			// happening. That is what turned a stalled turn into a session
+			// with no way out.
+			if !sessionState.WaitForPrompt(promptDrainTimeout) {
+				log.Warn().
+					Str("sessionId", sessionID).
+					Dur("waited", promptDrainTimeout).
+					Msg("previous prompt did not drain — force-stopping wedged turn before new prompt")
+				h.forceStopWedgedTurn(sessionID, sessionState)
+			}
 
 			// Resolve the live session only AFTER WaitForPrompt: the previous
 			// turn's completion may have killed and respawned the process
@@ -832,4 +844,61 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 
 	<-pollDone
 	<-pingDone
+}
+
+// forceStopWedgedTurn tears down a turn whose prompt goroutine stopped
+// responding: its context is already cancelled, yet conn.Prompt() hasn't
+// returned, so the agent process is alive but no longer answering. Nothing
+// will clear IsProcessing or close the events channel on its own — the
+// process-death watcher only fires on actual process exit, and the idle
+// reaper deliberately skips sessions that look busy.
+//
+// Closing the process is the part that matters: it makes acpSess.Done() fire,
+// which cancels the per-prompt context and lets the stuck goroutine unwind.
+// The rest is the same bookkeeping session.cancel does, with the outcome
+// recorded as 'interrupted' (the agent stalled) rather than 'cancelled' (the
+// user stopped it).
+//
+// The caller registers the replacement prompt after this returns, so the old
+// goroutine finds itself superseded (SessionState.IsCurrentPrompt) and skips
+// its completion bookkeeping whenever it does finally unwind.
+func (h *Handlers) forceStopWedgedTurn(sessionID string, sessionState *agentsdk.SessionState) {
+	// Mark killed before teardown so the events-channel cleanup skips the
+	// ResultCount++/completed write that would file a stalled turn as a
+	// clean one.
+	sessionState.Mu.Lock()
+	sessionState.Killed = true
+	sessionState.SetProcessing(false, "ws-wedged")
+	pc := sessionState.PromptCancel
+	sessionState.Mu.Unlock()
+
+	if acpSession, exists := h.agentMgr.GetSession(sessionID); exists {
+		h.agentMgr.RemoveSession(sessionID)
+		acpSession.CancelAllPermissions()
+		if err := acpSession.Close(); err != nil {
+			log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to close wedged agent session")
+		} else {
+			log.Info().Str("sessionId", sessionID).Msg("wedged agent session closed (process killed) — next prompt respawns")
+		}
+	}
+
+	// Idempotent with the acpSess.Done() watcher; calling it here avoids
+	// waiting on OS-level process death.
+	if pc != nil {
+		pc()
+	}
+
+	if err := h.server.AppDB().MarkTurnOutcome(context.Background(), sessionID, db.OutcomeInterrupted, "agent stopped responding", db.NowMs()); err != nil {
+		log.Warn().Err(err).Str("sessionId", sessionID).Msg("failed to persist interrupted outcome")
+	}
+
+	// Persisted terminator for the orphaned turn.start. Without it the
+	// frontend replays turn.start on every reopen and re-arms the spinner
+	// for a turn that ended hours ago.
+	if completeBytes, err := json.Marshal(map[string]any{
+		"type":       "turn.complete",
+		"stopReason": "interrupted",
+	}); err == nil {
+		sessionState.AppendAndBroadcast(completeBytes)
+	}
 }

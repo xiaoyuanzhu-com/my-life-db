@@ -72,12 +72,15 @@ func (m *AgentManager) RunPromptTurn(
 		log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to send prompt to ACP session")
 		sessionState.Mu.Lock()
 		killed := sessionState.Killed
-		if !killed {
+		superseded := !sessionState.IsCurrentPrompt(done)
+		if !killed && !superseded {
 			sessionState.SetProcessing(false, sourceLabel+"-prompt-send-error")
 		}
-		sessionState.ClearPrompt()
+		if !superseded {
+			sessionState.ClearPrompt()
+		}
 		sessionState.Mu.Unlock()
-		if killed {
+		if killed || superseded {
 			return
 		}
 		if dbErr := m.srv.AppDB().MarkTurnOutcome(context.Background(), sessionID, db.OutcomeErrored, err.Error(), db.NowMs()); dbErr != nil {
@@ -96,11 +99,14 @@ func (m *AgentManager) RunPromptTurn(
 	var errorFrameMsg string
 	for frame := range events {
 		// Skip frames if session was force-killed (kill handler already
-		// emitted turn.complete).
+		// emitted turn.complete), or if a newer turn has taken over — a
+		// wedged process can flush its backlog long after being replaced,
+		// and those frames would splice into the live turn's transcript.
 		sessionState.Mu.RLock()
 		killed := sessionState.Killed
+		superseded := !sessionState.IsCurrentPrompt(done)
 		sessionState.Mu.RUnlock()
-		if killed {
+		if killed || superseded {
 			continue
 		}
 
@@ -119,11 +125,19 @@ func (m *AgentManager) RunPromptTurn(
 	}
 
 	// Channel closed = turn complete.
+	//
+	// `superseded` covers the case where this turn was force-stopped as
+	// wedged (see forceStopWedgedTurn in agent_ws.go) and a newer turn has
+	// since registered: we may be unwinding minutes late, long after the
+	// replacement started, so every write below would land on the new turn's
+	// state — clearing its spinner, taking its prompt registration, and
+	// filing a completed outcome it hasn't reached.
 	sessionState.Mu.Lock()
 	killed := sessionState.Killed
+	superseded := !sessionState.IsCurrentPrompt(done)
 	respawnQueued := sessionState.RespawnAfterTurn
 	newResultCount := sessionState.ResultCount
-	if !killed {
+	if !killed && !superseded {
 		// Don't count an errored turn as a "result" — there's nothing the
 		// user should treat as unread output.
 		if !sawErrorFrame {
@@ -132,8 +146,15 @@ func (m *AgentManager) RunPromptTurn(
 		}
 		sessionState.SetProcessing(false, sourceLabel+"-prompt-complete")
 	}
-	sessionState.ClearPrompt()
+	if !superseded {
+		sessionState.ClearPrompt()
+	}
 	sessionState.Mu.Unlock()
+
+	if superseded {
+		log.Info().Str("sessionId", sessionID).Str("source", sourceLabel).Msg("prompt goroutine unwound after being superseded — skipping turn cleanup")
+		return
+	}
 
 	if killed {
 		return
