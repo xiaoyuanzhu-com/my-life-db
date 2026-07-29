@@ -36,6 +36,22 @@ interface ToolCallPart {
   isError?: boolean
 }
 
+function hasEditDiffPayload(result: unknown): boolean {
+  if (typeof result !== "object" || result === null) return false
+
+  const value = result as Record<string, unknown>
+  if (
+    value.type === "diff" &&
+    (typeof value.oldText === "string" || typeof value.newText === "string")
+  ) {
+    return true
+  }
+  if (typeof value.oldString === "string" || typeof value.newString === "string") {
+    return true
+  }
+  return Array.isArray(value.structuredPatch) && value.structuredPatch.length > 0
+}
+
 interface TextPart {
   type: "text"
   text: string
@@ -575,33 +591,39 @@ export function useAgentRuntime(options: {
             // Build the patch from the frame data
             const patch: Partial<ToolCallPart> = {}
 
-            if ("rawOutput" in f) {
+            const hasRawOutput = "rawOutput" in f
+            const meta = f._meta as Record<string, unknown> | undefined
+            const acpMeta = meta?.claudeCode as Record<string, unknown> | undefined // protocol field
+            const acpToolName = typeof acpMeta?.toolName === "string" ? acpMeta.toolName : undefined
+            const isEditFrame =
+              acpToolName === "Edit" ||
+              (typeof f.title === "string" && /^Edit(?:\s|$)/i.test(f.title)) ||
+              f.kind === "edit"
+            const toolResponse = acpMeta?.toolResponse as Record<string, unknown> | undefined
+            const respHasPatch =
+              toolResponse != null &&
+              Array.isArray((toolResponse as { structuredPatch?: unknown }).structuredPatch) &&
+              (toolResponse as { structuredPatch: unknown[] }).structuredPatch.length > 0
+            const editDiffBlock =
+              isEditFrame && Array.isArray(f.content)
+                ? (f.content as Array<Record<string, unknown>>).find(
+                    (b) =>
+                      b?.type === "diff" &&
+                      (typeof b.oldText === "string" || typeof b.newText === "string")
+                  )
+                : undefined
+
+            if (hasRawOutput && !isEditFrame) {
               patch.result = f.rawOutput
             } else {
               // Check _meta toolResponse for tool results delivered
               // via metadata (some tools send results there instead of rawOutput)
-              const meta = f._meta as Record<string, unknown> | undefined
-              const acpMeta = meta?.claudeCode as Record<string, unknown> | undefined // protocol field
-              const acpToolName = typeof acpMeta?.toolName === "string" ? acpMeta.toolName : undefined
-              const toolResponse = acpMeta?.toolResponse as Record<string, unknown> | undefined
-              const respHasPatch =
-                toolResponse != null &&
-                Array.isArray((toolResponse as { structuredPatch?: unknown }).structuredPatch) &&
-                (toolResponse as { structuredPatch: unknown[] }).structuredPatch.length > 0
               // Edit ships its diff as a top-level content[] block
               // {type:"diff", oldText, newText}. Prefer structuredPatch when the
               // CLI sends it; otherwise fall back to this block so the diff still
               // renders. (Edit only — Write's block is the whole file body and is
               // stripped by the backend.) The edit-tool renderer reads oldText/
               // newText from a {type:"diff"} result directly.
-              const editDiffBlock =
-                acpToolName === "Edit" && Array.isArray(f.content)
-                  ? (f.content as Array<Record<string, unknown>>).find(
-                      (b) =>
-                        b?.type === "diff" &&
-                        (typeof b.oldText === "string" || typeof b.newText === "string")
-                    )
-                  : undefined
               if (respHasPatch) {
                 patch.result = toolResponse
               } else if (editDiffBlock) {
@@ -654,9 +676,23 @@ export function useAgentRuntime(options: {
 
               // Found it — apply patch and return
               const existing = parts[idx] as ToolCallPart
+              const isEditTool =
+                isEditFrame ||
+                (existing.args as Record<string, unknown> | undefined)?.kind === "edit" ||
+                /^(?:Edit|Write)(?:\s|$)/i.test(existing.toolName)
+              if (
+                isEditTool &&
+                hasRawOutput &&
+                patch.result === undefined &&
+                hasEditDiffPayload(existing.result)
+              ) {
+                patch.result = existing.result
+              }
               // Handle the "completed but no rawOutput" case with existing result
-              if (!("rawOutput" in f) && f.status === "completed" && patch.result === undefined) {
-                patch.result = existing.result || " "
+              if (!hasRawOutput && f.status === "completed" && patch.result === undefined) {
+                patch.result = existing.result ?? " "
+              } else if (isEditTool && hasRawOutput && patch.result === undefined) {
+                patch.result = f.rawOutput ?? " "
               }
               // Preserve kind and metaToolName from initial tool_call when
               // tool_call_update replaces args (rawInput patching drops them)
