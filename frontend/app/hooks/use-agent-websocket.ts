@@ -364,6 +364,14 @@ export function useAgentWebSocket({
       }
 
       thisWs.onmessage = (event) => {
+        // Drop frames from a connection we've already replaced. close() does
+        // not discard message events the browser had already queued, so a dead
+        // socket's backlog keeps firing — and it lands *after* the new
+        // connection's session.info cleared the message list, so those frames
+        // are applied to fresh state that the replay then re-delivers. Nothing
+        // is lost by dropping them: every connection replays the full history.
+        // Same staleness check onopen/onclose already do.
+        if (wsRef.current !== thisWs) return
         try {
           const frame = JSON.parse(event.data) as AcpFrame
           onFrameRef.current(frame)
