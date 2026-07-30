@@ -530,6 +530,25 @@ export function useAgentRuntime(options: {
           setMessages((prev) => {
             const updated = [...prev]
 
+            // Make tool_call handling idempotent: the same frame can be
+            // delivered twice. Every WS connection replays the full history,
+            // and frames received on the previous connection may still sit in
+            // the event loop queue when session.info clears the state — those
+            // land first, then the replay delivers them again. A second
+            // tool-call part with the same toolCallId inside one message makes
+            // assistant-ui's tapResources throw "Duplicate key toolCallId-xxx",
+            // which unmounts the whole thread via the error boundary. Guard
+            // before both branches below (append *and* new-message), scoped by
+            // parentToolUseId so subagent scopes stay independent.
+            const alreadyPresent = updated.some((m) =>
+              m.role === "assistant" &&
+              m.parentToolUseId === parentToolUseId &&
+              m.content.some(
+                (p) => p.type === "tool-call" && p.toolCallId === f.toolCallId
+              )
+            )
+            if (alreadyPresent) return prev
+
             const last = findLastAssistant(updated, parentToolUseId)
 
             const lastInScope = parentToolUseId
