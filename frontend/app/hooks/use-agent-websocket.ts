@@ -100,6 +100,7 @@ export interface ErrorFrame extends AcpFrame {
   type: "error"
   message: string
   code?: string
+  data?: unknown
 }
 
 export interface SessionInfoFrame extends AcpFrame {

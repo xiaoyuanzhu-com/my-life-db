@@ -20,6 +20,7 @@ import {
   type ErrorFrame,
   type TurnCompleteFrame,
 } from "./use-agent-websocket"
+import { formatAgentErrorMessage } from "~/lib/agent-error"
 import { isSkippedXmlContent } from "~/lib/session-message-utils"
 import { generateUUID } from "~/lib/uuid"
 import type { UseDraftOutboxResult } from "~/lib/draft-outbox"
@@ -859,9 +860,10 @@ export function useAgentRuntime(options: {
 
         case "error": {
           const f = frame as ErrorFrame
+          const errorMessage = formatAgentErrorMessage(f)
           setIsRunning(false)
           if (messagesRef.current.length === 0) {
-            setSessionError(f.message)
+            setSessionError(errorMessage)
           }
           // Clear all pending permissions on error — the turn is done
           setPendingPermissions((prev) => {
@@ -892,7 +894,7 @@ export function useAgentRuntime(options: {
                   status: {
                     type: "incomplete",
                     reason: "error",
-                    error: f.message,
+                    error: errorMessage,
                   },
                 }
                 changed = true
@@ -910,7 +912,7 @@ export function useAgentRuntime(options: {
                 status: {
                   type: "incomplete",
                   reason: "error",
-                  error: f.message,
+                  error: errorMessage,
                 },
               })
               changed = true

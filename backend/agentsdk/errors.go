@@ -84,6 +84,9 @@ func pickInitial(e *acp.RequestError) string {
 		if s, ok := m["error"].(string); ok && s != "" {
 			return s
 		}
+		if s, ok := m["message"].(string); ok && s != "" {
+			return s
+		}
 	}
 	return e.Message
 }

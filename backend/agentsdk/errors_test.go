@@ -82,6 +82,28 @@ func TestHumanizeAgentError_NonJSONBody(t *testing.T) {
 	}
 }
 
+// TestHumanizeAgentError_CodexCapacity reproduces Codex's ACP error shape,
+// where the actionable provider message is stored directly in Data["message"].
+func TestHumanizeAgentError_CodexCapacity(t *testing.T) {
+	rpc := &acp.RequestError{
+		Code:    -32603,
+		Message: "Internal error",
+		Data: map[string]any{
+			"codex_error_info": "server_overloaded",
+			"message":          "Selected model is at capacity. Please try a different model.",
+		},
+	}
+
+	got, data := humanizeAgentError(rpc)
+	want := "Selected model is at capacity. Please try a different model."
+	if got != want {
+		t.Errorf("Codex capacity message: got %q, want %q", got, want)
+	}
+	if data == nil || data["rpcCode"] != -32603 {
+		t.Errorf("expected rpcCode=-32603, got %v", data)
+	}
+}
+
 // TestHumanizeAgentError_MessageFallback confirms that when Data has no
 // "error" key, we fall back to Message and still unwrap any JSON it holds.
 func TestHumanizeAgentError_MessageFallback(t *testing.T) {
