@@ -16,6 +16,9 @@ import {
   type UserMessageChunkFrame,
   type SessionInfoFrame,
   type PermissionRequestFrame,
+  type PermissionResolvedFrame,
+  type PermissionCancelledFrame,
+  type PermissionFailedFrame,
   type PermissionOption,
   type ErrorFrame,
   type TurnCompleteFrame,
@@ -178,6 +181,12 @@ export function useAgentRuntime(options: {
   const [pendingPermissions, setPendingPermissions] = useState<
     Map<string, { toolName: string; options: PermissionOption[] }>
   >(() => new Map())
+  // Every permission.request ever seen, kept so a permission.failed frame can
+  // put the card back after an optimistic dismissal — the failure frame carries
+  // only a toolCallId, not the options needed to re-render.
+  const permissionRequestsRef = useRef<
+    Map<string, { toolName: string; options: PermissionOption[] }>
+  >(new Map())
   // Set when backend signals history loading is complete but no messages arrived
   const [historyLoadError, setHistoryLoadError] = useState<string | null>(null)
   // Set when a live session errors before any message can render
@@ -226,6 +235,7 @@ export function useAgentRuntime(options: {
     setSessionMeta({})
     setPlanEntries([])
     setPendingPermissions(new Map())
+    permissionRequestsRef.current = new Map()
     setHistoryLoadError(null)
     setSessionError(null)
     setLastTurnOutcome('')
@@ -266,6 +276,7 @@ export function useAgentRuntime(options: {
           setMessages((prev) => prev.filter((m) => m.isOptimistic))
           setIsRunning(f.isProcessing)
           setPendingPermissions(new Map())
+          permissionRequestsRef.current = new Map()
           setHistoryLoadError(null)
           setSessionError(null)
           // Outcome state from DB (any of: '', 'completed', 'cancelled',
@@ -716,25 +727,16 @@ export function useAgentRuntime(options: {
         case "permission.request": {
           const f = frame as PermissionRequestFrame
           const toolCallId = f.toolCall.toolCallId
+          const entry = { toolName: f.toolCall.title ?? "unknown", options: f.options }
+          permissionRequestsRef.current.set(toolCallId, entry)
 
-          // Check if this tool call already has a result (e.g., during burst replay
-          // after page refresh where permission.request arrives before toolCallUpdate
-          // but both are in the burst). If the tool call already completed, skip.
-          const alreadyResolved = messagesRef.current.some((m) =>
-            m.role === "assistant" &&
-            m.content.some(
-              (p) => p.type === "tool-call" && p.toolCallId === toolCallId && p.result !== undefined
-            )
-          )
-          if (alreadyResolved) break
-
-          // Store permission options so the UI can render buttons
+          // Store permission options so the UI can render buttons.
+          // A card added here is removed by permission.resolved / .cancelled
+          // later in the stream — during replay both are in the same burst, so
+          // an already-answered request flashes at most for one frame.
           setPendingPermissions((prev) => {
             const next = new Map(prev)
-            next.set(toolCallId, {
-              toolName: f.toolCall.title ?? "unknown",
-              options: f.options,
-            })
+            next.set(toolCallId, entry)
             return next
           })
 
@@ -764,6 +766,38 @@ export function useAgentRuntime(options: {
               return updated
             }
             return prev
+          })
+          break
+        }
+
+        // Answered (persisted) or orphaned by a restart (persisted on first
+        // cold load). Either way the request is settled, so the card goes —
+        // and stays gone across reloads, because both frames replay alongside
+        // the permission.request that produced them.
+        case "permission.resolved":
+        case "permission.cancelled": {
+          const toolCallId = (frame as PermissionResolvedFrame | PermissionCancelledFrame).toolCallId
+          setPendingPermissions((prev) => {
+            if (!prev.has(toolCallId)) return prev
+            const next = new Map(prev)
+            next.delete(toolCallId)
+            return next
+          })
+          break
+        }
+
+        // The answer never reached the agent. Not persisted — put the card back
+        // so the user can retry, rather than leaving a turn silently blocked
+        // behind a prompt that looks answered.
+        case "permission.failed": {
+          const f = frame as PermissionFailedFrame
+          const entry = permissionRequestsRef.current.get(f.toolCallId)
+          if (!entry) break
+          setPendingPermissions((prev) => {
+            if (prev.has(f.toolCallId)) return prev
+            const next = new Map(prev)
+            next.set(f.toolCallId, entry)
+            return next
           })
           break
         }

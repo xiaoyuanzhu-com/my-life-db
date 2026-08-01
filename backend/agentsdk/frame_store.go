@@ -237,3 +237,56 @@ func (s *FrameStore) runWriter(sessionID string, w *sessionWriter) {
 		}
 	}
 }
+
+// DanglingPermissions returns the toolCallIds of permission.request frames in
+// the given stream that were never answered and whose tool never reported back.
+//
+// A permission request is a persisted frame; the pending state that makes it
+// answerable is a channel in the agent process. If the server dies while the
+// agent is blocked on one, the request outlives the only thing that could
+// resolve it — so on reload the client replays the request, renders a card, and
+// clicking it can never succeed (there is no ACP session left to answer to).
+//
+// Two things prove a request is no longer live: a permission.resolved frame
+// (the user answered it) or any tool_call_update carrying its toolCallId (the
+// tool ran, so it must have been allowed). Requests with neither are dangling
+// and callers should write a terminator for them.
+func DanglingPermissions(frames [][]byte) []string {
+	var requested []string
+	settled := make(map[string]bool)
+
+	for _, frame := range frames {
+		var envelope struct {
+			Type          string `json:"type"`
+			SessionUpdate string `json:"sessionUpdate"`
+			ToolCallID    string `json:"toolCallId"`
+			ToolCall      struct {
+				ToolCallID string `json:"toolCallId"`
+			} `json:"toolCall"`
+		}
+		if err := json.Unmarshal(frame, &envelope); err != nil {
+			continue
+		}
+		switch {
+		case envelope.Type == "permission.request":
+			if id := envelope.ToolCall.ToolCallID; id != "" {
+				requested = append(requested, id)
+			}
+		case envelope.Type == "permission.resolved", envelope.Type == "permission.cancelled":
+			settled[envelope.ToolCallID] = true
+		case envelope.SessionUpdate == "tool_call_update":
+			settled[envelope.ToolCallID] = true
+		}
+	}
+
+	var dangling []string
+	seen := make(map[string]bool)
+	for _, id := range requested {
+		if settled[id] || seen[id] {
+			continue
+		}
+		seen[id] = true
+		dangling = append(dangling, id)
+	}
+	return dangling
+}

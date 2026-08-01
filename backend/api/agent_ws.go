@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"sync/atomic"
 	"time"
@@ -204,6 +205,25 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				} else if len(frames) > 0 {
 					log.Info().Str("sessionId", sessionID).Int("frameCount", len(frames)).Msg("frame_store: loaded history from disk, skipping ACP session/load")
 					sessionState.LoadHistoricalFrames(frames)
+
+					// Reaching here means the session is cold — it came off disk
+					// because nothing was in memory, so no agent process is blocked
+					// on any permission in this stream. Any request still dangling
+					// was orphaned by a crash and can never be answered; persist a
+					// terminator so the card stops resurrecting on every reload.
+					for _, toolCallID := range agentsdk.DanglingPermissions(frames) {
+						cancelBytes, err := json.Marshal(map[string]any{
+							"type":       "permission.cancelled",
+							"toolCallId": toolCallID,
+							"reason":     "session ended before the request was answered",
+						})
+						if err != nil {
+							continue
+						}
+						log.Info().Str("sessionId", sessionID).Str("toolCallId", toolCallID).
+							Msg("frame_store: cancelling permission request orphaned by restart")
+						sessionState.AppendAndBroadcast(cancelBytes)
+					}
 					// Mark history as done — no ACP load needed.
 					return
 				}
@@ -820,15 +840,45 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			cfgCancel()
 
 		case "permission.respond":
-			acpSession, exists := h.agentMgr.GetSession(sessionID)
+			// The answer has to outlive the in-memory ACP session. permission.request
+			// is a persisted frame, so every reload replays it and re-renders the
+			// card; the pending state the agent process holds is gone by then. Before
+			// permission.resolved existed the card only vanished because some *later*
+			// frame happened to clear it (the tool's own tool_call_update, or
+			// turn.complete) — mid-turn, with neither yet written, it came back on
+			// every refresh of an already-answered prompt.
+			var respondErr error
+			if acpSession, exists := h.agentMgr.GetSession(sessionID); exists {
+				respondErr = acpSession.RespondToPermission(context.Background(), inMsg.ToolCallID, inMsg.OptionID)
+			} else {
+				respondErr = errors.New("no ACP session")
+			}
 
-			if !exists {
-				log.Warn().Str("sessionId", sessionID).Msg("no ACP session for permission response")
+			if respondErr != nil {
+				// Nothing is persisted: the request genuinely wasn't answered, so
+				// replay should still show it. Tell live clients too — the card was
+				// dismissed optimistically on click and has to come back, otherwise
+				// the click is silently lost and the turn stays blocked.
+				log.Error().Err(respondErr).
+					Str("sessionId", sessionID).
+					Str("toolCallId", inMsg.ToolCallID).
+					Msg("failed to respond to permission")
+				if failedBytes, err := json.Marshal(map[string]any{
+					"type":       "permission.failed",
+					"toolCallId": inMsg.ToolCallID,
+					"error":      respondErr.Error(),
+				}); err == nil {
+					sessionState.BroadcastToClients(failedBytes)
+				}
 				break
 			}
 
-			if err := acpSession.RespondToPermission(context.Background(), inMsg.ToolCallID, inMsg.OptionID); err != nil {
-				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to respond to permission")
+			if resolvedBytes, err := json.Marshal(map[string]any{
+				"type":       "permission.resolved",
+				"toolCallId": inMsg.ToolCallID,
+				"optionId":   inMsg.OptionID,
+			}); err == nil {
+				sessionState.AppendAndBroadcast(resolvedBytes)
 			}
 
 			log.Info().

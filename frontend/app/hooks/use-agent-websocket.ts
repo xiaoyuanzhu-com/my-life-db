@@ -91,6 +91,39 @@ export interface PermissionRequestFrame extends AcpFrame {
   options: PermissionOption[]
 }
 
+/**
+ * Persisted counterpart to PermissionRequestFrame — the user answered it.
+ *
+ * The request frame lives on disk forever, so every reload replays it and
+ * re-renders the card. This frame is what tells the replay the card is already
+ * dealt with; without it, dismissal depends on some later frame in the stream
+ * (the tool's own update, or turn.complete) happening to clear it.
+ */
+export interface PermissionResolvedFrame extends AcpFrame {
+  type: "permission.resolved"
+  toolCallId: string
+  optionId: string
+}
+
+/** Orphaned by a restart — nothing can answer it, so the card must go. */
+export interface PermissionCancelledFrame extends AcpFrame {
+  type: "permission.cancelled"
+  toolCallId: string
+  reason?: string
+}
+
+/**
+ * The answer never reached the agent (socket dropped, session gone). Not
+ * persisted: the request is genuinely still unanswered, so replay should keep
+ * showing it. Live clients get this so the optimistically-dismissed card
+ * comes back instead of the click vanishing silently.
+ */
+export interface PermissionFailedFrame extends AcpFrame {
+  type: "permission.failed"
+  toolCallId: string
+  error?: string
+}
+
 export interface TurnCompleteFrame extends AcpFrame {
   type: "turn.complete"
   stopReason: string
@@ -141,6 +174,9 @@ export type AgentFrame =
   | CurrentModeUpdateFrame
   | AvailableCommandsUpdateFrame
   | PermissionRequestFrame
+  | PermissionResolvedFrame
+  | PermissionCancelledFrame
+  | PermissionFailedFrame
   | TurnCompleteFrame
   | ErrorFrame
   | AcpFrame // catch-all for unknown types
