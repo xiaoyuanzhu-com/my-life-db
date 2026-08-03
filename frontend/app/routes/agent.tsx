@@ -489,6 +489,19 @@ export default function AgentPage() {
     location.pathname === '/agent/auto' || location.pathname.startsWith('/agent/auto/')
   const sidebarView: SidebarView = isAutoRoute ? 'agents' : 'sessions'
   const activeSessionId = urlSessionId ?? null
+
+  // Draft + outbox — single owner of composer input safety. Per-session (or
+  // 'new-session' before a session exists). The composer reads from this and
+  // the runtime submits through it; if input is ever lost the bug is here.
+  // See `~/lib/draft-outbox/DESIGN.md`.
+  //
+  // Declared this early (right after its only input, `activeSessionId`) so the
+  // callbacks below can list `outbox.actions` in their dependency arrays. A
+  // dep array is evaluated during render, so a hook declared *after* them
+  // would be in the temporal dead zone and throw.
+  const outbox = useDraftOutbox(activeSessionId || 'new-session')
+  const outboxActions = outbox.actions
+
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
   const [accountGateOpen, setAccountGateOpen] = useState(false)
@@ -1108,7 +1121,7 @@ export default function AgentPage() {
 
   // Create a new session and send the first message.
   // Session + CLI process are spun up on demand — no eager/warm session.
-  const createSessionWithMessage = async (message: string) => {
+  const createSessionWithMessage = useCallback(async (message: string) => {
     if (!message || isCreatingSession) return
 
     if (!isAuthenticated) {
@@ -1180,7 +1193,7 @@ export default function AgentPage() {
       // navigation. The outbox handle here still targets 'new-session';
       // after goToSession() it would swap to the new session's outbox and
       // a deferred discard would clear the wrong draft (or no-op).
-      outbox.discardDraft()
+      outboxActions.discardDraft()
       // New sessions created via the composer are user sessions → /agent/:id.
       goToSession(session.id, 'user')
       setShowNewSessionMobile(false)
@@ -1202,32 +1215,45 @@ export default function AgentPage() {
     } finally {
       setIsCreatingSession(false)
     }
-  }
+  }, [
+    isCreatingSession,
+    isAuthenticated,
+    defaultConfigOptions,
+    newSessionAgentType,
+    newSessionDefaults,
+    newSessionWorkingDir,
+    outboxActions,
+    goToSession,
+    t,
+  ])
 
 
-  const updateSessionTitle = async (sessionId: string, title: string) => {
+  const updateSessionTitle = useCallback(async (sessionId: string, title: string) => {
     try {
       await api.patch(`/api/agent/sessions/${sessionId}`, { title })
 
-      setSessions(
-        sessions.map((s) => (s.id === sessionId ? { ...s, title } : s))
+      // Functional update: this runs after an await, so a `sessions` value
+      // captured at render time would be stale and clobber anything the
+      // session-list refresh landed in the meantime.
+      setSessions((prev) =>
+        prev.map((s) => (s.id === sessionId ? { ...s, title } : s))
       )
     } catch (error) {
       console.error('Failed to update session:', error)
     }
-  }
+  }, [])
 
-  const archiveSession = async (sessionId: string) => {
+  const archiveSession = useCallback(async (sessionId: string) => {
     try {
       const response = await api.post(`/api/agent/sessions/${sessionId}/archive`)
 
       if (response.ok) {
         if (statusFilter === 'active') {
           // Remove from list when viewing active sessions
-          setSessions(sessions.filter((s) => s.id !== sessionId))
+          setSessions((prev) => prev.filter((s) => s.id !== sessionId))
         } else {
-          setSessions(
-            sessions.map((s) =>
+          setSessions((prev) =>
+            prev.map((s) =>
               s.id === sessionId ? { ...s, sessionState: 'archived' as const } : s
             )
           )
@@ -1236,7 +1262,7 @@ export default function AgentPage() {
     } catch (error) {
       console.error('Failed to archive session:', error)
     }
-  }
+  }, [statusFilter])
 
   const handlePinSession = useCallback(async (sessionId: string, pinned: boolean) => {
     const now = Date.now()
@@ -1250,17 +1276,17 @@ export default function AgentPage() {
     }
   }, [])
 
-  const unarchiveSession = async (sessionId: string) => {
+  const unarchiveSession = useCallback(async (sessionId: string) => {
     try {
       const response = await api.post(`/api/agent/sessions/${sessionId}/unarchive`)
 
       if (response.ok) {
         if (statusFilter === 'archived') {
           // Remove from list when viewing archived sessions
-          setSessions(sessions.filter((s) => s.id !== sessionId))
+          setSessions((prev) => prev.filter((s) => s.id !== sessionId))
         } else {
-          setSessions(
-            sessions.map((s) =>
+          setSessions((prev) =>
+            prev.map((s) =>
               s.id === sessionId ? { ...s, sessionState: 'idle' as const } : s
             )
           )
@@ -1269,7 +1295,7 @@ export default function AgentPage() {
     } catch (error) {
       console.error('Failed to unarchive session:', error)
     }
-  }
+  }, [statusFilter])
 
   // Select a session — read state is tracked automatically by the subscribe
   // WebSocket (mark-as-read on connect + disconnect), so no API call needed here.
@@ -1383,12 +1409,6 @@ export default function AgentPage() {
     return at === 'codex' || at === 'claude_code' ? at : undefined
   })()
   const onSendForRuntime = !hasActiveSession ? createSessionWithMessage : undefined
-
-  // Draft + outbox — single owner of composer input safety. Per-session (or
-  // 'new-session' before a session exists). The composer reads from this and
-  // the runtime submits through it; if input is ever lost the bug is here.
-  // See `~/lib/draft-outbox/DESIGN.md`.
-  const outbox = useDraftOutbox(activeSessionId || 'new-session')
 
   // Build effective configOptions for new sessions: backend defaults with user-preferred overrides
   const newSessionConfigOptions = useMemo(() => {
