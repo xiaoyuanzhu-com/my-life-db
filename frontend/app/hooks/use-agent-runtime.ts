@@ -172,6 +172,13 @@ export function useAgentRuntime(options: {
     outbox,
   } = options
 
+  // Identity-stable call surface. Callbacks and memos that only *invoke* the
+  // outbox must close over this instead of `outbox`, whose identity changes on
+  // every keystroke — depending on the handle rebuilt the whole
+  // ExternalStoreAdapter (and re-ran `setAdapter` → store-wide notify) once
+  // per dictated character. See DraftOutboxActions.
+  const outboxActions = outbox?.actions
+
   const [messages, setMessages] = useState<InternalMessage[]>([])
   const [isRunning, setIsRunning] = useState(false)
 
@@ -346,8 +353,8 @@ export function useAgentRuntime(options: {
           }
 
           // Server confirmed receipt: ack the matching outbox item by id.
-          if (echoedMessageId && outbox) {
-            outbox.notifyAcked(echoedMessageId)
+          if (echoedMessageId && outboxActions) {
+            outboxActions.notifyAcked(echoedMessageId)
           }
 
           setMessages((prev) => {
@@ -1040,7 +1047,7 @@ export function useAgentRuntime(options: {
           break
       }
     },
-    [nextId, outbox]
+    [nextId, outboxActions]
   )
 
   // ── WebSocket Connection ──────────────────────────────────────────
@@ -1096,14 +1103,14 @@ export function useAgentRuntime(options: {
   // user_message_chunk; the user_message_chunk handler then ack-matches
   // by id (no heuristics).
   useEffect(() => {
-    if (!outbox) return
-    return outbox.subscribeFlush((item) => {
+    if (!outboxActions) return
+    return outboxActions.subscribeFlush((item) => {
       const sent = sendPrompt(item.text, item.messageId)
       if (!sent) {
-        outbox.notifyTransportFailure(item.messageId, "ws-not-open")
+        outboxActions.notifyTransportFailure(item.messageId, "ws-not-open")
       }
     })
-  }, [outbox, sendPrompt])
+  }, [outboxActions, sendPrompt])
 
   // ── Build ThreadMessageLike Array ─────────────────────────────────
 
@@ -1209,7 +1216,7 @@ export function useAgentRuntime(options: {
             // `restoreDraft` emits `draftRestored`, which DraftPersistenceSync
             // forwards to `composer.setText` — `setDraft` alone would only
             // refill localStorage, leaving the textarea blank.
-            outbox?.restoreDraft(text)
+            outboxActions?.restoreDraft(text)
           })
         } else {
           // Existing-session path: hand the prompt to the outbox. It
@@ -1224,7 +1231,7 @@ export function useAgentRuntime(options: {
           // id. When the server echoes it on user_message_chunk, the
           // chunk handler reconciles the same row by id (no text
           // heuristics, no duplicates on burst sends).
-          const optimisticId = outbox ? outbox.submit({ text }) : nextId()
+          const optimisticId = outboxActions ? outboxActions.submit({ text }) : nextId()
           setMessages((prev) => [
             ...prev,
             {
@@ -1294,7 +1301,7 @@ export function useAgentRuntime(options: {
         },
       } : {}),
     }),
-    [rootMessages, isRunning, sendCancel, onSend, sessions, activeSessionId, onSwitchToThread, onSwitchToNewThread, onRenameThread, onArchiveThread, onUnarchiveThread, onDeleteThread, nextId, outbox]
+    [rootMessages, isRunning, sendCancel, onSend, sessions, activeSessionId, onSwitchToThread, onSwitchToNewThread, onRenameThread, onArchiveThread, onUnarchiveThread, onDeleteThread, nextId, outboxActions]
   )
 
   // ── Runtime ───────────────────────────────────────────────────────

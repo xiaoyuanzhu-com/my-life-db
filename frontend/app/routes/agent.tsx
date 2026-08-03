@@ -10,6 +10,8 @@ import { type AgentType } from '~/components/agent/agent-type-selector'
 import type { ConfigOption } from '~/hooks/use-agent-runtime'
 import { AgentChat } from '~/components/agent/agent-chat'
 import { AgentContextProvider } from '~/components/agent/agent-context'
+import type { AgentContextValue } from '~/components/agent/agent-context'
+import type { LastTurnOutcome } from '~/types/session'
 import { AutoAgentTree } from '~/components/agent/auto-agent-tree'
 import { AutoAgentEditor } from '~/components/agent/auto-agent-editor'
 import { useAgentRuntime } from '~/hooks/use-agent-runtime'
@@ -248,6 +250,9 @@ function ShareButton({ session, onUpdate }: { session: Session; onUpdate: (s: Pa
 // "WebSocket is closed before the connection is established" warning).
 // Remove once the root cause is fixed.
 let __shellMountCounter = 0
+
+// Module-level so it doesn't churn the runtime adapter's memo deps every render.
+const noopDeleteThread = () => {}
 let __agentPageRenderCounter = 0
 
 type ChatRuntimeShellProps = {
@@ -344,7 +349,7 @@ function ChatRuntimeShell({
     onRenameThread,
     onArchiveThread,
     onUnarchiveThread,
-    onDeleteThread: () => {},
+    onDeleteThread: noopDeleteThread,
     outbox,
   })
 
@@ -382,7 +387,11 @@ function ChatRuntimeShell({
     reconnect()
   }, [activeSessionId, reconnect])
 
-  const agentContextValue = {
+  // Memoized: this value reaches every `useAgentContext()` consumer (Thread,
+  // Composer, DraftPersistenceSync, the option menus…). As a bare object
+  // literal it invalidated all of them on every shell render — which, during
+  // voice dictation, meant a full chat-subtree re-render per character.
+  const agentContextValue = useMemo<AgentContextValue>(() => ({
     sendPermissionResponse,
     pendingPermissions,
     connected,
@@ -413,14 +422,45 @@ function ChatRuntimeShell({
     outbox,
     resultCount,
     onRestart: hasActiveSession ? handleRestartSession : undefined,
-    lastTurnOutcome: hasActiveSession ? (lastTurnOutcome as import('~/types/session').LastTurnOutcome) : '',
+    lastTurnOutcome: hasActiveSession ? (lastTurnOutcome as LastTurnOutcome) : '',
     lastTurnOutcomeAt: hasActiveSession ? lastTurnOutcomeAt : null,
     lastErrorMessage: hasActiveSession ? lastErrorMessage : '',
     lastPromptText: hasActiveSession ? lastPromptText : null,
     sessionSource: hasActiveSession ? sessionSource : null,
     onResume: hasActiveSession && lastTurnOutcome && lastTurnOutcome !== 'completed' && lastPromptText ? handleResume : undefined,
     onDismissOutcome: hasActiveSession && lastTurnOutcome && lastTurnOutcome !== 'completed' ? handleDismissOutcome : undefined,
-  }
+  }), [
+    sendPermissionResponse,
+    pendingPermissions,
+    connected,
+    planEntries,
+    hasActiveSession,
+    effectiveActiveSession?.workingDir,
+    newSessionWorkingDir,
+    setNewSessionWorkingDir,
+    activeSessionAgentType,
+    newSessionAgentType,
+    setNewSessionAgentType,
+    sessionMeta?.configOptions,
+    sessionMeta?.commands,
+    newSessionConfigOptions,
+    sendSetConfigOption,
+    setNewSessionDefaults,
+    activeSessionId,
+    historyLoadError,
+    sessionError,
+    subagentChildrenMap,
+    outbox,
+    resultCount,
+    handleRestartSession,
+    lastTurnOutcome,
+    lastTurnOutcomeAt,
+    lastErrorMessage,
+    lastPromptText,
+    sessionSource,
+    handleResume,
+    handleDismissOutcome,
+  ])
 
   return (
     <AgentContextProvider value={agentContextValue}>

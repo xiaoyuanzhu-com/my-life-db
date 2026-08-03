@@ -6,7 +6,7 @@
  */
 
 export { useDraftOutbox } from "./use-draft-outbox"
-export type { UseDraftOutboxResult } from "./use-draft-outbox"
+export type { DraftOutboxActions, UseDraftOutboxResult } from "./use-draft-outbox"
 export { createDraftOutbox } from "./outbox"
 export type { DraftOutbox } from "./outbox"
 export type {

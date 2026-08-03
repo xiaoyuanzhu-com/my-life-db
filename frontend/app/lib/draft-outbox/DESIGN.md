@@ -355,6 +355,49 @@ onNew: async (message) => {
 `use-agent-websocket` calls the `on*` handlers and subscribes to
 `flushItem` to actually transmit.
 
+## Update loops (React integration hazard)
+
+`useDraftOutbox` returns two things with very different identity semantics,
+and mixing them up produces an unbounded React update loop.
+
+- **Reactive data** — `draft`, `outbox`, `aggregate`, `connState`. These are
+  the memo keys of the returned handle, so **the handle's identity changes on
+  every keystroke.**
+- **Stable calls** — everything else, grouped under `.actions`
+  (`DraftOutboxActions`). Every member is a `useCallback([])`; the object is
+  computed once and keeps its identity for the hook's lifetime, including
+  across `sessionId` changes.
+
+**Rule: effects depend on `.actions`, never on the handle.**
+
+An effect that lists the handle in its deps *and* calls a method that mutates
+one of the reactive fields feeds itself:
+
+```
+effect → outbox.setDraft(text) → setDraftState → new handle identity
+       → deps changed → effect runs again → …
+```
+
+It appears to work, because React bails out of `setState` when the value is
+`Object.is`-equal. But that eager bailout is skipped whenever the fiber
+already has pending lanes. Under a sustained input burst — **iOS voice
+dictation** is the reproducer — there are always pending lanes, the bailout
+never fires, `nestedUpdateCount` climbs past 50, and React throws
+**error #185 "Maximum update depth exceeded"**, taking out the whole route
+with an "Unexpected Application Error" screen.
+
+Two corollaries, both load-bearing:
+
+1. **Emitters must be idempotent.** `aggregate()` mints a fresh object on
+   every call, so an unguarded `emitAggregate()` on a no-op change churns the
+   handle identity and re-runs every consumer effect. `connectionChanged`
+   (outbox.ts) and `notifyConnection` (use-draft-outbox.ts) both early-return
+   on an unchanged state for this reason.
+2. **The handle must not reach memo deps in `use-agent-runtime`.** It used to,
+   which rebuilt the entire `ExternalStoreAdapter` — and therefore ran
+   assistant-ui's dep-less `setAdapter` → store-wide `_notifySubscribers()` —
+   once per dictated character.
+
 ## Migration plan (low → high risk)
 
 | Step | Risk | What it does | When to ship |

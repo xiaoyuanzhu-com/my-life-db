@@ -18,16 +18,23 @@ import type {
   OutboxItem,
 } from "./types"
 
-export interface UseDraftOutboxResult {
-  /** Current draft text. Source of truth for the composer's value. */
-  draft: string
-  /** Outbox snapshot, ordered by createdAt asc. */
-  outbox: readonly OutboxItem[]
-  /** Aggregate counts for badges/banners. */
-  aggregate: OutboxAggregateState
-  /** Last seen connection state. */
-  connState: ConnState
-
+/**
+ * The call-only surface of the outbox. Every member is a `useCallback([])`,
+ * so this object's identity is STABLE for the lifetime of the hook — it does
+ * not change when the draft text, outbox items, aggregate or connState change.
+ *
+ * **Effects must depend on this, never on the full `UseDraftOutboxResult`.**
+ *
+ * The full handle is a `useMemo` keyed on the reactive fields, so its identity
+ * changes on every keystroke. An effect that lists the handle in its deps AND
+ * calls a method that mutates one of those fields is a self-feeding update
+ * loop: call → setState → new handle identity → deps changed → call again.
+ * It only terminates via React's same-value `Object.is` bailout, which is
+ * skipped whenever the fiber already has pending lanes. Under a sustained
+ * input burst (iOS voice dictation) it does not terminate, and React throws
+ * error #185 "Maximum update depth exceeded". See DESIGN.md § Update loops.
+ */
+export interface DraftOutboxActions {
   // ── Composer-driven signals ──
   setDraft: (text: string) => void
   submit: (payload: { text: string; attachments?: AttachmentRef[] }) => string
@@ -65,6 +72,36 @@ export interface UseDraftOutboxResult {
    * pick up outbox-side draft changes through React state alone.
    */
   subscribeDraftRestored: (handler: (text: string) => void) => () => void
+}
+
+export interface UseDraftOutboxResult extends DraftOutboxActions {
+  /** Current draft text. Source of truth for the composer's value. */
+  draft: string
+  /** Outbox snapshot, ordered by createdAt asc. */
+  outbox: readonly OutboxItem[]
+  /** Aggregate counts for badges/banners. */
+  aggregate: OutboxAggregateState
+  /** Last seen connection state. */
+  connState: ConnState
+  /**
+   * Stable call-only surface. Use this — not the handle itself — as an effect
+   * dependency. See {@link DraftOutboxActions}.
+   */
+  actions: DraftOutboxActions
+}
+
+/** Shallow value equality for aggregate counts. */
+function sameAggregate(
+  a: OutboxAggregateState,
+  b: OutboxAggregateState,
+): boolean {
+  return (
+    a.sessionId === b.sessionId &&
+    a.pending === b.pending &&
+    a.inflight === b.inflight &&
+    a.failed === b.failed &&
+    a.total === b.total
+  )
 }
 
 /**
@@ -154,7 +191,10 @@ export function useDraftOutbox(sessionId: string): UseDraftOutboxResult {
     // Initial snapshot.
     setDraftState(ob.getDraft())
     setItems(ob.getOutbox())
-    setAggregate(ob.getAggregate())
+    setAggregate((prev) => {
+      const next = ob.getAggregate()
+      return sameAggregate(prev, next) ? prev : next
+    })
     setConnState(ob.getConnState())
 
     const unsub = ob.subscribe((event: OutboxEvent) => {
@@ -167,7 +207,12 @@ export function useDraftOutbox(sessionId: string): UseDraftOutboxResult {
           setDraftState("")
           break
         case "outboxStateChanged":
-          setAggregate(event.state)
+          // `aggregate()` mints a fresh object on every emit. Adopting it
+          // unconditionally would change this hook's memo identity on every
+          // no-op emit and re-run every consumer effect keyed on the handle.
+          setAggregate((prev) =>
+            sameAggregate(prev, event.state) ? prev : event.state,
+          )
           setItems(ob.getOutbox())
           break
         case "flushItem":
@@ -226,7 +271,11 @@ export function useDraftOutbox(sessionId: string): UseDraftOutboxResult {
   }, [])
 
   const notifyConnection = useCallback((state: ConnState) => {
-    setConnState(state)
+    // Idempotent: callers re-invoke this with the same state whenever their
+    // effect re-runs. Adopting it unconditionally would churn `connState`,
+    // which is a memo key for the handle. `connectionChanged` has the
+    // matching guard on the plain-JS side (outbox.ts).
+    setConnState((prev) => (prev === state ? prev : state))
     outboxRef.current?.connectionChanged(state)
   }, [])
 
@@ -282,12 +331,13 @@ export function useDraftOutbox(sessionId: string): UseDraftOutboxResult {
     [],
   )
 
-  return useMemo(
+  // Stable call-only surface. Every dep below is a `useCallback([])`, so this
+  // memo is computed once and keeps its identity for the hook's lifetime —
+  // including across sessionId changes (the subscriber Sets and `outboxRef`
+  // it closes over are refs that survive the instance swap). This is the
+  // object effects should depend on; see DraftOutboxActions.
+  const actions = useMemo<DraftOutboxActions>(
     () => ({
-      draft,
-      outbox: items,
-      aggregate,
-      connState,
       setDraft,
       submit,
       discardDraft,
@@ -303,10 +353,6 @@ export function useDraftOutbox(sessionId: string): UseDraftOutboxResult {
       subscribeDraftRestored,
     }),
     [
-      draft,
-      items,
-      aggregate,
-      connState,
       setDraft,
       submit,
       discardDraft,
@@ -321,5 +367,17 @@ export function useDraftOutbox(sessionId: string): UseDraftOutboxResult {
       subscribeItemFailed,
       subscribeDraftRestored,
     ],
+  )
+
+  return useMemo(
+    () => ({
+      draft,
+      outbox: items,
+      aggregate,
+      connState,
+      actions,
+      ...actions,
+    }),
+    [draft, items, aggregate, connState, actions],
   )
 }

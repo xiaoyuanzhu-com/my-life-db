@@ -424,6 +424,15 @@ const DraftPersistenceSync: FC = () => {
   const composerRef = useRef(composerRuntime);
   composerRef.current = composerRuntime;
 
+  // The outbox HANDLE must never appear in an effect dep list here: its
+  // identity changes on every draft mutation, so an effect that depends on it
+  // and also calls `setDraft` re-triggers itself forever (React error #185 —
+  // it fired in the wild during iOS voice dictation). Read the handle through
+  // a ref for data, and depend on `outbox.actions` (stable) for calls.
+  const outboxRef = useRef(outbox);
+  outboxRef.current = outbox;
+  const outboxActions = outbox?.actions;
+
   // Whether the initial restore for the current sessionId has completed.
   // While false the persist effect is suppressed so it cannot push stale
   // empty text into the outbox before the deferred setTimeout restores it.
@@ -432,11 +441,12 @@ const DraftPersistenceSync: FC = () => {
   // Restore from the outbox when session changes (mount, navigation).
   useEffect(() => {
     hasRestoredRef.current = false;
-    if (!outbox) {
+    const ob = outboxRef.current;
+    if (!ob) {
       hasRestoredRef.current = true;
       return;
     }
-    const draft = outbox.draft;
+    const draft = ob.draft;
     if (draft) {
       const timer = setTimeout(() => {
         composerRef.current.setText(draft);
@@ -449,9 +459,8 @@ const DraftPersistenceSync: FC = () => {
     } else {
       hasRestoredRef.current = true;
     }
-    // Intentionally only depends on sessionId so we don't re-run on every
-    // outbox.draft change (that would fight the user's typing).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Only sessionId is a dependency: the outbox is read through a ref, so a
+    // draft change can't re-run this and fight the user's typing.
   }, [sessionId]);
 
   // Mirror composer text into the outbox. Suppressed until the restore phase
@@ -475,28 +484,32 @@ const DraftPersistenceSync: FC = () => {
   const activeSessionRef = useRef(sessionId);
   useEffect(() => {
     if (!hasRestoredRef.current) return;
-    if (!outbox) return;
+    if (!outboxActions) return;
     if (activeSessionRef.current !== sessionId) {
       activeSessionRef.current = sessionId;
       return;
     }
     if (text) {
-      outbox.setDraft(text);
+      outboxActions.setDraft(text);
     } else {
-      outbox.discardDraft();
+      outboxActions.discardDraft();
     }
-  }, [text, sessionId, outbox]);
+    // `outboxActions` is identity-stable, so this effect runs once per real
+    // text/session change — it does NOT re-run as a consequence of its own
+    // setDraft call. Depending on the outbox handle here is what caused the
+    // unbounded update loop.
+  }, [text, sessionId, outboxActions]);
 
   // Subscribe to draftRestored events so a non-composer-source draft change
   // (e.g. runtime calling `restoreDraft` from a failed-send catch) re-fills
   // the live composer textarea. The hook's draft state alone is invisible
   // to assistant-ui's internal composer text — only `composer.setText` is.
   useEffect(() => {
-    if (!outbox) return;
-    return outbox.subscribeDraftRestored((restoredText) => {
+    if (!outboxActions) return;
+    return outboxActions.subscribeDraftRestored((restoredText) => {
       composerRef.current.setText(restoredText);
     });
-  }, [outbox]);
+  }, [outboxActions]);
 
   // Note: the legacy `pendingComposerText` failed-send restore path was
   // removed in the v2 outbox refactor and replaced by the durable
