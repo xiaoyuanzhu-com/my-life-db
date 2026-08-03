@@ -7,6 +7,7 @@
 
 export { useDraftOutbox } from "./use-draft-outbox"
 export type { DraftOutboxActions, UseDraftOutboxResult } from "./use-draft-outbox"
+export { seedDraft, NEW_SESSION_ID } from "./seed"
 export { createDraftOutbox } from "./outbox"
 export type { DraftOutbox } from "./outbox"
 export type {

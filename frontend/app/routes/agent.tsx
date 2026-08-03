@@ -15,7 +15,7 @@ import type { LastTurnOutcome } from '~/types/session'
 import { AutoAgentTree } from '~/components/agent/auto-agent-tree'
 import { AutoAgentEditor } from '~/components/agent/auto-agent-editor'
 import { useAgentRuntime } from '~/hooks/use-agent-runtime'
-import { useDraftOutbox } from '~/lib/draft-outbox'
+import { useDraftOutbox, seedDraft, NEW_SESSION_ID } from '~/lib/draft-outbox'
 import type { UseDraftOutboxResult } from '~/lib/draft-outbox'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
@@ -612,20 +612,37 @@ export default function AgentPage() {
     setEditingAgentName(null)
   }, [])
 
-  // Bumped when we seed the new-session composer via localStorage — forces
-  // AgentChat (empty state) to remount so useDraftPersistence re-reads the seed.
+  // Bumped when we seed the new-session composer — forces AgentChat (empty
+  // state) to remount so the composer is rebuilt around the seeded draft.
   const [newSessionComposerKey, setNewSessionComposerKey] = useState(0)
 
   // Seed the new-session composer with a prompt, then navigate to the
-  // Sessions view's empty/new state. The composer picks up the seed via the
-  // `agent-input:new-session` localStorage key on mount.
+  // Sessions view's empty/new state.
+  //
+  // Two paths, because the draft has to reach a hook that may or may not
+  // already be pointed at 'new-session':
+  //
+  //  - Already there (no active session): write through the live handle.
+  //    restoreDraft persists AND emits draftRestored, which DraftPersistenceSync
+  //    is subscribed to, so the textarea fills immediately. Storage alone would
+  //    not work here — the hook only re-reads storage when its sessionId
+  //    changes, and it isn't changing.
+  //  - Coming from /agent/:id: write storage directly for the explicit
+  //    'new-session' key. We must NOT use the handle, which still targets the
+  //    session being left — the seed would land in that conversation's draft.
+  //    The hook reloads from storage during the render triggered by navigation,
+  //    so the value is in place before the composer mounts.
   const seedNewSession = useCallback((prompt: string) => {
-    localStorage.setItem('agent-input:new-session', prompt)
+    if (activeSessionId === null) {
+      outboxActions.restoreDraft(prompt)
+    } else {
+      seedDraft(NEW_SESSION_ID, prompt)
+    }
     navigate('/agent')
     setShowNewSessionMobile(true)
     setNewSessionComposerKey((k) => k + 1)
     setEditingAgentName(null)
-  }, [navigate])
+  }, [activeSessionId, outboxActions, navigate])
 
   const handleCreateAgentWithAI = useCallback(() => {
     seedNewSession(`/create-auto-agent`)
@@ -1125,7 +1142,10 @@ export default function AgentPage() {
     if (!message || isCreatingSession) return
 
     if (!isAuthenticated) {
-      localStorage.setItem('agent-input:new-session', message)
+      // No manual draft save needed: throwing sends the runtime down its
+      // catch, which calls outbox.restoreDraft(text) — that persists the
+      // draft and refills the live textarea. (This used to write an
+      // `agent-input:new-session` localStorage key that nothing read.)
       setAccountGateOpen(true)
       throw new Error('Authentication required to create an agent session')
     }
