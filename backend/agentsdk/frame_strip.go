@@ -25,8 +25,9 @@ import "encoding/json"
 // only if it is present in the frame; non-present fields are left alone.
 //
 //   Codex unified exec:
+//     - top-level "content"
 //     - rawOutput.aggregated_output, .formatted_output, .stdout
-//     (three copies of the same command output; command metadata is preserved)
+//     (four copies of the same command output; command metadata is preserved)
 //
 //   Read:
 //     - top-level "content" and "rawOutput"
@@ -184,15 +185,15 @@ func StripHeavyToolCallContent(data []byte) []byte {
 	return result
 }
 
-// stripCodexUnifiedExecOutput removes the three duplicate command-output
-// strings emitted by Codex while preserving the rest of the execution result.
+// stripCodexUnifiedExecOutput removes the duplicate command-output payloads
+// emitted by Codex while preserving the rest of the execution result.
 func stripCodexUnifiedExecOutput(msg map[string]interface{}) bool {
 	rawOutput, ok := msg["rawOutput"].(map[string]interface{})
 	if !ok || rawOutput["source"] != "unified_exec_startup" {
 		return false
 	}
 
-	stripped := false
+	stripped := deleteIfPresent(msg, "content")
 	for _, key := range [...]string{"aggregated_output", "formatted_output", "stdout"} {
 		if deleteIfPresent(rawOutput, key) {
 			stripped = true

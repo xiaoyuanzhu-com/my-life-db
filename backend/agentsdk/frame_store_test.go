@@ -134,7 +134,7 @@ func TestFrameStore_LoadSkipsInvalidJSON(t *testing.T) {
 
 func TestFrameStore_LoadStripsLegacyCodexExecOutput(t *testing.T) {
 	dir := t.TempDir()
-	writeJSONL(t, dir, "s6", `{"rawOutput":{"aggregated_output":"large","call_id":"call_1","cwd":"/workspace","formatted_output":"large","source":"unified_exec_startup","stderr":"","stdout":"large"},"sessionUpdate":"tool_call_update","status":"completed","toolCallId":"call_1"}`)
+	writeJSONL(t, dir, "s6", `{"content":[{"content":{"text":"large","type":"text"},"type":"content"}],"rawOutput":{"aggregated_output":"large","call_id":"call_1","cwd":"/workspace","formatted_output":"large","source":"unified_exec_startup","stderr":"","stdout":"large"},"sessionUpdate":"tool_call_update","status":"completed","toolCallId":"call_1"}`)
 
 	frames, err := NewFrameStore(dir).Load("s6")
 	if err != nil {
@@ -149,6 +149,9 @@ func TestFrameStore_LoadStripsLegacyCodexExecOutput(t *testing.T) {
 		if strings.Contains(frame, `"`+field+`"`) {
 			t.Errorf("legacy Codex frame still contains %s: %s", field, frame)
 		}
+	}
+	if strings.Contains(frame, `"content"`) {
+		t.Fatalf("legacy Codex frame still contains top-level content: %s", frame)
 	}
 	if !strings.Contains(frame, `"cwd":"/workspace"`) {
 		t.Fatalf("legacy Codex frame lost preserved metadata: %s", frame)

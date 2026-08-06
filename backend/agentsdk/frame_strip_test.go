@@ -379,6 +379,15 @@ func TestStrip_CodexUnifiedExec_RemovesDuplicateOutputFields(t *testing.T) {
 		"sessionUpdate": "tool_call_update",
 		"toolCallId":    "call_codex_exec",
 		"status":        "completed",
+		"content": []interface{}{
+			map[string]interface{}{
+				"type": "content",
+				"content": map[string]interface{}{
+					"type": "text",
+					"text": output,
+				},
+			},
+		},
 		"rawOutput": map[string]interface{}{
 			"aggregated_output": output,
 			"call_id":           "call_codex_exec",
@@ -405,6 +414,9 @@ func TestStrip_CodexUnifiedExec_RemovesDuplicateOutputFields(t *testing.T) {
 		t.Fatalf("invalid stripped JSON: %v", err)
 	}
 
+	if _, has := result["content"]; has {
+		t.Error("Codex unified exec: top-level content should be stripped")
+	}
 	rawOutput := result["rawOutput"].(map[string]interface{})
 	for _, key := range []string{"aggregated_output", "formatted_output", "stdout"} {
 		if _, has := rawOutput[key]; has {
