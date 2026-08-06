@@ -97,8 +97,8 @@ func (c *acpClient) SessionUpdate(ctx context.Context, params acp.SessionNotific
 		return nil
 	}
 
-	// Strict per-tool strip: only Read and Grep tool_call_update frames are
-	// touched. See StripHeavyToolCallContent for the exact allowlist.
+	// Strict tool/shape allowlist. See StripHeavyToolCallContent for the exact
+	// fields removed from each supported agent result.
 	data = StripHeavyToolCallContent(data)
 
 	c.emit(data)

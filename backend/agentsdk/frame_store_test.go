@@ -131,3 +131,26 @@ func TestFrameStore_LoadSkipsInvalidJSON(t *testing.T) {
 		t.Fatalf("got %d frames, want 1", len(frames))
 	}
 }
+
+func TestFrameStore_LoadStripsLegacyCodexExecOutput(t *testing.T) {
+	dir := t.TempDir()
+	writeJSONL(t, dir, "s6", `{"rawOutput":{"aggregated_output":"large","call_id":"call_1","cwd":"/workspace","formatted_output":"large","source":"unified_exec_startup","stderr":"","stdout":"large"},"sessionUpdate":"tool_call_update","status":"completed","toolCallId":"call_1"}`)
+
+	frames, err := NewFrameStore(dir).Load("s6")
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(frames) != 1 {
+		t.Fatalf("got %d frames, want 1", len(frames))
+	}
+
+	frame := string(frames[0])
+	for _, field := range []string{"aggregated_output", "formatted_output", "stdout"} {
+		if strings.Contains(frame, `"`+field+`"`) {
+			t.Errorf("legacy Codex frame still contains %s: %s", field, frame)
+		}
+	}
+	if !strings.Contains(frame, `"cwd":"/workspace"`) {
+		t.Fatalf("legacy Codex frame lost preserved metadata: %s", frame)
+	}
+}

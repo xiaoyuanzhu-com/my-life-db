@@ -127,6 +127,9 @@ func (s *FrameStore) Load(sessionID string) ([][]byte, error) {
 			ephemeral++
 			continue
 		}
+		// Frames persisted before a stripping rule was added may still contain
+		// heavy tool payloads. Normalize them on replay without rewriting disk.
+		line = StripHeavyToolCallContent(line)
 		// Copy to avoid aliasing from scanner's internal buffer
 		cp := make([]byte, len(line))
 		copy(cp, line)

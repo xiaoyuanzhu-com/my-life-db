@@ -11,15 +11,22 @@ import "encoding/json"
 // frames. That was disabled because it hid payloads needed by some renderers
 // (e.g. the image renderer's resource_link blocks). This re-enabled version
 // is intentionally narrow: only specific tool_call_update frames for
-// allowlisted tools are touched, and only the specific fields below.
+// allowlisted tools or agent-specific result shapes are touched, and only the
+// specific fields below.
 //
 // Frames NOT modified:
 //   - Any sessionUpdate other than tool_call_update (including tool_call)
-//   - Any tool not in the allowlist (Read, Grep, Bash, Edit, Write, ExitPlanMode)
+//   - Any Claude tool not in the allowlist (Read, Grep, Bash, Edit, Write,
+//     ExitPlanMode)
+//   - Any Codex rawOutput without source "unified_exec_startup"
 //   - Permission frames (handled separately if/when re-enabled)
 //
 // Per-tool rules (tool_call_update only). Each rule strips a specific field
 // only if it is present in the frame; non-present fields are left alone.
+//
+//   Codex unified exec:
+//     - rawOutput.aggregated_output, .formatted_output, .stdout
+//     (three copies of the same command output; command metadata is preserved)
 //
 //   Read:
 //     - top-level "content" and "rawOutput"
@@ -69,6 +76,14 @@ func StripHeavyToolCallContent(data []byte) []byte {
 	var msg map[string]interface{}
 	if err := json.Unmarshal(data, &msg); err != nil {
 		return data
+	}
+
+	if stripCodexUnifiedExecOutput(msg) {
+		result, err := json.Marshal(msg)
+		if err != nil {
+			return data
+		}
+		return result
 	}
 
 	cc := getACPMeta(msg)
@@ -167,6 +182,23 @@ func StripHeavyToolCallContent(data []byte) []byte {
 		return data
 	}
 	return result
+}
+
+// stripCodexUnifiedExecOutput removes the three duplicate command-output
+// strings emitted by Codex while preserving the rest of the execution result.
+func stripCodexUnifiedExecOutput(msg map[string]interface{}) bool {
+	rawOutput, ok := msg["rawOutput"].(map[string]interface{})
+	if !ok || rawOutput["source"] != "unified_exec_startup" {
+		return false
+	}
+
+	stripped := false
+	for _, key := range [...]string{"aggregated_output", "formatted_output", "stdout"} {
+		if deleteIfPresent(rawOutput, key) {
+			stripped = true
+		}
+	}
+	return stripped
 }
 
 // stripTopLevelOutput removes the top-level "content" array and "rawOutput"

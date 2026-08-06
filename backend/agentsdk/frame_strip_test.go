@@ -373,6 +373,80 @@ func TestStrip_BashUpdate_RemovesToolResponseStdoutStderr(t *testing.T) {
 	}
 }
 
+func TestStrip_CodexUnifiedExec_RemovesDuplicateOutputFields(t *testing.T) {
+	output := strings.Repeat("o", 19*1024)
+	frame := map[string]interface{}{
+		"sessionUpdate": "tool_call_update",
+		"toolCallId":    "call_codex_exec",
+		"status":        "completed",
+		"rawOutput": map[string]interface{}{
+			"aggregated_output": output,
+			"call_id":           "call_codex_exec",
+			"command":           []interface{}{"/bin/sh", "-lc", "find . -type f"},
+			"completed_at_ms":   1786000756212,
+			"cwd":               "/workspace",
+			"duration":          map[string]interface{}{"nanos": 14687, "secs": 0},
+			"exit_code":         0,
+			"formatted_output":  output,
+			"parsed_cmd":        []interface{}{map[string]interface{}{"cmd": "find . -type f", "type": "unknown"}},
+			"process_id":        "16639",
+			"source":            "unified_exec_startup",
+			"status":            "completed",
+			"stderr":            "warning",
+			"stdout":            output,
+			"turn_id":           "turn_codex",
+		},
+	}
+	data, _ := json.Marshal(frame)
+	stripped := StripHeavyToolCallContent(data)
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(stripped, &result); err != nil {
+		t.Fatalf("invalid stripped JSON: %v", err)
+	}
+
+	rawOutput := result["rawOutput"].(map[string]interface{})
+	for _, key := range []string{"aggregated_output", "formatted_output", "stdout"} {
+		if _, has := rawOutput[key]; has {
+			t.Errorf("Codex unified exec: rawOutput.%s should be stripped", key)
+		}
+	}
+	if rawOutput["stderr"] != "warning" {
+		t.Error("Codex unified exec: rawOutput.stderr should be preserved")
+	}
+	if rawOutput["cwd"] != "/workspace" {
+		t.Error("Codex unified exec: rawOutput.cwd should be preserved")
+	}
+	if rawOutput["exit_code"] != float64(0) {
+		t.Error("Codex unified exec: rawOutput.exit_code should be preserved")
+	}
+	if result["toolCallId"] != "call_codex_exec" {
+		t.Error("Codex unified exec: toolCallId should be preserved")
+	}
+	if len(stripped) >= len(data)/2 {
+		t.Errorf("Codex unified exec: expected substantial size reduction, before=%d after=%d", len(data), len(stripped))
+	}
+}
+
+func TestStrip_NonCodexRawOutput_PassesThrough(t *testing.T) {
+	frame := map[string]interface{}{
+		"sessionUpdate": "tool_call_update",
+		"toolCallId":    "tc-other-exec",
+		"status":        "completed",
+		"rawOutput": map[string]interface{}{
+			"aggregated_output": "keep",
+			"formatted_output":  "keep",
+			"source":            "other_exec",
+			"stdout":            "keep",
+		},
+	}
+	data, _ := json.Marshal(frame)
+	stripped := StripHeavyToolCallContent(data)
+	if string(stripped) != string(data) {
+		t.Error("non-Codex rawOutput should pass through unchanged")
+	}
+}
+
 func TestStrip_ExitPlanMode_StripsRawInputPlan(t *testing.T) {
 	// ExitPlanMode tool_call_update: strip rawInput.plan (duplicate of
 	// content[0].content.text) while preserving content[], rawInput.planFilePath,
