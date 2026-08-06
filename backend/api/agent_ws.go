@@ -160,8 +160,13 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 	pollDone := make(chan struct{})
 	go func() {
 		defer close(pollDone)
+		initialReplay := true
 		for {
 			msgs := sessionState.Drain(uiClient)
+			if initialReplay && len(msgs) > 0 {
+				msgs = agentsdk.CompactCompletedTurnFrames(msgs)
+				initialReplay = false
+			}
 			for _, data := range msgs {
 				if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
 					if ctx.Err() == nil {

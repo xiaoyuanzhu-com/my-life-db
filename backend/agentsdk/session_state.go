@@ -208,25 +208,25 @@ func (s *SessionState) AppendAndBroadcast(data []byte) {
 	}
 }
 
-// LoadHistoricalFrames bulk-appends frames from disk into rawMessages and
-// broadcasts each one to connected clients. Unlike AppendAndBroadcast it does
-// NOT call FrameStore.Append — the frames are already on disk.
+// LoadHistoricalFrames compacts completed turns, bulk-appends the replay to
+// rawMessages, and notifies connected clients once. Unlike AppendAndBroadcast
+// it does NOT call FrameStore.Append — the frames are already on disk.
 // This prevents double-writing when loading persisted history on reconnect.
 func (s *SessionState) LoadHistoricalFrames(frames [][]byte) {
-	for _, frame := range frames {
-		s.Mu.Lock()
-		s.rawMessages = append(s.rawMessages, frame)
-		clients := make([]*WSClient, 0, len(s.clients))
-		for c := range s.clients {
-			clients = append(clients, c)
-		}
-		s.Mu.Unlock()
+	frames = CompactCompletedTurnFrames(frames)
 
-		for _, c := range clients {
-			select {
-			case c.Notify <- struct{}{}:
-			default:
-			}
+	s.Mu.Lock()
+	s.rawMessages = append(s.rawMessages, frames...)
+	clients := make([]*WSClient, 0, len(s.clients))
+	for c := range s.clients {
+		clients = append(clients, c)
+	}
+	s.Mu.Unlock()
+
+	for _, c := range clients {
+		select {
+		case c.Notify <- struct{}{}:
+		default:
 		}
 	}
 }
