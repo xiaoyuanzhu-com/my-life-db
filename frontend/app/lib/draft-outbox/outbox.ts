@@ -18,6 +18,12 @@
  *   I3 — outbox items are only removed by serverAcked. ws.send returning
  *        truthy moves pending → inflight; nothing more.
  *
+ *   I3a — serverAcked is idempotent. The ack signal rides on frames the
+ *        server replays in full on every connect, so the same messageId
+ *        arrives many times over a session's life. Acked ids are remembered
+ *        (bounded, persisted) so a repeat is a recognised no-op; only an id
+ *        we have neither queued nor acked is a genuine desync.
+ *
  *   I4 — mountSession runs loadDraft + emits draftRestored before returning.
  *
  *   I5 — mountSession reads outbox; pending items are queued for flush
@@ -29,10 +35,13 @@
 import { generateUUID } from "../uuid"
 import { logger } from "./logger"
 import {
+  ACKED_IDS_CAP,
   clearDraft,
   initStorage,
+  loadAckedIds,
   loadDraft,
   loadOutbox,
+  saveAckedIds,
   saveDraft,
   saveOutbox,
 } from "./storage"
@@ -108,10 +117,23 @@ export function createDraftOutbox(opts: CreateOptions): DraftOutbox {
   let outbox: OutboxItem[] = loadOutbox(sessionId)
   let connState: ConnState = opts.initialConnState ?? "closed"
 
+  // Ids we've already acked, oldest first. Bounded ring: the list is trimmed
+  // from the front once it exceeds ACKED_IDS_CAP. Backed by a Set for O(1)
+  // membership; the array preserves eviction order.
+  const ackedOrder: string[] = loadAckedIds(sessionId)
+  const ackedSet = new Set<string>(ackedOrder)
+
   const subscribers = new Set<OutboxSubscriber>()
   const diag: OutboxDiagnostics = {
     drafts: { persisted: 0, restored: 0, cleared: 0 },
-    outbox: { enqueued: 0, acked: 0, failed: 0, requeued: 0 },
+    outbox: {
+      enqueued: 0,
+      acked: 0,
+      failed: 0,
+      requeued: 0,
+      duplicateAcks: 0,
+      unknownAcks: 0,
+    },
     signalsIn: {},
     signalsOut: {},
   }
@@ -158,6 +180,17 @@ export function createDraftOutbox(opts: CreateOptions): DraftOutbox {
 
   function findItem(messageId: string): OutboxItem | undefined {
     return outbox.find((it) => it.messageId === messageId)
+  }
+
+  function rememberAcked(messageId: string): void {
+    if (ackedSet.has(messageId)) return
+    ackedSet.add(messageId)
+    ackedOrder.push(messageId)
+    while (ackedOrder.length > ACKED_IDS_CAP) {
+      const evicted = ackedOrder.shift()
+      if (evicted !== undefined) ackedSet.delete(evicted)
+    }
+    saveAckedIds(sessionId, ackedOrder)
   }
 
   function flushPending(): void {
@@ -304,11 +337,25 @@ export function createDraftOutbox(opts: CreateOptions): DraftOutbox {
       const before = outbox.length
       outbox = outbox.filter((it) => it.messageId !== messageId)
       if (outbox.length === before) {
-        // No matching item — could be a duplicate ack, or an ack for a
-        // session this instance doesn't own. Log + ignore.
+        if (ackedSet.has(messageId)) {
+          // Already acked — this is history replay (the server re-sends the
+          // whole frame log on every connect) or a reconnect-dedup ack. The
+          // item is long gone; nothing to do. Expected, not a problem.
+          diag.outbox.duplicateAcks += 1
+          logger.debug("serverAcked (already acked, replay)", {
+            sessionId,
+            messageId,
+          })
+          return
+        }
+        // Never queued and never acked by this instance: a real desync —
+        // e.g. an ack for a session this instance doesn't own, or an outbox
+        // dropped by a storage failure while the send was in flight.
+        diag.outbox.unknownAcks += 1
         logger.warn("serverAcked but no matching item", { sessionId, messageId })
         return
       }
+      rememberAcked(messageId)
       persistOutbox()
       diag.outbox.acked += 1
       logger.info("serverAcked", {

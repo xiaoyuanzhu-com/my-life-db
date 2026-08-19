@@ -24,6 +24,9 @@ function fmt(fields?: LogFields): string {
 }
 
 export const logger = {
+  debug(msg: string, fields?: LogFields): void {
+    console.debug(`${TAG} ${msg}${fmt(fields)}`)
+  },
   info(msg: string, fields?: LogFields): void {
     console.info(`${TAG} ${msg}${fmt(fields)}`)
   },

@@ -119,3 +119,46 @@ func TestLoadHistoricalFrames_CompactsCompletedTurns(t *testing.T) {
 		t.Fatalf("merged replay text = %q, want history loaded", text)
 	}
 }
+
+// Outbox ack recovery on reconnect depends on every user_message_chunk (and
+// its messageId) surviving replay compaction: a client that re-sends an
+// inflight prompt is told it landed either by the ephemeral prompt.ack or by
+// seeing its own chunk come back in the replay. Drop the chunk here and the
+// item stays inflight forever, so this invariant is load-bearing — not an
+// incidental property of the current mergeable-frame filter.
+func TestCompactCompletedTurnFrames_PreservesUserMessageChunks(t *testing.T) {
+	frames := [][]byte{
+		testFrame(`{"type":"turn.start"}`),
+		testFrame(`{"sessionUpdate":"user_message_chunk","messageId":"m-1","content":{"type":"text","text":"first"}}`),
+		testFrame(`{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"a"}}`),
+		testFrame(`{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"b"}}`),
+		testFrame(`{"sessionUpdate":"user_message_chunk","messageId":"m-2","content":{"type":"text","text":"second"}}`),
+		testFrame(`{"type":"turn.complete","stopReason":"end_turn"}`),
+	}
+
+	got := CompactCompletedTurnFrames(frames)
+
+	seen := map[string]string{}
+	for _, frame := range got {
+		var envelope struct {
+			SessionUpdate string `json:"sessionUpdate"`
+			MessageID     string `json:"messageId"`
+			Content       struct {
+				Text string `json:"text"`
+			} `json:"content"`
+		}
+		if err := json.Unmarshal(frame, &envelope); err != nil {
+			t.Fatalf("unmarshal frame: %v", err)
+		}
+		if envelope.SessionUpdate == "user_message_chunk" {
+			seen[envelope.MessageID] = envelope.Content.Text
+		}
+	}
+
+	if len(seen) != 2 {
+		t.Fatalf("got %d user_message_chunk frames after compaction, want 2 (%v)", len(seen), seen)
+	}
+	if seen["m-1"] != "first" || seen["m-2"] != "second" {
+		t.Fatalf("user chunks altered by compaction: %v", seen)
+	}
+}

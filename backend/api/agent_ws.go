@@ -411,6 +411,12 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 					Str("sessionId", sessionID).
 					Str("messageId", inMsg.MessageID).
 					Msg("dropping duplicate session.prompt (already seen)")
+				// Dropping the prompt is correct, but silence would leave the
+				// sender's outbox item inflight forever: the client re-sent it
+				// precisely because it never saw a receipt. We know the id
+				// landed, so say so. Ephemeral (SendToClient) — this is a
+				// receipt, not history, and must not enter replay.
+				sessionState.SendToClient(uiClient, agentsdk.SynthPromptAck(inMsg.MessageID))
 				continue
 			}
 

@@ -87,7 +87,7 @@ to it only through these signals — no direct state access.
 | `userSubmitted(payload)` | composer onSubmit | user hits Send | enqueues outbox item, generates `messageId`, clears draft, returns `messageId`; triggers flush if WS open |
 | `userDiscardedDraft()` | "clear" button | explicit clear | removes draft from storage |
 | `connectionChanged(state)` | WS hook | WS state change | `'open'` triggers flush; `'closed'` marks inflight items as pending |
-| `serverAcked(messageId)` | onFrame handler | server confirms receipt | removes matching outbox item |
+| `serverAcked(messageId)` | onFrame handler | server confirms receipt — either the echoed `user_message_chunk` or a `prompt.ack` | removes matching outbox item; idempotent (see below) |
 | `serverRejected(messageId, reason)` | onFrame handler | server explicit failure | marks outbox item as failed; surfaces to UI; keeps in storage |
 | `transportFailed(messageId, reason)` | WS hook | `ws.send()` threw or returned false mid-flight | reverts inflight → pending |
 
@@ -109,6 +109,29 @@ Subscribers register via `outbox.subscribe(handler)` and react to events.
 - No "send succeeded" callback from the WS layer. The only success signal
   is `serverAcked` from `onFrame`. `ws.send()` returning truthy is not
   proof of delivery — the WS could die before the bytes reach the server.
+
+### Why `serverAcked` must be idempotent
+
+The receipt is derived from the server's frame log, and that log is
+**replayed in full on every WS connect** (the client registers at cursor 0).
+So the `user_message_chunk` carrying a `messageId` is re-delivered every time
+the session is reopened, long after the outbox item it acked was removed.
+The two have deliberately different lifetimes: the outbox is a live-send
+ledger that empties, the frame log is permanent.
+
+This is not merely cosmetic — it is load-bearing. If an item was inflight
+when a socket died, the client re-sends it on reconnect, the server drops it
+as a duplicate, and the replayed chunk is one of the two things that clears
+it. The other is `prompt.ack`, an **ephemeral** frame the server sends on the
+dedup path (`SendToClient`, never appended to the log — a receipt in the log
+would itself be replayed forever).
+
+Consequences to preserve:
+
+- Compaction of the replay stream must never drop `user_message_chunk`
+  (locked by `TestCompactCompletedTurnFrames_PreservesUserMessageChunks`).
+- `prompt.ack` must never be routed through `AppendAndBroadcast` or
+  `BroadcastToClients` — despite its name, the latter *does* store frames.
 - No "draft text changed" effect-based subscription. Only explicit
   `userTyped` calls. This kills the empty-transient-wipe class of bug.
 

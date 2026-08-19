@@ -33,6 +33,17 @@ function outboxKey(sessionId: string): string {
   return `${NS}:outbox:${sessionId}`
 }
 
+function ackedKey(sessionId: string): string {
+  return `${NS}:acked:${sessionId}`
+}
+
+/**
+ * How many acked messageIds to remember per session. The server replays the
+ * whole frame log on every connect, so this only has to cover one session's
+ * worth of history to keep replay acks recognisable — see loadAckedIds.
+ */
+export const ACKED_IDS_CAP = 500
+
 /** Initialise/migrate persisted state. Idempotent; safe to call on every mount. */
 export function initStorage(): void {
   if (typeof window === "undefined") return
@@ -136,6 +147,46 @@ export function saveOutbox(sessionId: string, items: OutboxItem[]): void {
     logger.error("saveOutbox failed", {
       sessionId,
       count: items.length,
+      err: String(err),
+    })
+  }
+}
+
+// ── Acked ids ─────────────────────────────────────────────────────────────
+//
+// The server's frame log is append-only and replayed in full on every WS
+// connect, so the `user_message_chunk` that acks an outbox item is re-delivered
+// every time the session is reopened. Without a memory of what we already
+// acked, each of those replays looks like an ack for an item we never had.
+// Keeping the ids lets serverAcked tell "replay of something I handled" (fine)
+// apart from "ack for a message I never sent" (a real desync worth a warning).
+
+export function loadAckedIds(sessionId: string): string[] {
+  if (typeof window === "undefined") return []
+  try {
+    const raw = localStorage.getItem(ackedKey(sessionId))
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((id): id is string => typeof id === "string")
+  } catch (err) {
+    logger.error("loadAckedIds failed", { sessionId, err: String(err) })
+    return []
+  }
+}
+
+export function saveAckedIds(sessionId: string, ids: string[]): void {
+  if (typeof window === "undefined") return
+  try {
+    if (ids.length === 0) {
+      localStorage.removeItem(ackedKey(sessionId))
+      return
+    }
+    localStorage.setItem(ackedKey(sessionId), JSON.stringify(ids))
+  } catch (err) {
+    logger.error("saveAckedIds failed", {
+      sessionId,
+      count: ids.length,
       err: String(err),
     })
   }

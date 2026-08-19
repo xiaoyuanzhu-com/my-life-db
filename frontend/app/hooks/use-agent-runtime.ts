@@ -335,14 +335,30 @@ export function useAgentRuntime(options: {
           break
         }
 
+        case "prompt.ack": {
+          // Bare delivery receipt from the duplicate-prompt path: the server
+          // already had this id, so the outbox item can be cleared. Ephemeral
+          // — never replayed, unlike the user_message_chunk echo below.
+          const ackId = (frame as AcpFrame & { messageId?: string }).messageId
+          if (ackId && outboxActions) {
+            outboxActions.notifyAcked(ackId)
+          }
+          break
+        }
+
         case "user_message_chunk": {
           setSessionError(null)
           // ACP native: content is a single content block, not an array
           const f = frame as UserMessageChunkFrame
           const text = f.content?.type === "text" ? f.content.text || "" : ""
           // Server echoes the messageId the client minted on session.prompt.
-          // Absent on historical chunks replayed by LoadSession (predate the
-          // round-trip) — those just render as fresh messages, no ack work.
+          // Absent on chunks with no upstream id (REST/auto-run prompts, and
+          // ACP LoadSession history that predates the round-trip).
+          //
+          // NOTE: present on burst replay from rawMessages — the frame log is
+          // re-sent in full on every connect, so this ack fires again for every
+          // historical message each time the session is opened. serverAcked is
+          // idempotent for exactly this reason (see outbox.ts I3a).
           const echoedMessageId = f.messageId
 
           // Skip empty/whitespace-only messages (e.g., non-text content blocks,

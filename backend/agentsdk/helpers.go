@@ -38,6 +38,23 @@ func SynthUserMessageChunk(text, messageId string) []byte {
 	return data
 }
 
+// SynthPromptAck builds a prompt.ack frame: a bare delivery receipt telling
+// the client that the server already holds the prompt with this id.
+//
+// Emitted on the duplicate-prompt path, where the frame log gains nothing new
+// (the original user_message_chunk is already in it) but the sender's outbox
+// still has the item marked inflight and needs to be told it landed.
+//
+// MUST be delivered via SendToClient, not AppendAndBroadcast — a receipt that
+// enters rawMessages gets replayed on every future connect.
+func SynthPromptAck(messageId string) []byte {
+	data, _ := json.Marshal(map[string]any{
+		"type":      "prompt.ack",
+		"messageId": messageId,
+	})
+	return data
+}
+
 // extractToolCallOutput extracts readable text from tool call content.
 func extractToolCallOutput(content []acp.ToolCallContent) string {
 	var output string

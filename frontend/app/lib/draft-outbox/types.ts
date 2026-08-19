@@ -76,7 +76,16 @@ export type Unsubscribe = () => void
 
 export interface OutboxDiagnostics {
   drafts: { persisted: number; restored: number; cleared: number }
-  outbox: { enqueued: number; acked: number; failed: number; requeued: number }
+  outbox: {
+    enqueued: number
+    acked: number
+    failed: number
+    requeued: number
+    /** Acks for ids we already acked — history replay. Expected; not a fault. */
+    duplicateAcks: number
+    /** Acks for ids we never queued nor acked — a genuine desync. */
+    unknownAcks: number
+  }
   signalsIn: Record<string, number>
   signalsOut: Record<string, number>
 }

@@ -14,7 +14,12 @@ import (
 type WSClient struct {
 	ID     string
 	Notify chan struct{} // 1-buffered wake-up signal
-	cursor int          // index into rawMessages; managed by Drain
+	cursor int           // index into rawMessages; managed by Drain
+
+	// Ephemeral frames addressed to this client only, delivered ahead of the
+	// next rawMessages batch and never stored. Used for receipts that must NOT
+	// survive into replay — see SendToClient. Guarded by SessionState.Mu.
+	extra [][]byte
 }
 
 // NewWSClient creates a WSClient with its cursor set to start.
@@ -231,8 +236,13 @@ func (s *SessionState) LoadHistoricalFrames(frames [][]byte) {
 	}
 }
 
-// BroadcastToClients sends data to all connected clients without storing it.
-// Used for ephemeral frames that don't need replay.
+// BroadcastToClients sends data to every connected client and stores it in
+// rawMessages, so cursor-based clients pick it up. It differs from
+// AppendAndBroadcast only in skipping FrameStore persistence — the frame
+// survives for the lifetime of the process and IS replayed on reconnect.
+//
+// Despite the name, this is NOT an ephemeral channel. For frames that must
+// not be replayed (delivery receipts and the like), use SendToClient.
 func (s *SessionState) BroadcastToClients(data []byte) {
 	s.Mu.Lock()
 	// Store as a regular message so cursor-based clients pick it up.
@@ -251,20 +261,48 @@ func (s *SessionState) BroadcastToClients(data []byte) {
 	}
 }
 
-// Drain returns all messages from the client's cursor to the current end of the buffer,
-// advancing the cursor. Returns nil if there are no new messages.
+// SendToClient queues an ephemeral frame for a single client. Unlike
+// AppendAndBroadcast and BroadcastToClients, the frame is NOT appended to
+// rawMessages: it is delivered once, to this client, and never replayed.
+//
+// This is the right channel for delivery receipts. Anything written into
+// rawMessages is re-sent in full on every subsequent connect, which turns a
+// one-shot "I got your message" into a signal the client sees again every
+// time it reopens the session.
+func (s *SessionState) SendToClient(c *WSClient, data []byte) {
+	s.Mu.Lock()
+	if _, live := s.clients[c]; !live {
+		s.Mu.Unlock()
+		return
+	}
+	c.extra = append(c.extra, data)
+	s.Mu.Unlock()
+
+	select {
+	case c.Notify <- struct{}{}:
+	default: // already notified, write loop will catch up
+	}
+}
+
+// Drain returns this client's pending ephemeral frames followed by all stored
+// messages from its cursor to the current end of the buffer, advancing the
+// cursor. Returns nil if there is nothing to send.
 func (s *SessionState) Drain(c *WSClient) [][]byte {
-	s.Mu.RLock()
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
 	total := len(s.rawMessages)
-	if c.cursor >= total {
-		s.Mu.RUnlock()
+	if len(c.extra) == 0 && c.cursor >= total {
 		return nil
 	}
-	msgs := make([][]byte, total-c.cursor)
-	copy(msgs, s.rawMessages[c.cursor:total])
-	s.Mu.RUnlock()
 
-	c.cursor = total
+	msgs := make([][]byte, 0, len(c.extra)+total-c.cursor)
+	msgs = append(msgs, c.extra...)
+	c.extra = nil
+	if c.cursor < total {
+		msgs = append(msgs, s.rawMessages[c.cursor:total]...)
+		c.cursor = total
+	}
 	return msgs
 }
 

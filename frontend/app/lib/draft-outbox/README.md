@@ -66,6 +66,7 @@ that tag if a user reports lost input.
 | I1 | Every typed character lives in storage OR composer text (or both). |
 | I2 | Drafts are removed only by `userDiscardedDraft` or `userSubmitted` (which moves the text to the outbox in the same synchronous step). |
 | I3 | Outbox items are removed only by `serverAcked`. |
+| I3a | `serverAcked` is idempotent. The ack rides on frames the server replays in full on every connect, so acked ids are remembered (bounded, persisted) and a repeat is a no-op. Only an id we never queued *and* never acked is a real desync — that one still warns. |
 | I4 | `mountSession` restores draft before any keystroke is accepted. |
 | I5 | `mountSession` reads outbox; pending items are flushed on `connectionChanged('open')`. |
 | I6 | Every public method emits a structured log line. |
