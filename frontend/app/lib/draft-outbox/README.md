@@ -19,11 +19,14 @@ import { useDraftOutbox } from "~/lib/draft-outbox"
 function ComposerWiring({ sessionId }: { sessionId: string }) {
   const ob = useDraftOutbox(sessionId)
 
-  // Render-driven
-  ob.draft        // string — composer's value
-  ob.outbox       // OutboxItem[] — pending/inflight/failed
-  ob.aggregate    // { pending, inflight, failed, total }
-  ob.connState    // 'open' | 'closed' | 'reconnecting'
+  // Snapshot reads — pull, never pushed as React state. The handle is
+  // identity-stable, so it's safe in any dep array. To *render* one of these
+  // reactively, subscribe locally in that component; do NOT add state to the
+  // hook. See DESIGN.md § Update loops (this is what caused React #185).
+  ob.getDraft()      // string — composer's value
+  ob.getOutbox()     // OutboxItem[] — pending/inflight/failed
+  ob.getAggregate()  // { pending, inflight, failed, total }
+  ob.getConnState()  // 'open' | 'closed' | 'reconnecting'
 
   // Composer-driven signals
   ob.setDraft(text)                              // every keystroke

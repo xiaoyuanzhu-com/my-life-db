@@ -15,6 +15,7 @@ import type { LastTurnOutcome } from '~/types/session'
 import { AutoAgentTree } from '~/components/agent/auto-agent-tree'
 import { AutoAgentEditor } from '~/components/agent/auto-agent-editor'
 import { useAgentRuntime } from '~/hooks/use-agent-runtime'
+import { probe } from '~/lib/diagnostics/update-probe'
 import { useDraftOutbox, seedDraft, NEW_SESSION_ID } from '~/lib/draft-outbox'
 import type { UseDraftOutboxResult } from '~/lib/draft-outbox'
 import { Button } from '~/components/ui/button'
@@ -308,6 +309,9 @@ function ChatRuntimeShell({
   outbox,
   children,
 }: ChatRuntimeShellProps) {
+  // This shell owns the assistant-ui runtime; re-rendering it rebuilds the
+  // adapter and re-renders the whole thread. It must NOT move during typing.
+  probe("ChatRuntimeShell.render")
   // DIAG: track shell mount/unmount cycles to find the WS double-connect cause.
   // Module-level counter so each new instance gets a unique id we can correlate
   // with [ws-conn] effect run logs. Remove once root cause is identified.
@@ -355,6 +359,7 @@ function ChatRuntimeShell({
 
   // Mirror WS connection state into the outbox so it can flush pending
   // items on reconnect. The outbox itself stays passive otherwise.
+  // `outbox` is identity-stable, so this runs on real connection changes only.
   useEffect(() => {
     outbox.notifyConnection(connected ? 'open' : 'closed')
   }, [connected, outbox])
@@ -476,6 +481,9 @@ export default function AgentPage() {
   // the initial session page load. Logged at top so it fires before any
   // hooks that could throw / suspend. Remove once root cause is fixed.
   const __renderIdx = ++__agentPageRenderCounter
+  // Route root. A keystroke reaching this counter means composer state has
+  // leaked upward again — see draft-outbox/DESIGN.md § Update loops.
+  probe("AgentPage.render")
   const { t } = useTranslation('agent')
   const { isAuthenticated, isLoading: authLoading, login } = useAuth()
   const { sessionSidebar, sessionCreateNew } = useFeatureFlags()

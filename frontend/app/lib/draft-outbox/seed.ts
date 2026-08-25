@@ -11,14 +11,15 @@
  * session the user is currently in, so the seed would land in that
  * conversation's draft and surface later as text the user never typed.
  *
- * So this writes storage directly, addressed by an explicit sessionId. The
- * hook reloads the draft from storage during render whenever its sessionId
- * changes (see use-draft-outbox.ts), so the value is already in place on the
- * first render after navigation — no effect ordering to get wrong.
+ * So this writes storage directly, addressed by an explicit sessionId. Until
+ * the hook's effect swaps in an outbox instance for the new session,
+ * `getDraft()` falls back to reading storage for the current sessionId (see
+ * use-draft-outbox.ts), so the seeded value is already visible to the
+ * composer's restore effect — no effect ordering to get wrong.
  *
  * If the target session is the one already mounted, this is the wrong tool:
- * storage would be updated but the hook's state would not. Call
- * `outbox.actions.restoreDraft(text)` instead, which persists AND emits
+ * storage would be updated but the live composer would not. Call
+ * `outbox.restoreDraft(text)` instead, which persists AND emits
  * `draftRestored` so the live composer picks it up.
  */
 

@@ -22,8 +22,9 @@ interface SlashCommandPopoverProps {
 export function SlashCommandPopover({ commands, textareaRef }: SlashCommandPopoverProps) {
   const composerRuntime = useComposerRuntime()
   const text = useComposer((s) => s.text)
-  const [open, setOpen] = useState(false)
-  const [filter, setFilter] = useState("")
+  // Text the user pressed Escape on. Dismissal is a real user action, so it
+  // gets state; visibility itself is derived (see below).
+  const [dismissedFor, setDismissedFor] = useState<string | null>(null)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const popoverRef = useRef<HTMLDivElement>(null)
 
@@ -32,29 +33,37 @@ export function SlashCommandPopover({ commands, textareaRef }: SlashCommandPopov
     description: c.description,
   }))
 
-  // Determine if we should show the popover
-  useEffect(() => {
-    // Check if text starts with "/" and has no spaces (partial command)
-    const trimmed = text.trimStart()
-    if (trimmed.startsWith("/") && !trimmed.includes(" ")) {
-      setOpen(true)
-      setFilter(trimmed.toLowerCase())
-      setSelectedIndex(0)
-    } else {
-      setOpen(false)
-      setFilter("")
-    }
-  }, [text])
+  // Visibility is DERIVED from text, not synced into state by an effect.
+  //
+  // The effect version ran three setStates per character. Each one schedules a
+  // commit, and React's same-value bailout is skipped whenever the fiber
+  // already has pending lanes — which, under iOS voice dictation, is always.
+  // Fifty consecutive commits that each leave work pending is exactly the
+  // condition for React error #185. See draft-outbox/DESIGN.md § Update loops.
+  const trimmed = text.trimStart()
+  const isTrigger = trimmed.startsWith("/") && !trimmed.includes(" ")
+  const filter = isTrigger ? trimmed.toLowerCase() : ""
+  const open = isTrigger && dismissedFor !== trimmed
 
   const filtered = allCommands.filter((cmd) =>
     cmd.name.toLowerCase().startsWith(filter || "/")
   )
 
+  // Reset the highlighted row when the text changes. Render-phase adjustment
+  // (React's documented "derive state from props" escape hatch): it re-renders
+  // this component before the commit rather than scheduling another one, and
+  // the guard makes it a no-op in the common case.
+  const lastTextRef = useRef(text)
+  if (lastTextRef.current !== text) {
+    lastTextRef.current = text
+    if (selectedIndex !== 0) setSelectedIndex(0)
+  }
+
   const handleSelect = useCallback(
     (command: string) => {
       composerRuntime.setText(command + " ")
-      setOpen(false)
-      // Focus the textarea
+      // No setOpen needed: the new text contains a space, so `isTrigger` is
+      // false on the next render.
       textareaRef.current?.focus()
     },
     [composerRuntime, textareaRef]
@@ -92,13 +101,16 @@ export function SlashCommandPopover({ commands, textareaRef }: SlashCommandPopov
           handleSelect(filtered[selectedIndex]?.name ?? filtered[0]?.name ?? "")
         }
       } else if (e.key === "Escape") {
-        setOpen(false)
+        setDismissedFor(trimmed)
       }
     }
 
     textarea.addEventListener("keydown", handleKeyDown, { capture: true })
     return () => textarea.removeEventListener("keydown", handleKeyDown, { capture: true })
-  }, [open, filtered, selectedIndex, handleSelect, textareaRef])
+    // `filtered` is a fresh array each render; depend on its length instead so
+    // this only rebinds when the list actually changes shape.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, filtered.length, selectedIndex, handleSelect, textareaRef, trimmed])
 
   if (!open || filtered.length === 0) return null
 

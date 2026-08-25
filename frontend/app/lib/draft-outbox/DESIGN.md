@@ -380,46 +380,67 @@ onNew: async (message) => {
 
 ## Update loops (React integration hazard)
 
-`useDraftOutbox` returns two things with very different identity semantics,
-and mixing them up produces an unbounded React update loop.
+**Rule: `useDraftOutbox` holds no React state, and a keystroke must never
+schedule a render above the composer.**
 
-- **Reactive data** — `draft`, `outbox`, `aggregate`, `connState`. These are
-  the memo keys of the returned handle, so **the handle's identity changes on
-  every keystroke.**
-- **Stable calls** — everything else, grouped under `.actions`
-  (`DraftOutboxActions`). Every member is a `useCallback([])`; the object is
-  computed once and keeps its identity for the hook's lifetime, including
-  across `sessionId` changes.
+`useDraftOutbox` is called at the top of the `/agent` route. The handle it
+returns is identity-stable for the hook's lifetime — every member is a
+`useCallback([])`, and the reactive fields it used to expose (`draft`,
+`outbox`, `aggregate`, `connState`) are now pull-only getters
+(`getDraft()`, `getOutbox()`, `getAggregate()`, `getConnState()`). Nothing
+rendered them, and holding them as state cost far more than it bought.
 
-**Rule: effects depend on `.actions`, never on the handle.**
+### Why: how React error #185 actually fires
 
-An effect that lists the handle in its deps *and* calls a method that mutates
-one of the reactive fields feeds itself:
+React's "Maximum update depth exceeded" is *not* only thrown by a
+self-feeding effect. From `commitRootImpl`:
 
 ```
-effect → outbox.setDraft(text) → setDraftState → new handle identity
-       → deps changed → effect runs again → …
+at the end of every commit:
+  if (committed lanes were sync-ish && lanes are STILL pending)
+      nestedUpdateCount++
+  else
+      nestedUpdateCount = 0
+  ...
+  next scheduled update: if (nestedUpdateCount > 50) throw error #185
 ```
 
-It appears to work, because React bails out of `setState` when the value is
-`Object.is`-equal. But that eager bailout is skipped whenever the fiber
-already has pending lanes. Under a sustained input burst — **iOS voice
-dictation** is the reproducer — there are always pending lanes, the bailout
-never fires, `nestedUpdateCount` climbs past 50, and React throws
-**error #185 "Maximum update depth exceeded"**, taking out the whole route
-with an "Unexpected Application Error" screen.
+So the counter climbs whenever **50 consecutive commits each leave another
+update pending**, and it resets only on a commit that drains cleanly. Each
+character used to produce a chain:
 
-Two corollaries, both load-bearing:
+```
+input event → composer.setText            (commit 1)
+  → DraftPersistenceSync effect → outbox.setDraft
+    → setDraftState in useDraftOutbox     (commit 2, scheduled from a
+                                           passive effect of commit 1)
+      → AgentPage re-renders → ChatRuntimeShell → adapter → whole thread
+```
 
-1. **Emitters must be idempotent.** `aggregate()` mints a fresh object on
-   every call, so an unguarded `emitAggregate()` on a no-op change churns the
-   handle identity and re-runs every consumer effect. `connectionChanged`
-   (outbox.ts) and `notifyConnection` (use-draft-outbox.ts) both early-return
-   on an unchanged state for this reason.
-2. **The handle must not reach memo deps in `use-agent-runtime`.** It used to,
-   which rebuilt the entire `ExternalStoreAdapter` — and therefore ran
-   assistant-ui's dep-less `setAdapter` → store-wide `_notifySubscribers()` —
-   once per dictated character.
+Ordinary typing survives this: commit 2 drains before the next keystroke, so
+the counter resets to 0 every character. **iOS voice dictation does not** —
+it delivers input faster than the chain settles, every commit leaves work
+pending, and the counter walks monotonically to 50 and blows up the route.
+
+That is why the earlier fix (removing identity churn from the handle) reduced
+the churn but did not stop the crash: the two-commit-per-character chain, and
+the full-route re-render hanging off it, were still there.
+
+### Consequences for future changes
+
+1. **Don't add React state to this hook.** If a consumer needs to *render*
+   outbox state (a pending badge, a failed-send banner), subscribe locally in
+   that component — e.g. `useSyncExternalStore` over `subscribe()` — so the
+   re-render is scoped to the badge, not to the route.
+2. **Emitters stay idempotent.** `connectionChanged` (outbox.ts) early-returns
+   on an unchanged state; keep it that way so a re-running consumer effect is
+   free.
+3. **Watch the counters.** `probe()` calls (`lib/diagnostics/update-probe`)
+   sit on `AgentPage.render`, `ChatRuntimeShell.render`, `Thread.render`,
+   `DraftPersistenceSync.persist` and `ComposerInput.onChange`. During typing,
+   only the last two should move. If `AgentPage.render` tracks
+   `ComposerInput.onChange`, composer state has leaked upward again — the
+   error screen prints these counters, so a crash report tells you directly.
 
 ## Migration plan (low → high risk)
 

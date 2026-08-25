@@ -32,6 +32,13 @@
     "oops": "Oops!",
     "generic": "An unexpected error occurred.",
     "notFoundTitle": "404",
-    "notFoundDetails": "The requested page could not be found."
+    "notFoundDetails": "The requested page could not be found.",
+    "reload": "Reload",
+    "copyDetails": "Copy details",
+    "copied": "Copied",
+    "diagnostics": "Update-loop diagnostics",
+    "componentStack": "Component stack",
+    "rawMessage": "Raw message",
+    "stack": "Stack"
   }
 }

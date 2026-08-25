@@ -7,6 +7,7 @@ import type { RouteObject } from "react-router";
 
 // Layout component
 import Root from "./root";
+import { AppRouteErrorBoundary } from "./components/app-error-screen";
 
 // Route components
 import Data from "./routes/data";
@@ -21,6 +22,11 @@ export const routes: RouteObject[] = [
   {
     path: "/",
     element: <Root />,
+    // Without this, React Router falls back to its built-in "Unexpected
+    // Application Error!" page, which dumps a minified stack and nothing else.
+    // `root.tsx`'s exported ErrorBoundary is a framework-mode convention and
+    // is NOT picked up by createBrowserRouter — it has to be wired here.
+    ErrorBoundary: AppRouteErrorBoundary,
     children: [
       {
         index: true,

@@ -37,6 +37,7 @@ import { useMessageInputKeyboard } from "~/hooks/use-message-input-keyboard";
 import { useNavigate, useSearchParams } from "react-router";
 import type { PlanEntry } from "~/hooks/use-agent-runtime";
 import { useHasTouch } from "~/hooks/use-has-touch";
+import { probe } from "~/lib/diagnostics/update-probe";
 
 // Our custom message components (with tool dispatch, markdown, reasoning, etc.)
 import { createAssistantMessage } from "~/components/agent/assistant-message";
@@ -79,6 +80,9 @@ type ThreadProps = {
 }
 
 export const Thread: FC<ThreadProps> = ({ onAttachmentsStorageIdChange, existingStorageId }) => {
+  // Rendering the thread means rendering every message in it. If this climbs
+  // during typing, something upstream is re-rendering the whole route.
+  probe("Thread.render");
   const { pendingPermissions, hasActiveSession, historyLoadError, sessionError, lastTurnOutcome, lastPromptText, sessionSource, onResume, onDismissOutcome } = useAgentContext();
   const { hybridTopInset } = useFeatureFlags();
   const hasSession = useAuiState((s) => !s.thread.isEmpty);
@@ -424,14 +428,14 @@ const DraftPersistenceSync: FC = () => {
   const composerRef = useRef(composerRuntime);
   composerRef.current = composerRuntime;
 
-  // The outbox HANDLE must never appear in an effect dep list here: its
-  // identity changes on every draft mutation, so an effect that depends on it
-  // and also calls `setDraft` re-triggers itself forever (React error #185 —
-  // it fired in the wild during iOS voice dictation). Read the handle through
-  // a ref for data, and depend on `outbox.actions` (stable) for calls.
-  const outboxRef = useRef(outbox);
-  outboxRef.current = outbox;
-  const outboxActions = outbox?.actions;
+  // This component re-renders on every character (it subscribes to composer
+  // text) — the probe counts that so a runaway shows up on the error screen.
+  probe("DraftPersistenceSync.render");
+
+  // The outbox handle is identity-stable for the life of the hook: it holds
+  // no React state, and draft text is read through `getDraft()` rather than
+  // pushed as state, precisely so a keystroke can't re-render this route.
+  // See draft-outbox/DESIGN.md § Update loops. Safe in dep arrays.
 
   // Whether the initial restore for the current sessionId has completed.
   // While false the persist effect is suppressed so it cannot push stale
@@ -441,12 +445,11 @@ const DraftPersistenceSync: FC = () => {
   // Restore from the outbox when session changes (mount, navigation).
   useEffect(() => {
     hasRestoredRef.current = false;
-    const ob = outboxRef.current;
-    if (!ob) {
+    if (!outbox) {
       hasRestoredRef.current = true;
       return;
     }
-    const draft = ob.draft;
+    const draft = outbox.getDraft();
     if (draft) {
       const timer = setTimeout(() => {
         composerRef.current.setText(draft);
@@ -459,9 +462,9 @@ const DraftPersistenceSync: FC = () => {
     } else {
       hasRestoredRef.current = true;
     }
-    // Only sessionId is a dependency: the outbox is read through a ref, so a
-    // draft change can't re-run this and fight the user's typing.
-  }, [sessionId]);
+    // Re-runs only on session change: `outbox` is stable and the draft is
+    // pulled via `getDraft()`, so typing can't re-run this and fight the user.
+  }, [sessionId, outbox]);
 
   // Mirror composer text into the outbox. Suppressed until the restore phase
   // completes so we don't overwrite the just-restored draft with assistant-ui's
@@ -484,32 +487,33 @@ const DraftPersistenceSync: FC = () => {
   const activeSessionRef = useRef(sessionId);
   useEffect(() => {
     if (!hasRestoredRef.current) return;
-    if (!outboxActions) return;
+    if (!outbox) return;
     if (activeSessionRef.current !== sessionId) {
       activeSessionRef.current = sessionId;
       return;
     }
+    probe("DraftPersistenceSync.persist");
     if (text) {
-      outboxActions.setDraft(text);
+      outbox.setDraft(text);
     } else {
-      outboxActions.discardDraft();
+      outbox.discardDraft();
     }
-    // `outboxActions` is identity-stable, so this effect runs once per real
-    // text/session change — it does NOT re-run as a consequence of its own
-    // setDraft call. Depending on the outbox handle here is what caused the
-    // unbounded update loop.
-  }, [text, sessionId, outboxActions]);
+    // This is the hot path during dictation: it runs once per character, and
+    // neither branch touches React state, so the commit that ran this effect
+    // drains cleanly instead of scheduling another one. Keeping it that way
+    // is what stops React's nested-update counter from reaching #185.
+  }, [text, sessionId, outbox]);
 
   // Subscribe to draftRestored events so a non-composer-source draft change
   // (e.g. runtime calling `restoreDraft` from a failed-send catch) re-fills
   // the live composer textarea. The hook's draft state alone is invisible
   // to assistant-ui's internal composer text — only `composer.setText` is.
   useEffect(() => {
-    if (!outboxActions) return;
-    return outboxActions.subscribeDraftRestored((restoredText) => {
+    if (!outbox) return;
+    return outbox.subscribeDraftRestored((restoredText) => {
       composerRef.current.setText(restoredText);
     });
-  }, [outboxActions]);
+  }, [outbox]);
 
   // Note: the legacy `pendingComposerText` failed-send restore path was
   // removed in the v2 outbox refactor and replaced by the durable
@@ -609,6 +613,9 @@ const PlainComposerInput = forwardRef<HTMLTextAreaElement, PlainComposerInputPro
           // state. Direct call — no flushResourcesSync, no value prop, no
           // React-controlled-input restoration.
           onChange?.(e);
+          // One per input event — the baseline every other counter is read
+          // against. iOS dictation drives this far faster than typing.
+          probe("ComposerInput.onChange");
           composerRuntime.setText(e.currentTarget.value);
         }}
         onKeyDown={(e) => {
@@ -895,6 +902,7 @@ type ComposerProps = {
   existingStorageId?: string | null
 }
 const Composer: FC<ComposerProps> = ({ onAttachmentsStorageIdChange, existingStorageId }) => {
+  probe("Composer.render");
   const { t } = useTranslation('agent');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);

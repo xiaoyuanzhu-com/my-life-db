@@ -1,6 +1,6 @@
 import { useEffect } from "react";
-import { Outlet, ScrollRestoration, isRouteErrorResponse, useLocation, useNavigate } from "react-router";
-import { useTranslation } from "react-i18next";
+import { Outlet, ScrollRestoration, useLocation, useNavigate } from "react-router";
+import { AppErrorScreen } from "~/components/app-error-screen";
 import { Header } from "~/components/header";
 import { BottomNav } from "~/components/bottom-nav";
 import { AuthProvider } from "~/contexts/auth-context";
@@ -136,34 +136,11 @@ function useNativeBridge() {
   }, [navigate]);
 }
 
+/**
+ * Framework-mode convention export. The SPA entry uses `createBrowserRouter`,
+ * which wires `AppRouteErrorBoundary` in `spa-routes.tsx` instead — this
+ * re-export keeps the two paths rendering the same screen.
+ */
 export function ErrorBoundary({ error }: { error: unknown }) {
-  const { t } = useTranslation('common');
-  let message = t('errorBoundary.oops', 'Oops!');
-  let details = t('errorBoundary.generic', 'An unexpected error occurred.');
-  let stack: string | undefined;
-
-  if (isRouteErrorResponse(error)) {
-    message = error.status === 404 ? t('errorBoundary.notFoundTitle', '404') : "Error";
-    details =
-      error.status === 404
-        ? t('errorBoundary.notFoundDetails', 'The requested page could not be found.')
-        : error.statusText || details;
-  } else if (import.meta.env.DEV && error && error instanceof Error) {
-    details = error.message;
-    stack = error.stack;
-  }
-
-  return (
-    <main className="min-h-screen flex items-center justify-center p-4">
-      <div className="text-center space-y-4">
-        <h1 className="text-4xl font-bold">{message}</h1>
-        <p className="text-muted-foreground">{details}</p>
-        {stack && (
-          <pre className="mt-4 p-4 bg-muted rounded-lg text-left text-xs overflow-auto max-w-2xl">
-            <code>{stack}</code>
-          </pre>
-        )}
-      </div>
-    </main>
-  );
+  return <AppErrorScreen error={error} />;
 }

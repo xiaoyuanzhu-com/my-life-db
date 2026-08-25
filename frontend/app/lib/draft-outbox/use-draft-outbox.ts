@@ -1,15 +1,19 @@
 /**
  * draft-outbox — React hook.
  *
- * Connects component lifecycle to a DraftOutbox instance. Returns a
- * stable API the composer/runtime/WS-hook layers can call. State that
- * the UI cares about (draft text, outbox items, aggregate counts) is
- * exposed as React state so renders happen on changes.
+ * Connects component lifecycle to a DraftOutbox instance and returns an
+ * **identity-stable** API that the composer / runtime / WS-hook layers call.
+ *
+ * Deliberately holds NO React state. See "Why no React state" below and
+ * DESIGN.md § Update loops — this hook lives at the top of the /agent route,
+ * so any state it holds re-renders the entire page, and the draft changes on
+ * every keystroke.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef } from "react"
+import { probe } from "~/lib/diagnostics/update-probe"
 import { createDraftOutbox, type DraftOutbox } from "./outbox"
-import { initStorage, loadDraft, loadOutbox } from "./storage"
+import { initStorage, loadDraft, loadOutbox, saveDraft } from "./storage"
 import type {
   AttachmentRef,
   ConnState,
@@ -19,22 +23,44 @@ import type {
 } from "./types"
 
 /**
- * The call-only surface of the outbox. Every member is a `useCallback([])`,
- * so this object's identity is STABLE for the lifetime of the hook — it does
- * not change when the draft text, outbox items, aggregate or connState change.
+ * The outbox surface. Every member is a `useCallback([])`, so this object's
+ * identity is STABLE for the lifetime of the hook — it survives draft edits,
+ * outbox mutations, connection changes and `sessionId` swaps alike.
  *
- * **Effects must depend on this, never on the full `UseDraftOutboxResult`.**
+ * **Why no React state (this is load-bearing):**
  *
- * The full handle is a `useMemo` keyed on the reactive fields, so its identity
- * changes on every keystroke. An effect that lists the handle in its deps AND
- * calls a method that mutates one of those fields is a self-feeding update
- * loop: call → setState → new handle identity → deps changed → call again.
- * It only terminates via React's same-value `Object.is` bailout, which is
- * skipped whenever the fiber already has pending lanes. Under a sustained
- * input burst (iOS voice dictation) it does not terminate, and React throws
- * error #185 "Maximum update depth exceeded". See DESIGN.md § Update loops.
+ * `useDraftOutbox` is called at the top of the /agent route. Draft text
+ * changes on every keystroke, so holding it in React state re-rendered the
+ * whole page — AgentPage → ChatRuntimeShell → the runtime adapter → the
+ * thread and every message in it — once per character. And the write came
+ * from a passive effect (DraftPersistenceSync), so each of those commits
+ * ended with another update already pending.
+ *
+ * React counts exactly that: at the end of every commit that leaves a
+ * sync/input-continuous lane pending, `nestedUpdateCount++`; the counter only
+ * resets on a commit that drains cleanly. Fifty in a row and React throws
+ * error #185 "Maximum update depth exceeded", taking out the whole route.
+ * Ordinary typing drains between characters. **iOS voice dictation does
+ * not** — it delivers input faster than the two-commit-per-character chain
+ * settles, so the counter climbs monotonically to the limit.
+ *
+ * Nothing rendered `draft` / `outbox` / `aggregate` / `connState` anyway, so
+ * they are exposed as getters instead. If a future consumer needs to *render*
+ * one of these, do not add state here — subscribe locally (e.g. a
+ * `useSyncExternalStore` in the badge component itself) so the re-render is
+ * scoped to that component instead of the entire route.
  */
 export interface DraftOutboxActions {
+  // ── Snapshot reads (pull, not push — see the note above) ──
+  /** Current draft text for the active session. */
+  getDraft: () => string
+  /** Outbox snapshot, ordered by createdAt asc. */
+  getOutbox: () => readonly OutboxItem[]
+  /** Aggregate counts for badges/banners. */
+  getAggregate: () => OutboxAggregateState
+  /** Last seen connection state. */
+  getConnState: () => ConnState
+
   // ── Composer-driven signals ──
   setDraft: (text: string) => void
   submit: (payload: { text: string; attachments?: AttachmentRef[] }) => string
@@ -75,33 +101,29 @@ export interface DraftOutboxActions {
 }
 
 export interface UseDraftOutboxResult extends DraftOutboxActions {
-  /** Current draft text. Source of truth for the composer's value. */
-  draft: string
-  /** Outbox snapshot, ordered by createdAt asc. */
-  outbox: readonly OutboxItem[]
-  /** Aggregate counts for badges/banners. */
-  aggregate: OutboxAggregateState
-  /** Last seen connection state. */
-  connState: ConnState
   /**
-   * Stable call-only surface. Use this — not the handle itself — as an effect
-   * dependency. See {@link DraftOutboxActions}.
+   * Self-reference, kept so existing `outbox.actions.foo()` call sites keep
+   * working. The handle and `.actions` are the same stable object now — the
+   * split existed only to give consumers something safe to put in a dep
+   * array, and the handle itself is safe.
    */
   actions: DraftOutboxActions
 }
 
-/** Shallow value equality for aggregate counts. */
-function sameAggregate(
-  a: OutboxAggregateState,
-  b: OutboxAggregateState,
-): boolean {
-  return (
-    a.sessionId === b.sessionId &&
-    a.pending === b.pending &&
-    a.inflight === b.inflight &&
-    a.failed === b.failed &&
-    a.total === b.total
-  )
+/** Count outbox items by state — used by the aggregate fallback. */
+function aggregateOf(
+  sessionId: string,
+  items: readonly OutboxItem[],
+): OutboxAggregateState {
+  let pending = 0,
+    inflight = 0,
+    failed = 0
+  for (const it of items) {
+    if (it.state === "pending") pending++
+    else if (it.state === "inflight") inflight++
+    else if (it.state === "failed") failed++
+  }
+  return { sessionId, pending, inflight, failed, total: items.length }
 }
 
 /**
@@ -110,70 +132,62 @@ function sameAggregate(
  */
 export function useDraftOutbox(sessionId: string): UseDraftOutboxResult {
   // Box the outbox in a ref so callbacks have a stable identity even though
-  // the instance is recreated on sessionId change. State below is what the
-  // UI reads; we mirror outbox internals into it on every event.
+  // the instance is recreated on sessionId change.
   const outboxRef = useRef<DraftOutbox | null>(null)
 
-  // Lazy init from storage so the very first render of this hook returns the
-  // correct draft for `sessionId` — without this, consumers like
-  // DraftPersistenceSync read `""` on mount, persist that empty back, and
-  // overwrite the saved draft.
-  //
-  // initStorage() is idempotent and safe to call here; it primes the legacy
-  // purge + meta key before the first read.
-  const [draft, setDraftState] = useState<string>(() => {
-    initStorage()
-    return loadDraft(sessionId)
-  })
-  const [items, setItems] = useState<readonly OutboxItem[]>(() =>
-    loadOutbox(sessionId),
-  )
-  const [aggregate, setAggregate] = useState<OutboxAggregateState>(() => {
-    const initial = loadOutbox(sessionId)
-    let pending = 0,
-      inflight = 0,
-      failed = 0
-    for (const it of initial) {
-      if (it.state === "pending") pending++
-      else if (it.state === "inflight") inflight++
-      else if (it.state === "failed") failed++
-    }
-    return { sessionId, pending, inflight, failed, total: initial.length }
-  })
-  const [connState, setConnState] = useState<ConnState>("closed")
+  // The session the *current* instance belongs to. Between a sessionId change
+  // and the effect below swapping instances, `outboxRef` still points at the
+  // previous session's outbox — the getters must not answer from it, or a
+  // session switch restores the old session's draft into the new composer.
+  const instanceSessionRef = useRef<string | null>(null)
 
-  // Synchronously reset state when sessionId changes — React's "adjust state
-  // on prop change" pattern. The useEffect below also runs (and swaps the
-  // outbox instance), but its setStates land in the *next* render, which is
-  // too late: consumers reading `outbox.draft` during the first render after
-  // a session switch would see the previous session's value, restore the
-  // composer to it, then the persist effect would write that stale text
-  // back into the new session's storage. Doing the reset here makes the
-  // first render after a switch already show the correct per-session draft.
-  const lastSessionIdRef = useRef(sessionId)
-  if (lastSessionIdRef.current !== sessionId) {
-    lastSessionIdRef.current = sessionId
-    const nextDraft = loadDraft(sessionId)
-    const nextItems = loadOutbox(sessionId)
-    let pending = 0,
-      inflight = 0,
-      failed = 0
-    for (const it of nextItems) {
-      if (it.state === "pending") pending++
-      else if (it.state === "inflight") inflight++
-      else if (it.state === "failed") failed++
-    }
-    setDraftState(nextDraft)
-    setItems(nextItems)
-    setAggregate({
-      sessionId,
-      pending,
-      inflight,
-      failed,
-      total: nextItems.length,
-    })
-    setConnState("closed")
+  // Latest sessionId, readable from the stable callbacks (which close over
+  // nothing render-scoped by design).
+  const sessionIdRef = useRef(sessionId)
+  sessionIdRef.current = sessionId
+
+  // initStorage() is idempotent, but only needs to happen before the first
+  // storage read; do it once per hook instance, during the first render, so
+  // an early `getDraft()` (child effects run before ours) sees a migrated
+  // namespace.
+  const storageReadyRef = useRef(false)
+  if (!storageReadyRef.current) {
+    storageReadyRef.current = true
+    initStorage()
   }
+
+  /** The live instance, or null if it isn't for the current session yet. */
+  const currentInstance = useCallback((): DraftOutbox | null => {
+    if (instanceSessionRef.current !== sessionIdRef.current) return null
+    return outboxRef.current
+  }, [])
+
+  // Reads fall back to storage when the instance isn't ready — on first mount
+  // (child effects run before parent effects, so DraftPersistenceSync's
+  // restore runs before our create effect) and in the render right after a
+  // session switch.
+  const getDraft = useCallback(
+    (): string => currentInstance()?.getDraft() ?? loadDraft(sessionIdRef.current),
+    [currentInstance],
+  )
+
+  const getOutbox = useCallback(
+    (): readonly OutboxItem[] =>
+      currentInstance()?.getOutbox() ?? loadOutbox(sessionIdRef.current),
+    [currentInstance],
+  )
+
+  const getAggregate = useCallback((): OutboxAggregateState => {
+    const ob = currentInstance()
+    if (ob) return ob.getAggregate()
+    const sid = sessionIdRef.current
+    return aggregateOf(sid, loadOutbox(sid))
+  }, [currentInstance])
+
+  const getConnState = useCallback(
+    (): ConnState => currentInstance()?.getConnState() ?? "closed",
+    [currentInstance],
+  )
 
   // External subscribers (flush, itemFailed, draftRestored). We multiplex
   // through here so a single outbox subscription serves all consumers and
@@ -187,33 +201,21 @@ export function useDraftOutbox(sessionId: string): UseDraftOutboxResult {
   useEffect(() => {
     const ob = createDraftOutbox({ sessionId })
     outboxRef.current = ob
-
-    // Initial snapshot.
-    setDraftState(ob.getDraft())
-    setItems(ob.getOutbox())
-    setAggregate((prev) => {
-      const next = ob.getAggregate()
-      return sameAggregate(prev, next) ? prev : next
-    })
-    setConnState(ob.getConnState())
+    instanceSessionRef.current = sessionId
 
     const unsub = ob.subscribe((event: OutboxEvent) => {
       switch (event.type) {
         case "draftRestored":
-          setDraftState(event.text)
           for (const h of restoreSubsRef.current) h(event.text)
           break
         case "draftCleared":
-          setDraftState("")
+          // Nothing to mirror: the composer clears itself on submit, and
+          // `getDraft()` reads straight through to the instance.
           break
         case "outboxStateChanged":
-          // `aggregate()` mints a fresh object on every emit. Adopting it
-          // unconditionally would change this hook's memo identity on every
-          // no-op emit and re-run every consumer effect keyed on the handle.
-          setAggregate((prev) =>
-            sameAggregate(prev, event.state) ? prev : event.state,
-          )
-          setItems(ob.getOutbox())
+          // Pull-only: consumers read `getAggregate()` / `getOutbox()` when
+          // they need a snapshot. Pushing this into React state here would
+          // re-render the whole /agent route (see DraftOutboxActions).
           break
         case "flushItem":
           for (const h of flushSubsRef.current) h(event.item)
@@ -236,17 +238,30 @@ export function useDraftOutbox(sessionId: string): UseDraftOutboxResult {
       unsub()
       ob.unmount()
       outboxRef.current = null
+      instanceSessionRef.current = null
     }
   }, [sessionId])
 
   // ── Stable callbacks ────────────────────────────────────────────────
 
-  const setDraft = useCallback((text: string) => {
-    outboxRef.current?.userTyped(text)
-    // Echo immediately so controlled-input cursor placement is stable;
-    // outbox does the persistence.
-    setDraftState(text)
-  }, [])
+  // Hot path: called once per character while the user types or dictates.
+  // Plain JS + a localStorage write, no React state — see DraftOutboxActions
+  // for why this must never schedule a render.
+  const setDraft = useCallback(
+    (text: string) => {
+      probe("draft-outbox.setDraft")
+      const ob = currentInstance()
+      if (ob) {
+        ob.userTyped(text)
+        return
+      }
+      // No instance yet (first mount, or mid session-swap): persist directly
+      // so text typed in that window isn't dropped. `getDraft()` reads the
+      // same key, so the value is visible immediately.
+      saveDraft(sessionIdRef.current, text)
+    },
+    [currentInstance],
+  )
 
   const submit = useCallback(
     (payload: { text: string; attachments?: AttachmentRef[] }): string => {
@@ -267,15 +282,11 @@ export function useDraftOutbox(sessionId: string): UseDraftOutboxResult {
   // setDraft alone leaves the textarea blank until next mount.
   const restoreDraft = useCallback((text: string) => {
     outboxRef.current?.restoreDraft(text)
-    setDraftState(text)
   }, [])
 
   const notifyConnection = useCallback((state: ConnState) => {
-    // Idempotent: callers re-invoke this with the same state whenever their
-    // effect re-runs. Adopting it unconditionally would churn `connState`,
-    // which is a memo key for the handle. `connectionChanged` has the
-    // matching guard on the plain-JS side (outbox.ts).
-    setConnState((prev) => (prev === state ? prev : state))
+    // Idempotent — callers re-invoke with the same state whenever their
+    // effect re-runs; `connectionChanged` early-returns on no change.
     outboxRef.current?.connectionChanged(state)
   }, [])
 
@@ -331,13 +342,16 @@ export function useDraftOutbox(sessionId: string): UseDraftOutboxResult {
     [],
   )
 
-  // Stable call-only surface. Every dep below is a `useCallback([])`, so this
-  // memo is computed once and keeps its identity for the hook's lifetime —
-  // including across sessionId changes (the subscriber Sets and `outboxRef`
-  // it closes over are refs that survive the instance swap). This is the
-  // object effects should depend on; see DraftOutboxActions.
+  // Every dep below is a `useCallback([])`, so this memo is computed once and
+  // keeps its identity for the hook's lifetime — including across sessionId
+  // changes (the subscriber Sets and `outboxRef` it closes over are refs that
+  // survive the instance swap). Safe to put in any dep array.
   const actions = useMemo<DraftOutboxActions>(
     () => ({
+      getDraft,
+      getOutbox,
+      getAggregate,
+      getConnState,
       setDraft,
       submit,
       discardDraft,
@@ -353,6 +367,10 @@ export function useDraftOutbox(sessionId: string): UseDraftOutboxResult {
       subscribeDraftRestored,
     }),
     [
+      getDraft,
+      getOutbox,
+      getAggregate,
+      getConnState,
       setDraft,
       submit,
       discardDraft,
@@ -369,15 +387,7 @@ export function useDraftOutbox(sessionId: string): UseDraftOutboxResult {
     ],
   )
 
-  return useMemo(
-    () => ({
-      draft,
-      outbox: items,
-      aggregate,
-      connState,
-      actions,
-      ...actions,
-    }),
-    [draft, items, aggregate, connState, actions],
-  )
+  // Identity-stable for the hook's lifetime. Consumers may hold this in memo
+  // deps, effect deps and context values without churning them.
+  return useMemo(() => ({ ...actions, actions }), [actions])
 }

@@ -102,8 +102,9 @@ function filterFiles(files: FileItem[], query: string): FileItem[] {
 export function FileTagPopover({ textareaRef, workingDir }: FileTagPopoverProps) {
   const composerRuntime = useComposerRuntime()
   const text = useComposer((s) => s.text)
-  const [open, setOpen] = useState(false)
-  const [query, setQuery] = useState("")
+  // Text the user pressed Escape on. Dismissal is a real user action, so it
+  // gets state; visibility itself is derived from the composer text below.
+  const [dismissedFor, setDismissedFor] = useState<string | null>(null)
   const [allFiles, setAllFiles] = useState<FileItem[]>([])
   const [serverFiles, setServerFiles] = useState<FileItem[] | null>(null)
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -115,18 +116,26 @@ export function FileTagPopover({ textareaRef, workingDir }: FileTagPopoverProps)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const abortRef = useRef<AbortController>(undefined)
 
-  // Detect @ trigger
-  useEffect(() => {
-    const match = text.match(/@(\S*)$/)
-    if (match) {
-      setOpen(true)
-      setQuery(match[1] ?? "")
-      setSelectedIndex(0)
-    } else {
-      setOpen(false)
-      setQuery("")
-    }
-  }, [text])
+  // The @ trigger is DERIVED from text, not synced into state by an effect.
+  //
+  // The effect version ran three setStates per character. Each schedules a
+  // commit, and React's same-value bailout is skipped whenever the fiber
+  // already has pending lanes — which, under iOS voice dictation, is always.
+  // Fifty consecutive commits that each leave work pending is exactly the
+  // condition for React error #185. See draft-outbox/DESIGN.md § Update loops.
+  const match = text.match(/@(\S*)$/)
+  const query = match ? (match[1] ?? "") : ""
+  const open = match !== null && dismissedFor !== text
+
+  // Reset the highlighted row when the text changes. Render-phase adjustment
+  // (React's documented "derive state from props" escape hatch): re-renders
+  // this component before the commit instead of scheduling another one, and
+  // the guard makes it a no-op in the common case.
+  const lastTextRef = useRef(text)
+  if (lastTextRef.current !== text) {
+    lastTextRef.current = text
+    if (selectedIndex !== 0) setSelectedIndex(0)
+  }
 
   // Fetch file tree when popover opens (with limit)
   useEffect(() => {
@@ -172,14 +181,10 @@ export function FileTagPopover({ textareaRef, workingDir }: FileTagPopoverProps)
 
   // Server-side search when truncated and user has typed a query
   useEffect(() => {
-    if (!truncated || !open) {
-      setServerFiles(null)
-      return
-    }
-
-    // No query — show the initial batch
-    if (!query) {
-      setServerFiles(null)
+    // Guarded so the common "nothing to search" path doesn't schedule a
+    // render on every character typed while the popover is open.
+    if (!truncated || !open || !query) {
+      setServerFiles((prev) => (prev === null ? prev : null))
       return
     }
 
@@ -228,8 +233,9 @@ export function FileTagPopover({ textareaRef, workingDir }: FileTagPopoverProps)
   const handleSelect = useCallback(
     (filePath: string) => {
       const newText = text.replace(/@\S*$/, "@" + filePath + " ")
+      // No setOpen needed: the new text ends in a space, so the @ trigger
+      // no longer matches on the next render.
       composerRuntime.setText(newText)
-      setOpen(false)
       textareaRef.current?.focus()
     },
     [text, composerRuntime, textareaRef]
@@ -270,13 +276,13 @@ export function FileTagPopover({ textareaRef, workingDir }: FileTagPopoverProps)
           handleSelect(filtered[selectedIndex]?.path ?? "")
         }
       } else if (e.key === "Escape") {
-        setOpen(false)
+        setDismissedFor(text)
       }
     }
 
     textarea.addEventListener("keydown", handleKeyDown, { capture: true })
     return () => textarea.removeEventListener("keydown", handleKeyDown, { capture: true })
-  }, [open, filtered, selectedIndex, handleSelect, textareaRef])
+  }, [open, filtered, selectedIndex, handleSelect, textareaRef, text])
 
   if (!open) return null
 

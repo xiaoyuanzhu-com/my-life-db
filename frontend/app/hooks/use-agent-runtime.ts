@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { probe } from "~/lib/diagnostics/update-probe"
 import { useExternalStoreRuntime } from "@assistant-ui/react"
 import type {
   ThreadMessageLike,
@@ -1089,7 +1090,7 @@ export function useAgentRuntime(options: {
         info.code === 1009
           ? `message too large for server (${info.reason || "1009"})`
           : `connection closed (code ${info.code}: ${info.reason || "unknown"})`
-      for (const item of ob.outbox) {
+      for (const item of ob.getOutbox()) {
         if (item.state === "inflight") {
           ob.notifyRejected(item.messageId, reason)
         }
@@ -1186,8 +1187,12 @@ export function useAgentRuntime(options: {
 
   // ── ExternalStoreAdapter ──────────────────────────────────────────
 
+  // Rebuilding this runs assistant-ui's dep-less `setAdapter` → store-wide
+  // notify → every subscriber re-renders. It must not happen while typing;
+  // the probe (comma operator, so the object literal below is untouched) puts
+  // the count on the crash screen if it ever does again.
   const adapter: ExternalStoreAdapter<ThreadMessageLike> = useMemo(
-    () => ({
+    () => (probe("AgentRuntime.adapterRebuild"), {
       messages: rootMessages,
       convertMessage: (m) => m,
       isRunning,
