@@ -41,6 +41,11 @@ type Config struct {
 	// Agent LLM
 	AgentLLM AgentLLMConfig
 
+	// DisableAgentPool prevents startup from pre-warming Claude ACP processes.
+	// Isolated tests and embedded callers can set this to avoid launching
+	// unrelated agent children; normal application wiring leaves it false.
+	DisableAgentPool bool
+
 	// Optional loopback hi-agent bridge for auto-run review notifications. The bridge is
 	// disabled unless both fields are configured explicitly.
 	HiAgent HiAgentConfig

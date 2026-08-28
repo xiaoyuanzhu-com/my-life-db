@@ -28,13 +28,26 @@ func resolveACPModel(agentType agentsdk.AgentType, modelID string) string {
 	return modelID
 }
 
+// sessionCreator is the narrow ACP creation seam used by AgentManager.
+//
+// Production supplies *agentsdk.Client. Package-internal tests may supply a
+// client configured with a disposable ACP command without constructing the
+// server's hard-coded CLI pool or touching a live host.
+type sessionCreator interface {
+	CreateSession(context.Context, agentsdk.SessionConfig) (agentsdk.Session, error)
+	Shutdown(context.Context) error
+}
+
 // AgentManager owns the in-memory state for active ACP agent sessions and
 // coordinates their lifecycle. Replaces the package-level globals
 // (acpSessions, agentSessionStates) and free functions (CreateSession,
 // StoreAcpSession, CleanupAgentSession, ...) that previously lived in api/.
 type AgentManager struct {
 	srv            *server.Server
-	agentClient    *agentsdk.Client
+	agentClient    sessionCreator
+	agentClientMu  sync.RWMutex
+	shutdownOnce   sync.Once
+	shutdownErr    error
 	notifService   *notifications.Service
 	shutdownCtx    context.Context
 	frameStore     *agentsdk.FrameStore // optional, may be nil
@@ -52,7 +65,7 @@ func NewAgentManager(srv *server.Server) *AgentManager {
 	if srv.Cfg().HiAgent.Incomplete() {
 		log.Warn().Msg("HI_AGENT_BASE_URL and HI_AGENT_SURFACE_TOKEN must be configured together; external auto-run notifications disabled")
 	}
-	return &AgentManager{
+	m := &AgentManager{
 		srv:            srv,
 		agentClient:    srv.AgentClient(),
 		notifService:   srv.Notifications(),
@@ -61,6 +74,41 @@ func NewAgentManager(srv *server.Server) *AgentManager {
 		sessions:       make(map[string]agentsdk.Session),
 		states:         make(map[string]*agentsdk.SessionState),
 	}
+	// The server owns the shutdown context, but the manager may be supplied a
+	// package-internal ACP client in an isolated test (or by an embedded caller).
+	// Close the current client when that context is cancelled so replacing the
+	// server's default client cannot orphan child ACP processes.
+	go func() {
+		<-m.shutdownCtx.Done()
+		if err := m.Shutdown(context.Background()); err != nil {
+			log.Warn().Err(err).Msg("agent manager client shutdown failed")
+		}
+	}()
+	return m
+}
+
+func (m *AgentManager) setSessionCreator(client sessionCreator) {
+	m.agentClientMu.Lock()
+	m.agentClient = client
+	m.agentClientMu.Unlock()
+}
+
+func (m *AgentManager) currentSessionCreator() sessionCreator {
+	m.agentClientMu.RLock()
+	defer m.agentClientMu.RUnlock()
+	return m.agentClient
+}
+
+// Shutdown closes the manager's current ACP client exactly once. Server.Shutdown
+// still closes the server-owned client; this method is what keeps a replaced
+// package-internal client from surviving that shutdown.
+func (m *AgentManager) Shutdown(ctx context.Context) error {
+	m.shutdownOnce.Do(func() {
+		if client := m.currentSessionCreator(); client != nil {
+			m.shutdownErr = client.Shutdown(ctx)
+		}
+	})
+	return m.shutdownErr
 }
 
 // SetFrameStore wires a FrameStore into the manager. Must be called before
@@ -354,7 +402,11 @@ func (m *AgentManager) EnsureLiveSession(sessionID string, sessionState *agentsd
 	defaultModel, _ := resolveSessionModel(persistedOpts["model"], gatewayModels)
 
 	log.Info().Str("sessionId", sessionID).Msg("no live ACP session, creating lazily")
-	sess, err := m.agentClient.CreateSession(m.shutdownCtx, agentsdk.SessionConfig{
+	client := m.currentSessionCreator()
+	if client == nil {
+		return nil, fmt.Errorf("agent client is unavailable")
+	}
+	sess, err := client.CreateSession(m.shutdownCtx, agentsdk.SessionConfig{
 		Agent:        agentType,
 		Mode:         mode,
 		WorkingDir:   workDir,
@@ -859,7 +911,12 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 	}
 	systemPrompt := server.BuildAgentSystemPrompt(m.srv.Cfg().UserDataDir, storageID)
 
-	sess, err := m.agentClient.CreateSession(ctx, agentsdk.SessionConfig{
+	client := m.currentSessionCreator()
+	if client == nil {
+		m.releaseExternalLease(externalLease)
+		return nil, fmt.Errorf("agent client is unavailable")
+	}
+	sess, err := client.CreateSession(ctx, agentsdk.SessionConfig{
 		Agent:        agentType,
 		Mode:         params.PermissionMode,
 		WorkingDir:   params.WorkingDir,

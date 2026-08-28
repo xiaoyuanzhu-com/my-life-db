@@ -465,7 +465,9 @@ base_url = %q
 		// retention is layered on via read-merge-write.
 		agentsdk.EnsureRetentionConfigs()
 
-		s.agentClient.StartPool(ctx, agentsdk.AgentClaudeCode, 3)
+		if !cfg.DisableAgentPool {
+			s.agentClient.StartPool(ctx, agentsdk.AgentClaudeCode, 3)
+		}
 
 		log.Info().
 			Bool("agent_llm", cfg.AgentLLM.HasAgentLLM()).
