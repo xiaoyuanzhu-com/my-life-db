@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -72,7 +73,8 @@ func TestAgentManagerAutoRunACPInjectionLifecycle(t *testing.T) {
 		marker := "weekly-report-acp-seam-complete-" + uuid.NewString()
 		t.Setenv(acpStubModeEnv, "complete")
 		t.Setenv(acpStubObserveEnv, observation)
-		mgr.setSessionCreator(newACPStubClient())
+		mustSetSessionCreator(t, mgr, newACPStubClient())
+		registrationBaseline := capture.registrationCount()
 		releaseBaseline := capture.releaseCount()
 
 		handle, err := mgr.CreateSession(context.Background(), SessionParams{
@@ -95,8 +97,13 @@ func TestAgentManagerAutoRunACPInjectionLifecycle(t *testing.T) {
 		waitFor(t, "external lease release", 10*time.Second, func() bool {
 			return capture.releaseCount() == releaseBaseline+1
 		})
-		assertStubObservation(t, observation, marker)
+		if got := capture.registrationCount(); got != registrationBaseline+1 {
+			t.Fatalf("registrations = %d, want %d", got, registrationBaseline+1)
+		}
+		assertStubObservation(t, observation, marker, routerURL+capture.mcpPath())
+		capture.assertLatestLeaseLifecycle(t)
 		assertReceiverEvidence(t, routerURL, routerDataDir, capture.slug(), marker)
+		assertReleasedCapabilityRejected(t, routerURL, capture)
 		_ = handle.AcpSession.Close()
 		waitDone(t, handle.AcpSession.Done())
 	})
@@ -112,7 +119,7 @@ func TestAgentManagerAutoRunACPInjectionLifecycle(t *testing.T) {
 			Name:    "missing disposable ACP",
 			Command: filepath.Join(t.TempDir(), "does-not-exist"),
 		})
-		mgr.setSessionCreator(stubClient)
+		mustSetSessionCreator(t, mgr, stubClient)
 
 		_, err := mgr.CreateSession(context.Background(), SessionParams{
 			AgentType: "opencode",
@@ -126,14 +133,14 @@ func TestAgentManagerAutoRunACPInjectionLifecycle(t *testing.T) {
 		waitFor(t, "failed-creation lease release", 10*time.Second, func() bool {
 			return capture.releaseCount() == releaseBaseline+1
 		})
-		mgr.setSessionCreator(newACPStubClient())
+		mustSetSessionCreator(t, mgr, newACPStubClient())
 	})
 
 	t.Run("prompt cancellation releases the lease", func(t *testing.T) {
 		observation := t.TempDir() + "/cancel.json"
 		t.Setenv(acpStubModeEnv, "block")
 		t.Setenv(acpStubObserveEnv, observation)
-		mgr.setSessionCreator(newACPStubClient())
+		mustSetSessionCreator(t, mgr, newACPStubClient())
 		releaseBaseline := capture.releaseCount()
 
 		handle, err := mgr.CreateSession(context.Background(), SessionParams{
@@ -166,7 +173,7 @@ func TestAgentManagerAutoRunACPInjectionLifecycle(t *testing.T) {
 		t.Setenv(acpStubModeEnv, "complete")
 		t.Setenv(acpStubObserveEnv, observation)
 		shutdownClient := &shutdownTrackingSessionCreator{sessionCreator: newACPStubClient()}
-		mgr.setSessionCreator(shutdownClient)
+		mustSetSessionCreator(t, mgr, shutdownClient)
 		releaseBaseline := capture.releaseCount()
 
 		handle, err := mgr.CreateSession(context.Background(), SessionParams{
@@ -204,6 +211,124 @@ func TestAgentManagerAutoRunACPInjectionLifecycle(t *testing.T) {
 	})
 }
 
+func TestAgentManagerSessionCreatorCoordination(t *testing.T) {
+	t.Run("server owned creator is not closed by manager shutdown", func(t *testing.T) {
+		serverOwned := &creatorLifecycleProbe{}
+		mgr := newCreatorLifecycleTestManager(serverOwned, false)
+
+		client, release, err := mgr.acquireSessionCreator()
+		if err != nil {
+			t.Fatalf("acquireSessionCreator: %v", err)
+		}
+		if client != serverOwned {
+			t.Fatal("acquireSessionCreator returned the wrong creator")
+		}
+
+		shutdownDone := make(chan error, 1)
+		go func() {
+			shutdownDone <- mgr.Shutdown(context.Background())
+		}()
+		waitFor(t, "manager shutdown admission close", time.Second, func() bool {
+			mgr.agentClientMu.Lock()
+			defer mgr.agentClientMu.Unlock()
+			return mgr.agentClientClosed
+		})
+		select {
+		case err := <-shutdownDone:
+			t.Fatalf("Shutdown returned before the active create released: %v", err)
+		case <-time.After(100 * time.Millisecond):
+		}
+		if got := serverOwned.shutdownCount(); got != 0 {
+			t.Fatalf("server-owned creator shutdown count while active = %d, want 0", got)
+		}
+
+		release()
+		if err := <-shutdownDone; err != nil {
+			t.Fatalf("Shutdown: %v", err)
+		}
+		if got := serverOwned.shutdownCount(); got != 0 {
+			t.Fatalf("server-owned creator shutdown count = %d, want 0", got)
+		}
+	})
+
+	t.Run("manager owned replacement is closed once after active create", func(t *testing.T) {
+		serverOwned := &creatorLifecycleProbe{}
+		firstInjected := &creatorLifecycleProbe{}
+		secondInjected := &creatorLifecycleProbe{}
+		rejectedReplacement := &creatorLifecycleProbe{}
+		mgr := newCreatorLifecycleTestManager(serverOwned, false)
+
+		if err := mgr.setSessionCreator(firstInjected); err != nil {
+			t.Fatalf("set first injected creator: %v", err)
+		}
+		if got := serverOwned.shutdownCount(); got != 0 {
+			t.Fatalf("server-owned creator shutdown during replacement = %d, want 0", got)
+		}
+		if err := mgr.setSessionCreator(secondInjected); err != nil {
+			t.Fatalf("set second injected creator: %v", err)
+		}
+		if got := firstInjected.shutdownCount(); got != 1 {
+			t.Fatalf("replaced manager-owned creator shutdown count = %d, want 1", got)
+		}
+
+		client, release, err := mgr.acquireSessionCreator()
+		if err != nil {
+			t.Fatalf("acquireSessionCreator: %v", err)
+		}
+		if client != secondInjected {
+			t.Fatal("acquireSessionCreator returned the wrong injected creator")
+		}
+		if err := mgr.setSessionCreator(rejectedReplacement); err == nil ||
+			!strings.Contains(err.Error(), "create operation") {
+			t.Fatalf("active replacement error = %v", err)
+		}
+		if got := rejectedReplacement.shutdownCount(); got != 0 {
+			t.Fatalf("rejected replacement shutdown count = %d, want caller-owned 0", got)
+		}
+
+		shutdownDone := make(chan error, 1)
+		go func() {
+			shutdownDone <- mgr.Shutdown(context.Background())
+		}()
+		waitFor(t, "manager shutdown admission close", time.Second, func() bool {
+			mgr.agentClientMu.Lock()
+			defer mgr.agentClientMu.Unlock()
+			return mgr.agentClientClosed
+		})
+		select {
+		case err := <-shutdownDone:
+			t.Fatalf("Shutdown returned before the active create released: %v", err)
+		case <-time.After(100 * time.Millisecond):
+		}
+		if got := secondInjected.shutdownCount(); got != 0 {
+			t.Fatalf("injected creator shutdown count while active = %d, want 0", got)
+		}
+
+		release()
+		if err := <-shutdownDone; err != nil {
+			t.Fatalf("Shutdown: %v", err)
+		}
+		if got := secondInjected.shutdownCount(); got != 1 {
+			t.Fatalf("injected creator shutdown count = %d, want 1", got)
+		}
+		if err := mgr.Shutdown(context.Background()); err != nil {
+			t.Fatalf("idempotent Shutdown: %v", err)
+		}
+		if got := secondInjected.shutdownCount(); got != 1 {
+			t.Fatalf("idempotent shutdown count = %d, want 1", got)
+		}
+		if _, _, err := mgr.acquireSessionCreator(); !errors.Is(err, errAgentManagerShuttingDown) {
+			t.Fatalf("post-shutdown acquire error = %v", err)
+		}
+		if _, err := mgr.CreateSession(context.Background(), SessionParams{
+			Source:    "auto",
+			AgentName: "weekly-report-friday",
+		}); !errors.Is(err, errAgentManagerShuttingDown) {
+			t.Fatalf("post-shutdown CreateSession error = %v", err)
+		}
+	})
+}
+
 // TestACPStubProcess is invoked by agentsdk.Client in the parent test. Its
 // stdout is reserved for ACP JSON-RPC; all durable observations go to the
 // path supplied by the parent.
@@ -233,6 +358,7 @@ type acpInjectionStubAgent struct {
 type acpStubObservation struct {
 	MCPServerCount       int      `json:"mcp_server_count"`
 	ExternalMCPFound     bool     `json:"external_mcp_found"`
+	ExternalMCPURL       string   `json:"external_mcp_url,omitempty"`
 	CapabilityHeaderSeen bool     `json:"capability_header_seen"`
 	URLContainsSecret    bool     `json:"url_contains_capability"`
 	PromptStarted        bool     `json:"prompt_started"`
@@ -279,6 +405,7 @@ func (a *acpInjectionStubAgent) NewSession(_ context.Context, params acp.NewSess
 		copy := *srv.Http
 		a.externalMCP = &copy
 		a.observed.ExternalMCPFound = true
+		a.observed.ExternalMCPURL = copy.Url
 		a.observed.CapabilityHeaderSeen = hasHeader(copy.Headers, "Authorization", "Bearer ")
 		a.observed.URLContainsSecret = strings.Contains(copy.Url, "Bearer ") || strings.Contains(copy.Url, "capability")
 	}
@@ -411,16 +538,57 @@ func callMCP(ctx context.Context, srv *acp.McpServerHttpInline, method string, p
 }
 
 type leaseCaptureTransport struct {
-	base      http.RoundTripper
-	mu        sync.Mutex
-	slugValue string
-	releases  int
+	base             http.RoundTripper
+	mu               sync.Mutex
+	slugValue        string
+	ownerValue       string
+	mcpPathValue     string
+	capabilityValue  string
+	expiresAtValue   time.Time
+	registrationAuth string
+	registrations    int
+	releases         int
+	releaseAuth      string
+	releaseStatus    int
 }
 
 type shutdownTrackingSessionCreator struct {
 	sessionCreator
 	mu        sync.Mutex
 	shutdowns int
+}
+
+type creatorLifecycleProbe struct {
+	mu        sync.Mutex
+	shutdowns int
+}
+
+func (c *creatorLifecycleProbe) CreateSession(context.Context, agentsdk.SessionConfig) (agentsdk.Session, error) {
+	return nil, fmt.Errorf("creatorLifecycleProbe.CreateSession must not be called")
+}
+
+func (c *creatorLifecycleProbe) Shutdown(context.Context) error {
+	c.mu.Lock()
+	c.shutdowns++
+	c.mu.Unlock()
+	return nil
+}
+
+func (c *creatorLifecycleProbe) shutdownCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.shutdowns
+}
+
+func newCreatorLifecycleTestManager(client sessionCreator, owned bool) *AgentManager {
+	activeCreatesDone := make(chan struct{})
+	close(activeCreatesDone)
+	return &AgentManager{
+		agentClient:       client,
+		agentClientOwned:  owned,
+		activeCreatesDone: activeCreatesDone,
+		shutdownCtx:       context.Background(),
+	}
 }
 
 func (c *shutdownTrackingSessionCreator) Shutdown(ctx context.Context) error {
@@ -460,11 +628,19 @@ func (c *leaseCaptureTransport) captureResponse(req *http.Request, resp *http.Re
 		}
 		c.mu.Lock()
 		c.slugValue = data.Slug
+		c.ownerValue = data.Owner
+		c.mcpPathValue = data.MCPURL
+		c.capabilityValue = data.Capability
+		c.expiresAtValue = data.ExpiresAt
+		c.registrationAuth = req.Header.Get("Authorization")
+		c.registrations++
 		c.mu.Unlock()
 		resp.Body = newReadCloser(raw)
 	} else if req.Method == http.MethodDelete && strings.HasPrefix(req.URL.Path, "/api/external-sessions/") {
 		c.mu.Lock()
 		c.releases++
+		c.releaseAuth = req.Header.Get("Authorization")
+		c.releaseStatus = resp.StatusCode
 		c.mu.Unlock()
 	}
 	return resp, nil
@@ -480,6 +656,48 @@ func (c *leaseCaptureTransport) releaseCount() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.releases
+}
+
+func (c *leaseCaptureTransport) registrationCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.registrations
+}
+
+func (c *leaseCaptureTransport) mcpPath() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.mcpPathValue
+}
+
+func (c *leaseCaptureTransport) assertLatestLeaseLifecycle(t *testing.T) {
+	t.Helper()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.ownerValue != "cognition" {
+		t.Fatalf("registration owner = %q, want cognition", c.ownerValue)
+	}
+	if c.slugValue == "" || c.slugValue == c.ownerValue {
+		t.Fatalf("registration slug/owner binding = %q/%q", c.slugValue, c.ownerValue)
+	}
+	if c.mcpPathValue == "" || c.capabilityValue == "" || !c.expiresAtValue.After(time.Now()) {
+		t.Fatalf("registration lease is incomplete: mcp=%q capability=%t expiry=%s", c.mcpPathValue, c.capabilityValue != "", c.expiresAtValue)
+	}
+	if c.registrationAuth != "Bearer "+os.Getenv("MLD_HI_AGENT_TEST_SURFACE_TOKEN") {
+		t.Fatalf("registration authorization did not use the isolated surface credential")
+	}
+	if c.releaseAuth != "Bearer "+c.capabilityValue {
+		t.Fatalf("release authorization did not use the returned per-run capability")
+	}
+	if c.releaseStatus != http.StatusNoContent {
+		t.Fatalf("release status = %d, want 204", c.releaseStatus)
+	}
+}
+
+func (c *leaseCaptureTransport) releasedMCP() (string, string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.mcpPathValue, c.capabilityValue
 }
 
 func newACPInjectionTestManager(t *testing.T, routerURL, surfaceToken, simpleExtensionDir string) (*AgentManager, *server.Server, *leaseCaptureTransport) {
@@ -510,10 +728,11 @@ func newACPInjectionTestManager(t *testing.T, routerURL, surfaceToken, simpleExt
 	capture := &leaseCaptureTransport{}
 	mgr := NewAgentManager(srv)
 	mgr.externalBridge.httpClient = &http.Client{
-		Transport: capture,
-		Timeout:   10 * time.Second,
+		Transport:     capture,
+		Timeout:       10 * time.Second,
+		CheckRedirect: rejectExternalRedirect,
 	}
-	mgr.setSessionCreator(newACPStubClient())
+	mustSetSessionCreator(t, mgr, newACPStubClient())
 	return mgr, srv, capture
 }
 
@@ -526,7 +745,7 @@ func newACPStubClient() *agentsdk.Client {
 	})
 }
 
-func assertStubObservation(t *testing.T, path, marker string) {
+func assertStubObservation(t *testing.T, path, marker, wantMCPURL string) {
 	t.Helper()
 	var obs acpStubObservation
 	raw, err := os.ReadFile(path)
@@ -542,6 +761,9 @@ func assertStubObservation(t *testing.T, path, marker string) {
 	if !obs.CapabilityHeaderSeen {
 		t.Fatalf("injected MCP server lacked a bearer capability: %+v", obs)
 	}
+	if obs.ExternalMCPURL != wantMCPURL {
+		t.Fatalf("injected MCP URL = %q, want host-returned %q", obs.ExternalMCPURL, wantMCPURL)
+	}
 	if obs.URLContainsSecret {
 		t.Fatalf("MCP URL contains capability material: %+v", obs)
 	}
@@ -553,6 +775,13 @@ func assertStubObservation(t *testing.T, path, marker string) {
 	}
 	if obs.Prompt != marker {
 		t.Fatalf("stub prompt = %q, want marker %q", obs.Prompt, marker)
+	}
+}
+
+func mustSetSessionCreator(t *testing.T, mgr *AgentManager, client sessionCreator) {
+	t.Helper()
+	if err := mgr.setSessionCreator(client); err != nil {
+		t.Fatalf("setSessionCreator: %v", err)
 	}
 }
 
@@ -594,6 +823,26 @@ func assertReceiverEvidence(t *testing.T, routerURL, routerDataDir, slug, marker
 		raw, err := os.ReadFile(mailPath)
 		return err == nil && strings.Contains(string(raw), slug) && strings.Contains(string(raw), marker)
 	})
+}
+
+func assertReleasedCapabilityRejected(t *testing.T, routerURL string, capture *leaseCaptureTransport) {
+	t.Helper()
+	mcpPath, capability := capture.releasedMCP()
+	body := strings.NewReader(`{"jsonrpc":"2.0","id":"released","method":"tools/list","params":{}}`)
+	req, err := http.NewRequest(http.MethodPost, routerURL+mcpPath, body)
+	if err != nil {
+		t.Fatalf("build post-release MCP request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+capability)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("post-release MCP request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("post-release MCP status = %d, want 401", resp.StatusCode)
+	}
 }
 
 func observationHas(path, needle string) bool {

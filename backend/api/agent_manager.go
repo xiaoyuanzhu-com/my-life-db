@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -43,15 +44,19 @@ type sessionCreator interface {
 // (acpSessions, agentSessionStates) and free functions (CreateSession,
 // StoreAcpSession, CleanupAgentSession, ...) that previously lived in api/.
 type AgentManager struct {
-	srv            *server.Server
-	agentClient    sessionCreator
-	agentClientMu  sync.RWMutex
-	shutdownOnce   sync.Once
-	shutdownErr    error
-	notifService   *notifications.Service
-	shutdownCtx    context.Context
-	frameStore     *agentsdk.FrameStore // optional, may be nil
-	externalBridge *hiAgentExternalClient
+	srv                *server.Server
+	agentClient        sessionCreator
+	agentClientMu      sync.Mutex
+	agentClientOwned   bool
+	agentClientClosed  bool
+	activeCreates      int
+	activeCreatesDone  chan struct{}
+	clientShutdownDone chan struct{}
+	clientShutdownErr  error
+	notifService       *notifications.Service
+	shutdownCtx        context.Context
+	frameStore         *agentsdk.FrameStore // optional, may be nil
+	externalBridge     *hiAgentExternalClient
 
 	sessionsMu sync.Mutex
 	sessions   map[string]agentsdk.Session
@@ -60,19 +65,25 @@ type AgentManager struct {
 	states   map[string]*agentsdk.SessionState
 }
 
+var errAgentManagerShuttingDown = errors.New("agent manager is shutting down")
+
 // NewAgentManager constructs a manager wired to the given server's components.
 func NewAgentManager(srv *server.Server) *AgentManager {
 	if srv.Cfg().HiAgent.Incomplete() {
 		log.Warn().Msg("HI_AGENT_BASE_URL and HI_AGENT_SURFACE_TOKEN must be configured together; external auto-run notifications disabled")
 	}
+	activeCreatesDone := make(chan struct{})
+	close(activeCreatesDone)
 	m := &AgentManager{
-		srv:            srv,
-		agentClient:    srv.AgentClient(),
-		notifService:   srv.Notifications(),
-		shutdownCtx:    srv.ShutdownContext(),
-		externalBridge: newHiAgentExternalClient(srv.Cfg().HiAgent),
-		sessions:       make(map[string]agentsdk.Session),
-		states:         make(map[string]*agentsdk.SessionState),
+		srv:               srv,
+		agentClient:       srv.AgentClient(),
+		agentClientOwned:  false,
+		activeCreatesDone: activeCreatesDone,
+		notifService:      srv.Notifications(),
+		shutdownCtx:       srv.ShutdownContext(),
+		externalBridge:    newHiAgentExternalClient(srv.Cfg().HiAgent),
+		sessions:          make(map[string]agentsdk.Session),
+		states:            make(map[string]*agentsdk.SessionState),
 	}
 	// The server owns the shutdown context, but the manager may be supplied a
 	// package-internal ACP client in an isolated test (or by an embedded caller).
@@ -87,28 +98,126 @@ func NewAgentManager(srv *server.Server) *AgentManager {
 	return m
 }
 
-func (m *AgentManager) setSessionCreator(client sessionCreator) {
+// setSessionCreator installs a manager-owned creator for package-internal
+// tests and embedded callers. Production keeps the server-owned default.
+// Replacement is only safe while no high-level create operation is active.
+func (m *AgentManager) setSessionCreator(client sessionCreator) error {
+	if client == nil {
+		return fmt.Errorf("session creator is nil")
+	}
 	m.agentClientMu.Lock()
+	if m.agentClientClosed {
+		m.agentClientMu.Unlock()
+		return errAgentManagerShuttingDown
+	}
+	if m.activeCreates != 0 {
+		m.agentClientMu.Unlock()
+		return fmt.Errorf("cannot replace session creator while %d create operation(s) are active", m.activeCreates)
+	}
+	previous := m.agentClient
+	previousOwned := m.agentClientOwned
 	m.agentClient = client
+	m.agentClientOwned = true
 	m.agentClientMu.Unlock()
-}
 
-func (m *AgentManager) currentSessionCreator() sessionCreator {
-	m.agentClientMu.RLock()
-	defer m.agentClientMu.RUnlock()
-	return m.agentClient
-}
-
-// Shutdown closes the manager's current ACP client exactly once. Server.Shutdown
-// still closes the server-owned client; this method is what keeps a replaced
-// package-internal client from surviving that shutdown.
-func (m *AgentManager) Shutdown(ctx context.Context) error {
-	m.shutdownOnce.Do(func() {
-		if client := m.currentSessionCreator(); client != nil {
-			m.shutdownErr = client.Shutdown(ctx)
+	if previousOwned && previous != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := previous.Shutdown(ctx); err != nil {
+			return fmt.Errorf("shutdown replaced session creator: %w", err)
 		}
-	})
-	return m.shutdownErr
+	}
+	return nil
+}
+
+func (m *AgentManager) acquireSessionCreator() (sessionCreator, func(), error) {
+	m.agentClientMu.Lock()
+	if m.agentClientClosed {
+		m.agentClientMu.Unlock()
+		return nil, nil, errAgentManagerShuttingDown
+	}
+	if m.shutdownCtx != nil {
+		select {
+		case <-m.shutdownCtx.Done():
+			m.agentClientClosed = true
+			m.agentClientMu.Unlock()
+			return nil, nil, errAgentManagerShuttingDown
+		default:
+		}
+	}
+	if m.agentClient == nil {
+		m.agentClientMu.Unlock()
+		return nil, nil, fmt.Errorf("agent client is unavailable")
+	}
+	if m.activeCreates == 0 {
+		m.activeCreatesDone = make(chan struct{})
+	}
+	m.activeCreates++
+	client := m.agentClient
+	m.agentClientMu.Unlock()
+
+	var once sync.Once
+	release := func() {
+		once.Do(func() {
+			m.agentClientMu.Lock()
+			m.activeCreates--
+			if m.activeCreates == 0 {
+				close(m.activeCreatesDone)
+			}
+			m.agentClientMu.Unlock()
+		})
+	}
+	return client, release, nil
+}
+
+// Shutdown first prevents new high-level creates, waits for any create already
+// in progress to finish its registration/setup path, and then closes exactly
+// one manager-owned injected creator. The server-owned default remains the
+// responsibility of server.Server.Shutdown.
+func (m *AgentManager) Shutdown(ctx context.Context) error {
+	m.agentClientMu.Lock()
+	m.agentClientClosed = true
+	activeCreatesDone := m.activeCreatesDone
+	m.agentClientMu.Unlock()
+
+	select {
+	case <-activeCreatesDone:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	m.agentClientMu.Lock()
+	if m.clientShutdownDone != nil {
+		done := m.clientShutdownDone
+		m.agentClientMu.Unlock()
+		select {
+		case <-done:
+			m.agentClientMu.Lock()
+			err := m.clientShutdownErr
+			m.agentClientMu.Unlock()
+			return err
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	done := make(chan struct{})
+	m.clientShutdownDone = done
+	client := m.agentClient
+	owned := m.agentClientOwned
+	m.agentClient = nil
+	m.agentClientOwned = false
+	m.agentClientMu.Unlock()
+
+	var shutdownErr error
+	if owned && client != nil {
+		shutdownErr = client.Shutdown(ctx)
+	}
+
+	m.agentClientMu.Lock()
+	m.clientShutdownErr = shutdownErr
+	close(done)
+	m.agentClientMu.Unlock()
+	return shutdownErr
 }
 
 // SetFrameStore wires a FrameStore into the manager. Must be called before
@@ -376,6 +485,12 @@ func (m *AgentManager) reapIdleSessions(maxIdle time.Duration) {
 // already has frames in memory, LoadSession is called so the new agent
 // process inherits conversation memory.
 func (m *AgentManager) EnsureLiveSession(sessionID string, sessionState *agentsdk.SessionState) (agentsdk.Session, error) {
+	client, releaseCreator, err := m.acquireSessionCreator()
+	if err != nil {
+		return nil, err
+	}
+	defer releaseCreator()
+
 	if existing, ok := m.GetSession(sessionID); ok {
 		select {
 		case <-existing.Done():
@@ -402,10 +517,6 @@ func (m *AgentManager) EnsureLiveSession(sessionID string, sessionState *agentsd
 	defaultModel, _ := resolveSessionModel(persistedOpts["model"], gatewayModels)
 
 	log.Info().Str("sessionId", sessionID).Msg("no live ACP session, creating lazily")
-	client := m.currentSessionCreator()
-	if client == nil {
-		return nil, fmt.Errorf("agent client is unavailable")
-	}
 	sess, err := client.CreateSession(m.shutdownCtx, agentsdk.SessionConfig{
 		Agent:        agentType,
 		Mode:         mode,
@@ -848,6 +959,12 @@ func broadcastConfigUpdate(sessionState *agentsdk.SessionState, gatewayModels []
 // stays alive for interactive WebSocket use; auto-run callers close it when
 // the prompt completes.
 func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) (*SessionHandle, error) {
+	client, releaseCreator, err := m.acquireSessionCreator()
+	if err != nil {
+		return nil, err
+	}
+	defer releaseCreator()
+
 	agentTypeStr := params.AgentType
 	if agentTypeStr == "" {
 		agentTypeStr = "claude_code"
@@ -897,7 +1014,6 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 			if params.AgentName == "" {
 				return nil, fmt.Errorf("auto-run session is missing its agent name for hi-agent task binding")
 			}
-			var err error
 			externalLease, err = m.externalBridge.register(ctx, params.Title, params.AgentName)
 			if err != nil {
 				return nil, err
@@ -911,11 +1027,6 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 	}
 	systemPrompt := server.BuildAgentSystemPrompt(m.srv.Cfg().UserDataDir, storageID)
 
-	client := m.currentSessionCreator()
-	if client == nil {
-		m.releaseExternalLease(externalLease)
-		return nil, fmt.Errorf("agent client is unavailable")
-	}
 	sess, err := client.CreateSession(ctx, agentsdk.SessionConfig{
 		Agent:        agentType,
 		Mode:         params.PermissionMode,

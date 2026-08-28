@@ -1,6 +1,10 @@
 package api
 
-import "github.com/xiaoyuanzhu-com/my-life-db/server"
+import (
+	"context"
+
+	"github.com/xiaoyuanzhu-com/my-life-db/server"
+)
 
 // Handlers holds references to server components and the agent session manager.
 type Handlers struct {
@@ -26,4 +30,13 @@ func NewHandlers(srv *server.Server) *Handlers {
 // auto-run in main.go) can create sessions through the same entrypoint.
 func (h *Handlers) AgentMgr() *AgentManager {
 	return h.agentMgr
+}
+
+// Shutdown stops new high-level ACP creates and waits for any create already
+// in progress before server.Server shuts down its owned agent client.
+func (h *Handlers) Shutdown(ctx context.Context) error {
+	if h == nil || h.agentMgr == nil {
+		return nil
+	}
+	return h.agentMgr.Shutdown(ctx)
 }

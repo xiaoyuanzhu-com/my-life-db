@@ -120,6 +120,10 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute+5*time.Second)
 	defer cancel()
 
+	if err := handlers.Shutdown(ctx); err != nil {
+		log.Error().Err(err).Msg("API handlers shutdown error")
+	}
+
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Error().Err(err).Msg("server shutdown error")
 	}
