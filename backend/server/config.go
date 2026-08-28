@@ -41,6 +41,10 @@ type Config struct {
 	// Agent LLM
 	AgentLLM AgentLLMConfig
 
+	// Optional loopback hi-agent bridge for auto-run review notifications. The bridge is
+	// disabled unless both fields are configured explicitly.
+	HiAgent HiAgentConfig
+
 	// Auth mode: "none" (default) or "password". Third-party OAuth lives in
 	// the cloud gateway, not the backend.
 	AuthMode string
@@ -48,6 +52,22 @@ type Config struct {
 	// Debug settings
 	DBLogQueries bool
 	DebugModules string
+}
+
+// HiAgentConfig configures the opt-in external-session notification bridge.
+// SurfaceToken is only used to create a short-lived per-auto-run capability; it is never
+// copied into an ACP server definition or logged.
+type HiAgentConfig struct {
+	BaseURL      string
+	SurfaceToken string
+}
+
+func (c HiAgentConfig) Enabled() bool {
+	return c.BaseURL != "" && c.SurfaceToken != ""
+}
+
+func (c HiAgentConfig) Incomplete() bool {
+	return (c.BaseURL == "") != (c.SurfaceToken == "")
 }
 
 // IsDevelopment returns true if running in development mode
@@ -139,4 +159,3 @@ func FilterModelsForAgent(models []AgentModelInfo, agentType string) []AgentMode
 func (c *AgentLLMConfig) HasAgentLLM() bool {
 	return c.BaseURL != ""
 }
-

@@ -27,16 +27,16 @@ func main() {
 
 	// Create server config from app config
 	serverCfg := &server.Config{
-		Port:             cfg.Port,
-		Host:             cfg.Host,
-		Env:              cfg.Env,
-		UserDataDir:      cfg.UserDataDir,
-		AppDataDir:       cfg.AppDataDir,
-		DatabasePath:     cfg.DatabasePath,
+		Port:                cfg.Port,
+		Host:                cfg.Host,
+		Env:                 cfg.Env,
+		UserDataDir:         cfg.UserDataDir,
+		AppDataDir:          cfg.AppDataDir,
+		DatabasePath:        cfg.DatabasePath,
 		SimpleExtensionPath: cfg.SimpleExtensionPath,
-		SimpleDictDir:    cfg.SimpleDictDir,
-		FSScanInterval:   1 * time.Hour,
-		FSWatchEnabled:   true,
+		SimpleDictDir:       cfg.SimpleDictDir,
+		FSScanInterval:      1 * time.Hour,
+		FSWatchEnabled:      true,
 		AgentLLM: func() server.AgentLLMConfig {
 			var agentModels []server.AgentModelInfo
 			if cfg.AgentModels != "" {
@@ -50,6 +50,10 @@ func main() {
 				Models:  agentModels,
 			}
 		}(),
+		HiAgent: server.HiAgentConfig{
+			BaseURL:      cfg.HiAgentBaseURL,
+			SurfaceToken: cfg.HiAgentSurfaceToken,
+		},
 	}
 
 	// Create server

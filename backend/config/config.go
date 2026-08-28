@@ -36,9 +36,14 @@ type Config struct {
 	AuthMode string
 
 	// Agent LLM (AGENT_* env vars — translated per agent type)
-	AgentBaseURL    string // AGENT_BASE_URL — LLM gateway (e.g., litellm)
-	AgentAPIKey     string // AGENT_API_KEY — gateway API key
-	AgentModels     string // AGENT_MODELS — JSON array of available models
+	AgentBaseURL string // AGENT_BASE_URL — LLM gateway (e.g., litellm)
+	AgentAPIKey  string // AGENT_API_KEY — gateway API key
+	AgentModels  string // AGENT_MODELS — JSON array of available models
+
+	// Optional loopback hi-agent bridge for auto-run review notifications. Both values
+	// must be present; the capability returned per auto-run is never stored here.
+	HiAgentBaseURL      string // HI_AGENT_BASE_URL
+	HiAgentSurfaceToken string // HI_AGENT_SURFACE_TOKEN
 
 	// Debug settings
 	DBLogQueries bool
@@ -116,9 +121,11 @@ func load() *Config {
 		AuthMode: authMode,
 
 		// Agent LLM
-		AgentBaseURL:    getEnv("AGENT_BASE_URL", ""),
-		AgentAPIKey:     getEnv("AGENT_API_KEY", ""),
-		AgentModels:     getEnv("AGENT_MODELS", ""),
+		AgentBaseURL:        getEnv("AGENT_BASE_URL", ""),
+		AgentAPIKey:         getEnv("AGENT_API_KEY", ""),
+		AgentModels:         getEnv("AGENT_MODELS", ""),
+		HiAgentBaseURL:      getEnv("HI_AGENT_BASE_URL", ""),
+		HiAgentSurfaceToken: getEnv("HI_AGENT_SURFACE_TOKEN", ""),
 
 		// Debug
 		DBLogQueries: getEnv("DB_LOG_QUERIES", "") == "1",
@@ -163,6 +170,7 @@ var appEnvKeys = []string{
 	"MLD_AUTH_MODE",
 	// Agent LLM gateway
 	"AGENT_BASE_URL", "AGENT_API_KEY", "AGENT_MODELS",
+	"HI_AGENT_BASE_URL", "HI_AGENT_SURFACE_TOKEN",
 	// ANTHROPIC_* (deployment mirrors AGENT_* for agent child processes)
 	"ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "ANTHROPIC_CUSTOM_HEADERS",
 	"ANTHROPIC_MODEL", "ANTHROPIC_SMALL_FAST_MODEL",

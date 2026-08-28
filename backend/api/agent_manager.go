@@ -33,11 +33,12 @@ func resolveACPModel(agentType agentsdk.AgentType, modelID string) string {
 // (acpSessions, agentSessionStates) and free functions (CreateSession,
 // StoreAcpSession, CleanupAgentSession, ...) that previously lived in api/.
 type AgentManager struct {
-	srv          *server.Server
-	agentClient  *agentsdk.Client
-	notifService *notifications.Service
-	shutdownCtx  context.Context
-	frameStore   *agentsdk.FrameStore // optional, may be nil
+	srv            *server.Server
+	agentClient    *agentsdk.Client
+	notifService   *notifications.Service
+	shutdownCtx    context.Context
+	frameStore     *agentsdk.FrameStore // optional, may be nil
+	externalBridge *hiAgentExternalClient
 
 	sessionsMu sync.Mutex
 	sessions   map[string]agentsdk.Session
@@ -48,13 +49,17 @@ type AgentManager struct {
 
 // NewAgentManager constructs a manager wired to the given server's components.
 func NewAgentManager(srv *server.Server) *AgentManager {
+	if srv.Cfg().HiAgent.Incomplete() {
+		log.Warn().Msg("HI_AGENT_BASE_URL and HI_AGENT_SURFACE_TOKEN must be configured together; external auto-run notifications disabled")
+	}
 	return &AgentManager{
-		srv:          srv,
-		agentClient:  srv.AgentClient(),
-		notifService: srv.Notifications(),
-		shutdownCtx:  srv.ShutdownContext(),
-		sessions:     make(map[string]agentsdk.Session),
-		states:       make(map[string]*agentsdk.SessionState),
+		srv:            srv,
+		agentClient:    srv.AgentClient(),
+		notifService:   srv.Notifications(),
+		shutdownCtx:    srv.ShutdownContext(),
+		externalBridge: newHiAgentExternalClient(srv.Cfg().HiAgent),
+		sessions:       make(map[string]agentsdk.Session),
+		states:         make(map[string]*agentsdk.SessionState),
 	}
 }
 
@@ -831,7 +836,27 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 		return nil, fmt.Errorf("invalid storageId: %q", storageID)
 	}
 
+	var externalLease *externalSessionLease
+	if params.Source == "auto" {
+		if m.srv.Cfg().HiAgent.Incomplete() {
+			return nil, fmt.Errorf("HI_AGENT_BASE_URL and HI_AGENT_SURFACE_TOKEN must be configured together")
+		}
+		if m.externalBridge != nil {
+			if params.AgentName == "" {
+				return nil, fmt.Errorf("auto-run session is missing its agent name for hi-agent task binding")
+			}
+			var err error
+			externalLease, err = m.externalBridge.register(ctx, params.Title, params.AgentName)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	mcpServers := m.buildSessionMcpServers(storageID)
+	if externalLease != nil {
+		mcpServers = append(mcpServers, externalLease.mcpServer())
+	}
 	systemPrompt := server.BuildAgentSystemPrompt(m.srv.Cfg().UserDataDir, storageID)
 
 	sess, err := m.agentClient.CreateSession(ctx, agentsdk.SessionConfig{
@@ -843,6 +868,7 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 		SystemPrompt: systemPrompt,
 	})
 	if err != nil {
+		m.releaseExternalLease(externalLease)
 		return nil, err
 	}
 
@@ -851,6 +877,7 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 	if err := m.srv.AppDB().CreateAgentSession(ctx, sessionID, agentTypeStr, params.WorkingDir, params.Title, params.Source, params.AgentName, params.TriggerKind, params.TriggerData, storageID); err != nil {
 		log.Error().Err(err).Msg("failed to create agent session in DB")
 		sess.Close()
+		m.releaseExternalLease(externalLease)
 		return nil, err
 	}
 
@@ -912,6 +939,15 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 
 		go m.RunPromptTurn(promptCtx, pCancel, promptDone, sess, sessionState, sessionID, params.Message, params.Source)
 	}
+	if externalLease != nil {
+		if promptDone == nil {
+			// Auto-runs normally have an initial prompt. If a caller creates an empty
+			// auto session, retain the lease only until its cancellation or shutdown.
+			go m.watchExternalLease(ctx, nil, externalLease)
+		} else {
+			go m.watchExternalLease(ctx, promptDone, externalLease)
+		}
+	}
 
 	return &SessionHandle{
 		ID:           sessionID,
@@ -920,6 +956,37 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 		PromptDone:   promptDone,
 		StorageID:    storageID,
 	}, nil
+}
+
+func (m *AgentManager) watchExternalLease(
+	ctx context.Context,
+	promptDone <-chan struct{},
+	lease *externalSessionLease,
+) {
+	if promptDone != nil {
+		select {
+		case <-promptDone:
+		case <-ctx.Done():
+		case <-m.shutdownCtx.Done():
+		}
+	} else {
+		select {
+		case <-ctx.Done():
+		case <-m.shutdownCtx.Done():
+		}
+	}
+	m.releaseExternalLease(lease)
+}
+
+func (m *AgentManager) releaseExternalLease(lease *externalSessionLease) {
+	if lease == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := lease.release(ctx); err != nil {
+		log.Warn().Err(err).Str("slug", lease.slug).Msg("failed to release hi-agent external session")
+	}
 }
 
 // buildSessionMcpServers reads <dataDir>/.mcp.json and converts every enabled
