@@ -30,6 +30,13 @@ export interface StagedAttachment {
   /** Client-side id, stable across state transitions. */
   clientID: string
   state: AttachmentState
+  /**
+   * Object URL for image previews, created from the local File at add time
+   * so the thumbnail survives the uploading → ready transition. Revoked on
+   * remove/clear/unmount. Undefined for non-images and for attachments added
+   * via addReadyAttachments (no local File — the chip falls back to /raw/).
+   */
+  previewUrl?: string
 }
 
 export function useAgentAttachments(opts: { initialStorageId?: string | null } = {}) {
@@ -56,9 +63,12 @@ export function useAgentAttachments(opts: { initialStorageId?: string | null } =
         typeof crypto !== "undefined" && "randomUUID" in crypto
           ? crypto.randomUUID()
           : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+      const previewUrl = file.type.startsWith("image/")
+        ? URL.createObjectURL(file)
+        : undefined
       setItems((prev) => [
         ...prev,
-        { clientID, state: { status: "uploading", progress: 0, file } },
+        { clientID, previewUrl, state: { status: "uploading", progress: 0, file } },
       ])
       const ac = new AbortController()
       abortersRef.current.set(clientID, ac)
@@ -144,6 +154,7 @@ export function useAgentAttachments(opts: { initialStorageId?: string | null } =
     let toDelete: { storageId: string; filename: string } | undefined
     setItems((prev) => {
       const it = prev.find((i) => i.clientID === clientID)
+      if (it?.previewUrl) URL.revokeObjectURL(it.previewUrl)
       if (it?.state.status === "ready") {
         toDelete = {
           storageId: it.state.attachment.storageId,
@@ -166,7 +177,12 @@ export function useAgentAttachments(opts: { initialStorageId?: string | null } =
     // Don't call DELETE — these files were just sent to the agent.
     abortersRef.current.forEach((ac) => ac.abort())
     abortersRef.current.clear()
-    setItems([])
+    setItems((prev) => {
+      prev.forEach((it) => {
+        if (it.previewUrl) URL.revokeObjectURL(it.previewUrl)
+      })
+      return []
+    })
     // Reset to the caller-provided id (existing session) or null (new draft).
     // Existing-session storageId stays stable across turns so every upload
     // lands in the session's single storage folder.
@@ -189,6 +205,7 @@ export function useAgentAttachments(opts: { initialStorageId?: string | null } =
     return () => {
       aborters.current.forEach((ac) => ac.abort())
       for (const it of itemsR.current) {
+        if (it.previewUrl) URL.revokeObjectURL(it.previewUrl)
         if (it.state.status === "ready") {
           deleteAgentAttachment(
             it.state.attachment.storageId,
