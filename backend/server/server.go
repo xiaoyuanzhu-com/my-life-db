@@ -80,16 +80,20 @@ type Server struct {
 }
 
 // codexModelCatalog is a snapshot of the upstream codex CLI's default model
-// catalog (extracted via `codex debug models` from @openai/codex@0.128.0).
+// catalog (extracted via `codex debug models` from @openai/codex@0.155.0),
+// merged with entries from previous snapshots that upstream has since dropped
+// but MyLifeDB still exposes (e.g. gpt-5.3-codex, gpt-5.4-mini, gpt-5.2).
 // Older codex versions ship outdated catalogs; when the gateway routes a
 // session to a model the bundled catalog doesn't know about, codex emits
 // "Model metadata for <slug> not found. Defaulting to fallback metadata"
 // and may apply wrong context-window/reasoning settings. We write this file
 // alongside config.toml and point `model_catalog_json` at it so codex always
-// has metadata for the gpt-5.x slugs MyLifeDB exposes.
+// has metadata for the model slugs MyLifeDB exposes.
 //
-// To refresh: run `codex debug models > codex_model_catalog.json` against
-// the latest @openai/codex release and pretty-print with `python3 -m json.tool`.
+// To refresh: run `codex debug models` against the latest @openai/codex
+// release, merge with the existing file (union by slug, upstream wins on
+// conflict — don't drop slugs MyLifeDB still exposes), and pretty-print
+// with `python3 -m json.tool`.
 //
 //go:embed codex_model_catalog.json
 var codexModelCatalog []byte
