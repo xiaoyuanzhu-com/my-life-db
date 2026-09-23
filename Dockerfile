@@ -77,16 +77,32 @@ RUN pip3 install --break-system-packages "screenitshot>=0.7.2" && \
 #       new home for the package — @zed-industries/claude-agent-acp was deprecated at 0.23.1
 #       and stopped receiving fixes. 0.23.x had a session/new crash that surfaced as
 #       "Query closed before response received"; resolved on the new package in 0.24.2+).
-#   - @zed-industries/codex-acp             → `codex-acp`        (OpenAI Codex ACP wrapper)
+#   - @agentclientprotocol/codex-acp        → `codex-acp`        (OpenAI Codex ACP wrapper;
+#       same maintainer migration as the Claude wrapper above — @zed-industries/codex-acp
+#       is deprecated ("replaced by @agentclientprotocol/codex-acp") and last shipped
+#       0.16.0 in June 2026, embedding codex-rs ~0.124. The new package is a JS wrapper
+#       that depends on @openai/codex ^0.155.1. Binary name is unchanged, so the
+#       AgentConfig Command in backend/server/server.go stays "codex-acp").
 #   - @google/gemini-cli                    → `gemini`           (runs ACP via `gemini --acp`)
 #   - @qwen-code/qwen-code                  → `qwen`             (runs ACP via `qwen --acp`)
 #   - opencode-ai                           → `opencode`         (runs ACP via `opencode acp`)
+#
+# VERSIONS ARE PINNED ON PURPOSE. Unpinned, this layer is a cache hit forever:
+# the GHA build cache reuses it on every build, so the image silently keeps
+# whatever versions were resolved the first time it ran. That stranded the
+# bundled Claude Code CLI at 2.1.274 while newer models had already moved on,
+# producing "400 … does not support this model; version 2.1.280 or newer is
+# required" at runtime. Bumping a pin here changes the RUN line, which is what
+# actually invalidates the layer. To upgrade: bump the version, rebuild, redeploy.
+#
+# claude-agent-acp 0.81.0 → @anthropic-ai/claude-agent-sdk 0.3.280 → CLI 2.1.280.
+# codex-acp      1.13.0 → @openai/codex ^0.155.1 (caret on 0.x pins the minor).
 RUN npm install -g \
-    @agentclientprotocol/claude-agent-acp \
-    @zed-industries/codex-acp \
-    @google/gemini-cli \
-    @qwen-code/qwen-code \
-    opencode-ai
+    @agentclientprotocol/claude-agent-acp@0.81.0 \
+    @agentclientprotocol/codex-acp@1.13.0 \
+    @google/gemini-cli@0.60.0 \
+    @qwen-code/qwen-code@0.24.4 \
+    opencode-ai@1.18.32
 
 # Create non-root user with UID/GID 1000 for better host compatibility.
 RUN groupadd -g 1000 xiaoyuanzhu && useradd -u 1000 -g xiaoyuanzhu -m xiaoyuanzhu
