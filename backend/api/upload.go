@@ -1,7 +1,9 @@
 package api
 
 import (
-	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -23,6 +25,10 @@ type uploadFileResult struct {
 	Path   string `json:"path"`
 	Status string `json:"status"` // "created" or "skipped"
 }
+
+// MaxUploadSize caps a single uploaded file, for both TUS and simple PUT.
+// Clients (web + iOS) mirror this value to reject oversized files up front.
+const MaxUploadSize int64 = 10 * 1024 * 1024 * 1024 // 10GB
 
 var (
 	tusHandler     http.Handler
@@ -54,7 +60,7 @@ func InitTUSHandler() (http.Handler, error) {
 			BasePath:                "/api/data/uploads/tus/",
 			StoreComposer:           composer,
 			RespectForwardedHeaders: true,
-			MaxSize:                 10 * 1024 * 1024 * 1024, // 10GB
+			MaxSize:                 MaxUploadSize,
 		})
 		if err != nil {
 			initErr = err
@@ -259,7 +265,9 @@ func (h *Handlers) FinalizeUpload(c *gin.Context) {
 }
 
 // SimpleUpload handles PUT /api/upload/simple/*path
-// Single-request upload for small files, bypassing TUS protocol overhead.
+// Single-request upload, bypassing TUS protocol overhead. Used by the web
+// client for small files and by iOS for all sizes; the body is streamed to
+// disk so file size is bounded only by MaxUploadSize.
 // The URL path is the destination path (directory + filename).
 // Request body is the raw file content, Content-Type header is the MIME type.
 func (h *Handlers) SimpleUpload(c *gin.Context) {
@@ -290,18 +298,49 @@ func (h *Handlers) SimpleUpload(c *gin.Context) {
 		return
 	}
 
-	// Buffer the request body so we can compute hash before deciding whether to write.
-	// Simple uploads are small files (typically ≤1MB), so buffering in memory is fine.
+	// Spool the body to a temp file while hashing it, so large files never
+	// sit in memory. The hash drives dedup before we commit to a write.
 	defer c.Request.Body.Close()
-	bodyBytes, err := io.ReadAll(c.Request.Body)
+	if c.Request.ContentLength > MaxUploadSize {
+		RespondCoded(c, http.StatusRequestEntityTooLarge, "UPLOAD_TOO_LARGE", "File exceeds the 10GB upload limit")
+		return
+	}
+	body := http.MaxBytesReader(c.Writer, c.Request.Body, MaxUploadSize)
+
+	spoolDir := filepath.Join(cfg.AppDataDir, "uploads")
+	if err := os.MkdirAll(spoolDir, 0755); err != nil {
+		log.Error().Err(err).Str("dir", spoolDir).Msg("simple upload: failed to create spool directory")
+		RespondCoded(c, http.StatusInternalServerError, "UPLOAD_WRITE_FAILED", "Failed to create spool directory")
+		return
+	}
+	spool, err := os.CreateTemp(spoolDir, "simple-*")
 	if err != nil {
+		log.Error().Err(err).Msg("simple upload: failed to create spool file")
+		RespondCoded(c, http.StatusInternalServerError, "UPLOAD_WRITE_FAILED", "Failed to create spool file")
+		return
+	}
+	defer func() {
+		spool.Close()
+		os.Remove(spool.Name())
+	}()
+
+	hasher := sha256.New()
+	if _, err := io.Copy(spool, io.TeeReader(body, hasher)); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			RespondCoded(c, http.StatusRequestEntityTooLarge, "UPLOAD_TOO_LARGE", "File exceeds the 10GB upload limit")
+			return
+		}
 		log.Error().Err(err).Msg("simple upload: failed to read request body")
 		RespondCoded(c, http.StatusBadRequest, "UPLOAD_WRITE_FAILED", "Failed to read request body")
 		return
 	}
-
-	// Compute hash of the incoming content for duplicate detection
-	incomingHash, _ := utils.ComputeFileHash(bytes.NewReader(bodyBytes))
+	incomingHash := hex.EncodeToString(hasher.Sum(nil))
+	if _, err := spool.Seek(0, io.SeekStart); err != nil {
+		log.Error().Err(err).Msg("simple upload: failed to rewind spool file")
+		RespondCoded(c, http.StatusInternalServerError, "UPLOAD_WRITE_FAILED", "Failed to write file")
+		return
+	}
 
 	// Content-aware deduplication: skip if identical file already exists
 	dedup := utils.DeduplicateFileWithHash(destDir, filename, incomingHash, func(name string) string {
@@ -325,7 +364,7 @@ func (h *Handlers) SimpleUpload(c *gin.Context) {
 		// Write via fs.Service.WriteFile()
 		result, err := h.server.FS().WriteFile(c.Request.Context(), fs.WriteRequest{
 			Path:            destPath,
-			Content:         bytes.NewReader(bodyBytes),
+			Content:         spool,
 			MimeType:        c.ContentType(),
 			Source:          "upload",
 			ComputeMetadata: true,

@@ -40,10 +40,9 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
-// webdavMaxBodyBytes caps a single request body. Generous (1 GB) so
-// typical document/photo/video uploads from sync clients succeed; larger
-// uploads should use the TUS surface.
-const webdavMaxBodyBytes int64 = 1 << 30 // 1 GB
+// webdavMaxBodyBytes caps a single request body. Matches the file-upload
+// cap (MaxUploadSize, 10GB) so sync clients can push anything the app can.
+const webdavMaxBodyBytes = MaxUploadSize
 
 // WebDAVHandler is the gin entrypoint for /webdav/*path. Auth has already
 // been enforced by AuthMiddleware; this handler just rewrites the path

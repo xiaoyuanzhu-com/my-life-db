@@ -23,6 +23,7 @@
   "UPLOAD_NO_FILES": "没有可上传的文件",
   "UPLOAD_PATH_REQUIRED": "路径不能为空",
   "UPLOAD_FILENAME_REQUIRED": "文件名不能为空",
+  "UPLOAD_TOO_LARGE": "文件超过 10GB 上传上限",
   "UPLOAD_WRITE_FAILED": "写入文件失败",
 
   "SEARCH_QUERY_REQUIRED": "请输入搜索内容",

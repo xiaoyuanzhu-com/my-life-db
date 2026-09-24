@@ -11,7 +11,8 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 )
 
-const maxAttachmentSize = 1 << 30 // 1 GiB
+// maxAttachmentSize matches the file-upload cap (MaxUploadSize, 10GB).
+const maxAttachmentSize = MaxUploadSize
 
 // attachmentsHandler stages user-uploaded files for an in-flight agent session.
 //
@@ -38,14 +39,14 @@ func (a *attachmentsHandler) UploadAttachment(c *gin.Context) {
 	if err != nil {
 		var maxErr *http.MaxBytesError
 		if errors.As(err, &maxErr) {
-			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "file exceeds 1 GiB limit"})
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "file exceeds 10GB limit"})
 			return
 		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing or invalid 'file' field: " + err.Error()})
 		return
 	}
 	if fileHeader.Size > maxAttachmentSize {
-		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "file exceeds 1 GiB limit"})
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "file exceeds 10GB limit"})
 		return
 	}
 

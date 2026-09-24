@@ -22,7 +22,8 @@ import { parseApiError, formatApiError } from '~/lib/errors';
 const {
   MAX_CONCURRENT_UPLOADS,
   SIMPLE_UPLOAD_THRESHOLD,
-  UPLOAD_TIMEOUT_MS,
+  UPLOAD_STALL_TIMEOUT_MS,
+  MAX_UPLOAD_SIZE,
   RETRY_JITTER_PERCENT,
   MAX_RETRY_ATTEMPTS,
 } = QUEUE_CONSTANTS;
@@ -440,6 +441,19 @@ export class UploadQueueManager {
       return;
     }
 
+    // Oversized files can never succeed — fail terminally instead of retrying.
+    if (item.size > MAX_UPLOAD_SIZE) {
+      this.patchItem(item.id, {
+        status: 'failed',
+        errorMessage: formatApiError({ code: 'UPLOAD_TOO_LARGE', message: 'File exceeds the 10GB upload limit' }),
+        nextRetryAt: undefined,
+      });
+      this.activeUploads.delete(item.id);
+      this.notifyProgress();
+      this.processNext();
+      return;
+    }
+
     try {
       const updatedItem = this.patchItem(item.id, {
         status: 'uploading',
@@ -517,6 +531,17 @@ export class UploadQueueManager {
     activeUpload: ActiveUpload
   ): Promise<string> {
     return new Promise((resolve, reject) => {
+      // Stall watchdog: re-armed on every progress event, so only an upload
+      // that stops moving bytes gets aborted. Resume picks up from the offset.
+      let stallTimer: ReturnType<typeof setTimeout> | undefined;
+      const armStallTimer = () => {
+        clearTimeout(stallTimer);
+        stallTimer = setTimeout(() => {
+          upload.abort(true);
+          reject(new Error('Upload stalled'));
+        }, UPLOAD_STALL_TIMEOUT_MS);
+      };
+
       const upload = new tus.Upload(item.blob, {
         endpoint: '/api/data/uploads/tus/',
         retryDelays: [], // we handle retries ourselves
@@ -536,6 +561,7 @@ export class UploadQueueManager {
           reject(error);
         },
         onProgress: (bytesUploaded, bytesTotal) => {
+          armStallTimer();
           const percentage = Math.round((bytesUploaded / bytesTotal) * 100);
           this.patchItem(item.id, { uploadProgress: percentage, tusUploadOffset: bytesUploaded });
           this.notifyProgress();
@@ -576,23 +602,19 @@ export class UploadQueueManager {
       });
 
       activeUpload.tusUpload = upload;
-      upload.start();
-
-      const timeoutId = setTimeout(() => {
-        upload.abort(true);
-        reject(new Error('Upload timeout'));
-      }, UPLOAD_TIMEOUT_MS);
-
       const originalOnSuccess = upload.options.onSuccess;
       const originalOnError = upload.options.onError;
       upload.options.onSuccess = (payload) => {
-        clearTimeout(timeoutId);
+        clearTimeout(stallTimer);
         originalOnSuccess?.(payload);
       };
       upload.options.onError = (error) => {
-        clearTimeout(timeoutId);
+        clearTimeout(stallTimer);
         originalOnError?.(error);
       };
+
+      armStallTimer();
+      upload.start();
     });
   }
 

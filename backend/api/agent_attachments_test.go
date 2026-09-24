@@ -158,7 +158,7 @@ func TestUploadAttachment_TooLarge(t *testing.T) {
 	// We do this by calling UploadAttachment through a route that sets the
 	// reader to a small size before invocation. To avoid changing the handler
 	// API, we exercise the real path: send a body just under and just over
-	// using the default cap. But 1 GiB is impractical in a unit test, so
+	// using the default cap. But 10GB is impractical in a unit test, so
 	// instead we use httptest.NewRequest with ContentLength > cap and a body
 	// that streams through MaxBytesReader, which trips on the first read.
 	//
@@ -176,7 +176,7 @@ func TestUploadAttachment_TooLarge(t *testing.T) {
 
 	r := gin.New()
 	r.POST("/api/agent/attachments", func(c *gin.Context) {
-		// Wrap with a tiny limit so we don't need a 1 GiB test body.
+		// Wrap with a tiny limit so we don't need a 10GB test body.
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, testCap)
 		h.UploadAttachment(c)
 	})

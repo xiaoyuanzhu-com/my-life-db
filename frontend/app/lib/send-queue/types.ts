@@ -88,8 +88,14 @@ export const QUEUE_CONSTANTS = {
   MAX_CONCURRENT_UPLOADS: 6,
   /** Size threshold for simple PUT upload vs TUS (1MB) */
   SIMPLE_UPLOAD_THRESHOLD: 1 * 1024 * 1024,
-  /** Upload timeout (3 minutes in ms) */
-  UPLOAD_TIMEOUT_MS: 3 * 60 * 1000,
+  /**
+   * Stall timeout: abort a TUS upload only when no bytes have moved for this
+   * long. Deliberately not a total-duration cap — a 10GB file on a slow link
+   * legitimately takes hours.
+   */
+  UPLOAD_STALL_TIMEOUT_MS: 60 * 1000,
+  /** Max single-file size (10GB). Mirrors MaxUploadSize in backend/api/upload.go. */
+  MAX_UPLOAD_SIZE: 10 * 1024 * 1024 * 1024,
   /** Jitter percentage for retry delays */
   RETRY_JITTER_PERCENT: 0.1,
   /** Max retry attempts before marking item as terminally failed */
