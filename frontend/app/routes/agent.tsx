@@ -728,7 +728,7 @@ export default function AgentPage() {
         try { return JSON.parse(saved) } catch { /* ignore */ }
       }
     }
-    return { claude_code: { mode: 'bypassPermissions' }, codex: { mode: 'full-access' } }
+    return { claude_code: { mode: 'bypassPermissions' }, codex: { mode: 'agent-full-access' } }
   })
 
   // Per-agent-type default config options from the backend.

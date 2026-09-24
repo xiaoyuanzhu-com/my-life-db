@@ -29,6 +29,26 @@ func resolveACPModel(agentType agentsdk.AgentType, modelID string) string {
 	return modelID
 }
 
+// resolveACPMode maps a persisted/requested mode ID to the ID the target ACP
+// agent accepts. @agentclientprotocol/codex-acp names its presets read-only /
+// agent / agent-full-access; an unknown ID is rejected with invalidParams and
+// the session silently stays on the default "agent" preset, which routes every
+// sandbox escalation through Codex's Guardian auto-reviewer. Pre-migration IDs
+// still live in the DB (permission_mode), in browsers' localStorage defaults,
+// and in auto-run's agent-agnostic "bypassPermissions".
+func resolveACPMode(agentType agentsdk.AgentType, modeID string) string {
+	if agentType != agentsdk.AgentCodex {
+		return modeID
+	}
+	switch modeID {
+	case "full-access", "bypassPermissions":
+		return "agent-full-access"
+	case "auto":
+		return "agent"
+	}
+	return modeID
+}
+
 // sessionCreator is the narrow ACP creation seam used by AgentManager.
 //
 // Production supplies *agentsdk.Client. Package-internal tests may supply a
@@ -681,6 +701,7 @@ func (m *AgentManager) SetupACP(sess agentsdk.Session, sessionID, mode, defaultM
 	})
 
 	if mode != "" {
+		mode = resolveACPMode(sess.AgentType(), mode)
 		if err := sess.SetMode(context.Background(), mode); err != nil {
 			log.Warn().Err(err).Str("sessionId", sessionID).Str("mode", mode).Msg("failed to set initial mode")
 		}

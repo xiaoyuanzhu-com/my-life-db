@@ -101,11 +101,11 @@ var defaultConfigOptions = map[string][]configOption{
 		{
 			ID: "mode", Category: "mode", Name: "Approval Preset", Type: "select",
 			Description:  "Choose an approval and sandboxing preset for your session",
-			CurrentValue: "full-access",
+			CurrentValue: "agent-full-access",
 			Options: []configOptionChoice{
-				{Value: "read-only", Name: "Read Only", Description: "Codex can read files in the current workspace. Approval is required to edit files or access the internet."},
-				{Value: "auto", Name: "Default", Description: "Codex can read and edit files in the current workspace, and run commands. Approval is required to access the internet or edit other files."},
-				{Value: "full-access", Name: "Full Access", Description: "Codex can edit files outside this workspace and access the internet without asking for approval. Exercise caution when using."},
+				{Value: "read-only", Name: "Ask for approval", Description: "Always ask to edit external files and use the internet"},
+				{Value: "agent", Name: "Approve for me", Description: "Only ask for actions detected as potentially unsafe"},
+				{Value: "agent-full-access", Name: "Full access", Description: "Unrestricted access to the internet and any file on your computer"},
 			},
 		},
 	},
