@@ -562,7 +562,9 @@ func (m *AgentManager) EnsureLiveSession(sessionID string, sessionState *agentsd
 		}
 	}
 
-	m.SetupACP(sess, sessionID, mode, defaultModel)
+	if _, err := m.SetupACP(sess, sessionID, mode, defaultModel); err != nil {
+		return nil, err
+	}
 	return sess, nil
 }
 
@@ -674,12 +676,13 @@ func (m *AgentManager) AllRuntimeStates() map[string]SessionRuntimeState {
 // — used by CreateSession, history-load, and lazy-create paths.
 //
 // Model is set via SetModel, which (since ACP v0.13.5) writes the "model"
-// session config option — this bypasses the CLI allowlist so arbitrary gateway
-// names work. Mode uses SetSessionMode (Claude Code only).
+// session config option. Codex requires the selected ID in its model catalog;
+// a rejected selection closes the session and propagates an error.
+// Mode uses SetSessionMode (Claude Code only).
 //
 // When gateway models are configured, model options in config_option_update
 // frames are rewritten so the UI only offers proxy-available models.
-func (m *AgentManager) SetupACP(sess agentsdk.Session, sessionID, mode, defaultModel string) *agentsdk.SessionState {
+func (m *AgentManager) SetupACP(sess agentsdk.Session, sessionID, mode, defaultModel string) (*agentsdk.SessionState, error) {
 	gatewayModels := m.GatewayModels(agentTypeString(sess.AgentType()))
 	sessionState := m.GetOrCreateState(sessionID)
 
@@ -734,9 +737,11 @@ func (m *AgentManager) SetupACP(sess agentsdk.Session, sessionID, mode, defaultM
 	//     We skip the call to avoid a misleading warning.
 	if defaultModel != "" && sess.AgentType() != agentsdk.AgentQwen {
 		modelForACP := resolveACPModel(sess.AgentType(), defaultModel)
-		updatedOpts, err := sess.SetModel(context.Background(), modelForACP)
+		modelCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		updatedOpts, err := setRequiredModel(modelCtx, sess, modelForACP)
+		cancel()
 		if err != nil {
-			log.Warn().Err(err).Str("sessionId", sessionID).Str("model", modelForACP).Msg("failed to set initial model")
+			return nil, err
 		} else {
 			broadcastConfigUpdate(sessionState, gatewayModels, updatedOpts, sessionID, defaultModel)
 		}
@@ -758,7 +763,18 @@ func (m *AgentManager) SetupACP(sess agentsdk.Session, sessionID, mode, defaultM
 	applyModelEffort(sess, sessionState, gatewayModels, defaultModel, sessionID, effortOverride)
 
 	m.StoreSession(sessionID, sess)
-	return sessionState
+	return sessionState, nil
+}
+
+// setRequiredModel fails closed: a rejected selection must never leave a
+// usable session running its previous/default model.
+func setRequiredModel(ctx context.Context, sess agentsdk.Session, model string) ([]acp.SessionConfigOption, error) {
+	options, err := sess.SetModel(ctx, model)
+	if err != nil {
+		sess.Close()
+		return nil, fmt.Errorf("failed to select model %q; session stopped to avoid using a different model: %w", model, err)
+	}
+	return options, nil
 }
 
 // applyModelEffort pushes an "effort" config option into claude-agent-acp via
@@ -1094,7 +1110,11 @@ func (m *AgentManager) CreateSession(ctx context.Context, params SessionParams) 
 		}
 	}
 
-	sessionState := m.SetupACP(sess, sessionID, params.PermissionMode, params.DefaultModel)
+	sessionState, err := m.SetupACP(sess, sessionID, params.PermissionMode, params.DefaultModel)
+	if err != nil {
+		m.releaseExternalLease(externalLease)
+		return nil, err
+	}
 
 	log.Info().
 		Str("sessionId", sessionID).

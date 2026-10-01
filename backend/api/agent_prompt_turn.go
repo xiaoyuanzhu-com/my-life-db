@@ -221,6 +221,10 @@ func (m *AgentManager) RunPromptTurn(
 		}
 		if _, err := m.EnsureLiveSession(sessionID, sessionState); err != nil {
 			log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to respawn agent for queued model change — next prompt will retry lazily")
+			errorFrame, _ := json.Marshal(map[string]any{
+				"type": "error", "message": err.Error(), "code": "MODEL_SELECTION_ERROR",
+			})
+			sessionState.AppendAndBroadcast(errorFrame)
 		} else {
 			log.Info().Str("sessionId", sessionID).Str("source", sourceLabel).Msg("respawned agent process after turn completion to apply queued model change")
 		}

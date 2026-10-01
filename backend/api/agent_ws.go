@@ -280,7 +280,12 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			// We re-apply the model explicitly AFTER LoadSession, which is what
 			// resets legacy sessions that stored a now-unavailable model
 			// (resolveSessionModel above already picked the replacement).
-			h.agentMgr.SetupACP(sess, sessionID, mode, "")
+			if _, err := h.agentMgr.SetupACP(sess, sessionID, mode, ""); err != nil {
+				sessionState.Mu.Lock()
+				sessionState.HistoryError = err.Error()
+				sessionState.Mu.Unlock()
+				return
+			}
 
 			if err := sess.LoadSession(h.server.ShutdownContext(), sessionID, sessionRecord.WorkingDir); err != nil {
 				log.Warn().Err(err).Str("sessionId", sessionID).Msg("LoadSession failed")
@@ -301,9 +306,15 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 				if defaultModel != "" && sess.AgentType() != agentsdk.AgentQwen {
 					modelCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 					modelForACP := resolveACPModel(sess.AgentType(), defaultModel)
-					updatedOpts, err := sess.SetModel(modelCtx, modelForACP)
+					updatedOpts, err := setRequiredModel(modelCtx, sess, modelForACP)
 					if err != nil {
 						log.Warn().Err(err).Str("sessionId", sessionID).Str("model", modelForACP).Msg("failed to override model after LoadSession")
+						cancel()
+						h.agentMgr.RemoveSession(sessionID)
+						sessionState.Mu.Lock()
+						sessionState.HistoryError = err.Error()
+						sessionState.Mu.Unlock()
+						return
 					} else {
 						broadcastConfigUpdate(sessionState, gatewayModels, updatedOpts, sessionID, defaultModel)
 					}
@@ -804,6 +815,10 @@ func (h *Handlers) AgentSessionWebSocket(c *gin.Context) {
 			acpSession, err := h.agentMgr.EnsureLiveSession(sessionID, sessionState)
 			if err != nil {
 				log.Error().Err(err).Str("sessionId", sessionID).Msg("failed to ensure live ACP session for setConfigOption")
+				errBytes, _ := json.Marshal(map[string]any{
+					"type": "error", "message": err.Error(), "code": "MODEL_SELECTION_ERROR",
+				})
+				conn.Write(ctx, websocket.MessageText, errBytes)
 				continue
 			}
 			if acpSession == nil {
