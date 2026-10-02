@@ -278,8 +278,16 @@ func New(cfg *Config) (*Server, error) {
 				ccEnv["ANTHROPIC_SMALL_FAST_MODEL"] = smallModel
 			}
 
+			// No OPENAI_API_KEY in codexEnv: codex authenticates from the
+			// auth.json written below, and codex hands its whole env to the
+			// shell commands it runs (via its shell snapshot, which re-exports
+			// vars even past shell_environment_policy excludes). With the key
+			// in env, scripts the model writes pick it up through the openai
+			// SDK and hit the gateway with bulk non-streaming requests (e.g.
+			// a chunked translation loop) that upstream flags and bans.
+			// codex-acp only reads the env key on an ACP `authenticate` call,
+			// which MyLifeDB never makes.
 			codexEnv["OPENAI_BASE_URL"] = cfg.AgentLLM.BaseURL
-			codexEnv["OPENAI_API_KEY"] = cfg.AgentLLM.APIKey
 			if codexModels := FilterModelsForAgent(cfg.AgentLLM.Models, "codex"); len(codexModels) > 0 {
 				codexEnv["OPENAI_MODEL"] = codexModels[0].Value
 			}
