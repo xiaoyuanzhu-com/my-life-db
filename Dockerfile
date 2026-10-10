@@ -81,7 +81,7 @@ RUN pip3 install --break-system-packages "screenitshot>=0.7.2" && \
 #       same maintainer migration as the Claude wrapper above — @zed-industries/codex-acp
 #       is deprecated ("replaced by @agentclientprotocol/codex-acp") and last shipped
 #       0.16.0 in June 2026, embedding codex-rs ~0.124. The new package is a JS wrapper
-#       that depends on @openai/codex ^0.155.1. Binary name is unchanged, so the
+#       that depends on @openai/codex ^0.160.1. Binary name is unchanged, so the
 #       AgentConfig Command in backend/server/server.go stays "codex-acp").
 #   - @google/gemini-cli                    → `gemini`           (runs ACP via `gemini --acp`)
 #   - @qwen-code/qwen-code                  → `qwen`             (runs ACP via `qwen --acp`)
@@ -96,10 +96,10 @@ RUN pip3 install --break-system-packages "screenitshot>=0.7.2" && \
 # actually invalidates the layer. To upgrade: bump the version, rebuild, redeploy.
 #
 # claude-agent-acp 0.81.0 → @anthropic-ai/claude-agent-sdk 0.3.280 → CLI 2.1.280.
-# codex-acp      1.13.0 → @openai/codex ^0.155.1 (caret on 0.x pins the minor).
+# codex-acp      2.2.1 → @openai/codex ^0.160.1 (caret on 0.x pins the minor).
 RUN npm install -g \
     @agentclientprotocol/claude-agent-acp@0.81.0 \
-    @agentclientprotocol/codex-acp@1.13.0 \
+    @agentclientprotocol/codex-acp@2.2.1 \
     @google/gemini-cli@0.60.0 \
     @qwen-code/qwen-code@0.24.4 \
     opencode-ai@1.18.32
