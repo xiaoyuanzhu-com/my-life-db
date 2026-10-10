@@ -87,8 +87,8 @@ type Server struct {
 // session to a model the bundled catalog doesn't know about, codex emits
 // "Model metadata for <slug> not found. Defaulting to fallback metadata"
 // and may apply wrong context-window/reasoning settings. We write this file
-// alongside config.toml and point `model_catalog_json` at it so codex always
-// has metadata for the model slugs MyLifeDB exposes.
+// alongside config.toml and point `model_catalog_json` at it. Models added in
+// AGENT_MODELS are merged into the catalog at startup (see codex_catalog.go).
 //
 // To refresh: run `codex debug models` against the latest @openai/codex
 // release, merge with the existing file (union by slug, upstream wins on
@@ -326,12 +326,14 @@ func New(cfg *Config) (*Server, error) {
 					log.Warn().Err(err).Str("path", authPath).Msg("failed to write codex auth.json")
 				}
 
-				// Write the bundled model catalog so codex has metadata for
-				// every gpt-5.x slug we route to it (avoids the "Model
-				// metadata for <slug> not found" warning + fallback defaults).
+				// Make every configured Codex model selectable by codex-acp.
+				catalog, err := codexCatalogForModels(cfg.AgentLLM.Models)
+				if err != nil {
+					return nil, err
+				}
 				catalogPath := filepath.Join(codexHome, "model_catalog.json")
-				if err := os.WriteFile(catalogPath, codexModelCatalog, 0600); err != nil {
-					log.Warn().Err(err).Str("path", catalogPath).Msg("failed to write codex model_catalog.json")
+				if err := os.WriteFile(catalogPath, catalog, 0600); err != nil {
+					return nil, fmt.Errorf("write Codex model catalog %s: %w", catalogPath, err)
 				}
 
 				// Always write config.toml: `model_catalog_json` must be set
