@@ -95,9 +95,37 @@ preserves file metadata, non-preview SQLAR entries, session search, `app.sqlite`
 and all user files. Deploying this schema is **not compatible with rolling back
 to the old file-FTS binary**; back up the databases before upgrading.
 
-### Reclaim Existing Index Space
+### Automatic Space Reclamation
 
-Stop the instance and all other processes that access its databases, then run
+MyLifeDB maintains index space automatically in the background. Migration 040
+only creates persistent maintenance state; startup does not run `VACUUM`.
+
+- Maintenance starts 10 minutes after startup and checks every 5 minutes.
+- PASSIVE WAL checkpoints run without waiting for readers. Fully checkpointed
+  WALs above 64 MiB are truncated when the instance is idle.
+- Space reclamation is checked once per calendar month, when there are no active
+  requests/writes and the instance has been idle for 5 minutes. At least 64 MiB
+  of free SQLite pages must be available; smaller amounts stay reusable.
+- Incremental reclamation releases at most 4096 pages per tick (about 16 MiB at
+  the default page size). A persisted backlog resumes on later idle ticks,
+  including after restarts. Completion schedules the next monthly check.
+- Old NONE-mode databases need a one-time background `VACUUM` to enable
+  incremental reclamation. New databases enable incremental mode immediately.
+  The legacy conversion needs temporary disk space and may briefly delay a new
+  request before cancellation takes effect. It never blocks application startup.
+- User requests or application writes cancel space reclamation. Idle WebSocket/
+  SSE subscriptions do not prevent it indefinitely. Maintenance has a 10-minute
+  deadline, short lock waits, logs failures, and retries without restarting the
+  instance. Session search, originals, and pins remain intact.
+
+No manual command is required for normal operation. Keep a verified backup
+before the initial upgrade. The optional offline command below remains available
+for urgent reclamation without waiting for an idle background window.
+
+### Optional Maintenance Command
+
+For subsequent maintenance, stop the instance and all other processes that
+access its databases, then run
 **the new binary** with its normal environment:
 
 ```sh

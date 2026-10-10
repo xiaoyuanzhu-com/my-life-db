@@ -34,7 +34,9 @@ import (
 
 // Server owns and coordinates all application components
 type Server struct {
-	cfg *Config
+	cfg                 *Config
+	maintenanceActivity db.MaintenanceActivity
+	maintenanceDone     chan struct{}
 
 	// Components (owned by server)
 	indexDB        *db.DB // file index, rebuildable: files, sqlar, agent_sessions_fts
@@ -202,6 +204,9 @@ func New(cfg *Config) (*Server, error) {
 		indexDB.Close()
 		return nil, fmt.Errorf("start index writer: %w", err)
 	}
+
+	s.indexDB.SetMaintenanceActivity(&s.maintenanceActivity)
+	s.appDB.SetMaintenanceActivity(&s.maintenanceActivity)
 
 	// 1.4. Startup recovery: mark any sessions that were still is_processing=1
 	// (i.e. the server was killed mid-prompt) as interrupted so the frontend
@@ -635,6 +640,19 @@ func (s *Server) setupRouter() {
 		}),
 	))
 
+	s.router.Use(func(c *gin.Context) {
+		done := s.maintenanceActivity.Begin()
+		// Long-lived subscriptions are not continuous user activity. Actual
+		// messages, requests and database writes still cancel maintenance.
+		if c.Request.URL.Path == "/api/data/events" || strings.HasSuffix(c.Request.URL.Path, "/subscribe") {
+			done()
+			c.Next()
+			return
+		}
+		defer done()
+		c.Next()
+	})
+
 	// Trust proxy headers
 	s.router.SetTrustedProxies(nil)
 
@@ -717,6 +735,12 @@ func (s *Server) Start() error {
 		go s.sessionIndexer.Start(s.shutdownCtx)
 	}
 
+	s.maintenanceDone = make(chan struct{})
+	go func() {
+		defer close(s.maintenanceDone)
+		s.indexDB.RunIndexMaintenance(s.shutdownCtx, &s.maintenanceActivity)
+	}()
+
 	// Start hooks registry
 	if err := s.hookRegistry.Start(s.shutdownCtx); err != nil {
 		log.Error().Err(err).Msg("failed to start hooks registry")
@@ -761,6 +785,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	// and release their connections — otherwise Shutdown() blocks waiting for them.
 	log.Info().Msg("signaling handlers to stop")
 	s.shutdownCancel()
+	if s.maintenanceDone != nil {
+		<-s.maintenanceDone
+	}
 
 	// 3. Close notification service to cleanly disconnect SSE clients
 	s.notifService.Shutdown()

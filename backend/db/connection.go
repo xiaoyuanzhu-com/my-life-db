@@ -43,10 +43,10 @@ var (
 	// Re-registration is a no-op if the same paths are requested again; if
 	// they change between calls (e.g. tests), we panic — sql.Register can't
 	// be undone without process restart.
-	driverRegistered     bool
-	driverExtensionPath  string
-	driverDictDir        string
-	driverRegisterMu     sync.Mutex
+	driverRegistered    bool
+	driverExtensionPath string
+	driverDictDir       string
+	driverRegisterMu    sync.Mutex
 
 	// App-DB driver (sqlite3_app): same as the simple driver, plus ATTACHes
 	// the index DB read-only as 'idx' on every new connection.
@@ -129,6 +129,22 @@ func Open(cfg Config) (*DB, error) {
 	if err := conn.Ping(); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
+	if cfg.Role == DBRoleIndex {
+		var tables int
+		if err := conn.QueryRow("SELECT count(*) FROM sqlite_schema WHERE type='table'").Scan(&tables); err != nil {
+			conn.Close()
+			return nil, err
+		}
+		// Fresh indexes get incremental reclamation without a future rewrite.
+		if tables == 0 {
+			// journal_mode=WAL has already initialized the file header. Rewrite
+			// this empty database only; never VACUUM an existing index here.
+			if _, err := conn.Exec("PRAGMA auto_vacuum=INCREMENTAL; VACUUM"); err != nil {
+				conn.Close()
+				return nil, err
+			}
+		}
 	}
 
 	// Run migrations (filtered by role so each DB only runs its own)
@@ -423,4 +439,9 @@ func (d *DB) Read() *sql.DB {
 // Role returns the role of this database instance.
 func (d *DB) Role() DBRole {
 	return d.role
+}
+
+// SetMaintenanceActivity is called before serving requests or starting workers.
+func (d *DB) SetMaintenanceActivity(activity *MaintenanceActivity) {
+	d.writer.activity = activity
 }

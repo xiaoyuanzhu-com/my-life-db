@@ -42,6 +42,11 @@ func CompactIndex(cfg Config) error {
 	if err := runMigrations(conn, DBRoleIndex); err != nil {
 		return err
 	}
+	return compactSQLite(conn)
+}
+
+// Explicit offline maintenance remains available for operators.
+func compactSQLite(conn *sql.DB) error {
 	checkpoint := func() error {
 		var busy, frames, completed int
 		if err := conn.QueryRow("PRAGMA wal_checkpoint(TRUNCATE)").Scan(&busy, &frames, &completed); err != nil {

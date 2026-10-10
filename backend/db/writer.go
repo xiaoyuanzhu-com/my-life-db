@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"sync"
 )
 
 // writeJob is one queued unit of work for the writer goroutine.
@@ -21,9 +23,11 @@ type writeJob struct {
 // Reads do NOT go through the writer — they continue through the *sql.DB
 // pool directly. WAL mode allows concurrent readers alongside the one writer.
 type Writer struct {
-	db    *sql.DB
-	queue chan writeJob
-	quit  chan struct{}
+	gate     sync.Mutex
+	activity *MaintenanceActivity
+	db       *sql.DB
+	queue    chan writeJob
+	quit     chan struct{}
 }
 
 func newWriter(db *sql.DB, queueSize int) *Writer {
@@ -79,6 +83,12 @@ func (w *Writer) run() {
 }
 
 func (w *Writer) exec(job writeJob) error {
+	if w.activity != nil {
+		done := w.activity.Begin()
+		defer done()
+	}
+	w.gate.Lock()
+	defer w.gate.Unlock()
 	if err := job.ctx.Err(); err != nil {
 		return err
 	}
@@ -97,4 +107,16 @@ func (w *Writer) exec(job writeJob) error {
 // jobs are still executed. Do not call Do after stop.
 func (w *Writer) stop() {
 	close(w.quit)
+}
+
+// Maintain serializes non-transactional SQLite maintenance with normal writes.
+func (w *Writer) Maintain(ctx context.Context, fn func() error) error {
+	if !w.gate.TryLock() {
+		return fmt.Errorf("writer busy")
+	}
+	defer w.gate.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return fn()
 }
