@@ -422,7 +422,7 @@ function DataContent() {
             <Input
               ref={searchInputRef}
               type="text"
-              placeholder={t('search.placeholder', 'Search files...')}
+              placeholder={t('search.placeholder', 'Search file names and paths...')}
               value={searchQuery}
               onChange={(e) => handleSearchChange(e.target.value)}
               onKeyDown={(e) => {

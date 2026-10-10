@@ -103,9 +103,10 @@ func (c *Config) PopulateDatabasePaths() {
 // ToFSConfig converts server config to filesystem service config
 func (c *Config) ToFSConfig() fs.Config {
 	return fs.Config{
-		DataRoot:     c.UserDataDir,
-		ScanInterval: c.FSScanInterval,
-		WatchEnabled: c.FSWatchEnabled,
+		DataRoot:        c.UserDataDir,
+		PreviewCacheDir: filepath.Join(filepath.Dir(c.IndexDatabasePath), "previews"),
+		ScanInterval:    c.FSScanInterval,
+		WatchEnabled:    c.FSWatchEnabled,
 	}
 }
 

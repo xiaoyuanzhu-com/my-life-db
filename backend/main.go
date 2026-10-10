@@ -18,12 +18,25 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/agentsdk"
 	"github.com/xiaoyuanzhu-com/my-life-db/api"
 	"github.com/xiaoyuanzhu-com/my-life-db/config"
+	"github.com/xiaoyuanzhu-com/my-life-db/db"
 	"github.com/xiaoyuanzhu-com/my-life-db/log"
 	"github.com/xiaoyuanzhu-com/my-life-db/server"
 )
 
 func main() {
 	cfg := config.Get()
+	if len(os.Args) > 1 && os.Args[1] == "--compact-index" {
+		err := db.CompactIndex(db.Config{
+			Path:          filepath.Join(filepath.Dir(cfg.DatabasePath), "index.sqlite"),
+			ExtensionPath: cfg.SimpleExtensionPath, ExtensionDictDir: cfg.SimpleDictDir,
+		})
+		if err != nil {
+			log.Error().Err(err).Msg("index compaction failed")
+			os.Exit(1)
+		}
+		log.Info().Msg("index compaction complete")
+		return
+	}
 
 	// Create server config from app config
 	serverCfg := &server.Config{

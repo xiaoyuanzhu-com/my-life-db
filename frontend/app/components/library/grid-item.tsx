@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Pencil, Trash2, Copy, Loader2, CircleAlert, Download, Upload, FolderUp, FolderPlus, PackageOpen, RotateCw, X } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import { api, encodePath } from '~/lib/api';
-import { downloadFile, downloadFolder, getSqlarUrl } from '~/components/FileCard/utils';
+import { downloadFile, downloadFolder, getPreviewUrl } from '~/components/FileCard/utils';
 import { FOLDER_GENERIC_ICON, getSystemDir } from './system-dirs';
 import {
   ContextMenu,
@@ -81,6 +81,9 @@ export function GridItem({
 
   const name = getNodeName(node);
   const isFolder = node.type === 'folder';
+  const [previewFailed, setPreviewFailed] = useState(false);
+  useEffect(() => setPreviewFailed(false), [fullPath, node.modifiedAt]);
+  const previewable = /\.(jpe?g|png|gif|webp|heic|heif|pdf|epub|docx?|xlsx?|pptx?|csv|rtf|html?|md)$/i.test(name);
 
   const isUploading = node.uploadStatus === 'pending' || node.uploadStatus === 'uploading';
   const hasError = node.uploadStatus === 'error';
@@ -229,9 +232,10 @@ export function GridItem({
           style={{ color: '#4b5563' }}
           dangerouslySetInnerHTML={{ __html: folderIconSvg }}
         />
-      ) : node.previewSqlar ? (
+      ) : !isPendingFile && previewable && !previewFailed ? (
         <img
-          src={getSqlarUrl(node.previewSqlar)}
+          src={getPreviewUrl(fullPath)}
+          onError={() => setPreviewFailed(true)}
           alt=""
           loading="lazy"
           className={cn(isList ? 'w-8 h-8' : 'w-12 h-12', 'object-cover rounded')}

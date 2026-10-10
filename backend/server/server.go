@@ -30,7 +30,6 @@ import (
 	"github.com/xiaoyuanzhu-com/my-life-db/notifications"
 	"github.com/xiaoyuanzhu-com/my-life-db/skills"
 	"github.com/xiaoyuanzhu-com/my-life-db/workers/sessionindex"
-	"github.com/xiaoyuanzhu-com/my-life-db/workers/textindex"
 )
 
 // Server owns and coordinates all application components
@@ -38,26 +37,25 @@ type Server struct {
 	cfg *Config
 
 	// Components (owned by server)
-	indexDB      *db.DB // file index, rebuildable: files, files_fts, sqlar
-	appDB        *db.DB // persistent user data: pins, settings, sessions, agent_*, explore_*
-	fsService    *fs.Service
-	textIndexer  *textindex.Indexer
+	indexDB        *db.DB // file index, rebuildable: files, sqlar, agent_sessions_fts
+	appDB          *db.DB // persistent user data: pins, settings, sessions, agent_*, explore_*
+	fsService      *fs.Service
 	sessionIndexer *sessionindex.Indexer
-	notifService *notifications.Service
-	agentClient  *agentsdk.Client
-	agentProxy   *agentproxy.Server   // loopback HTTP proxy that injects upstream LLM creds
-	frameStore   *agentsdk.FrameStore // persists ACP frames to disk JSONL
-	explore      *explore.Service
-	hookRegistry    *hooks.Registry
-	cronHook        *hooks.CronHook
-	fsHook          *hooks.FSHook
-	agentRunner     *agentrunner.Runner
-	mcpTools        *mcptools.Cache
+	notifService   *notifications.Service
+	agentClient    *agentsdk.Client
+	agentProxy     *agentproxy.Server   // loopback HTTP proxy that injects upstream LLM creds
+	frameStore     *agentsdk.FrameStore // persists ACP frames to disk JSONL
+	explore        *explore.Service
+	hookRegistry   *hooks.Registry
+	cronHook       *hooks.CronHook
+	fsHook         *hooks.FSHook
+	agentRunner    *agentrunner.Runner
+	mcpTools       *mcptools.Cache
 
 	// WebDAV lock system. Process-wide, in-memory; locks are URL-keyed.
 	// Initialized lazily on first LockSystem() access so non-WebDAV
 	// deployments don't pay for it.
-	webdavLocks     webdav.LockSystem
+	webdavLocks webdav.LockSystem
 
 	// Central MCP server. Backed by a single Registry into which every
 	// feature package (agentrunner, explore, ...) registers its tools at
@@ -130,7 +128,7 @@ func New(cfg *Config) (*Server, error) {
 	}
 
 	// 1. Open both databases. Index DB holds the rebuildable file/search
-	// index (files, files_fts, sqlar); app DB holds persistent user
+	// index (files, sqlar, agent_sessions_fts); app DB holds persistent user
 	// data (pins, settings, sessions, agent_*, explore_*).
 	//
 	// Bootstrap order is sensitive because of cross-DB ATTACHes:
@@ -549,18 +547,10 @@ base_url = %q
 	log.Info().Msg("initializing filesystem service")
 	fsCfg := cfg.ToFSConfig()
 	fsCfg.DB = fs.NewDBAdapter(s.indexDB)
-	fsCfg.PreviewNotifier = func(filePath, previewType string) {
-		s.notifService.NotifyPreviewUpdated(filePath, previewType)
-	}
 	fsCfg.LibraryNotifier = func(filePath, operation string) {
 		s.notifService.NotifyLibraryChanged(filePath, operation)
 	}
 	s.fsService = fs.NewService(fsCfg)
-
-	// 5. Create text indexer (writes synchronously to SQLite FTS5 files_fts
-	// in the index DB)
-	log.Info().Msg("initializing text indexer")
-	s.textIndexer = textindex.NewIndexer(s.fsService.DataRoot(), s.indexDB)
 
 	// 5.5. Create session indexer (periodic sweep: extracts text from
 	// persisted ACP frames and upserts into agent_sessions_fts on the index
@@ -580,12 +570,8 @@ base_url = %q
 
 // connectServices wires up event handlers between services
 func (s *Server) connectServices() {
-	// FS → Text Indexer: When files change, index for search
+	// FS events drive auto-run hooks; file contents are not indexed
 	s.fsService.SetFileChangeHandler(func(event fs.FileChangeEvent) {
-		if event.ContentChanged {
-			s.textIndexer.OnFileChange(event.FilePath, event.IsNew, true)
-		}
-
 		// Emit file events to hooks registry for auto-run agents
 		if event.IsNew {
 			s.fsHook.EmitFileEvent(hooks.EventFileCreated, map[string]any{
@@ -640,8 +626,8 @@ func (s *Server) setupRouter() {
 	// container's whole log window out in minutes.
 	s.router.Use(gzip.Gzip(gzip.DefaultCompression,
 		gzip.WithExcludedPaths([]string{
-			"/api/data/events",        // SSE - needs streaming
-			"/api/data/uploads/tus/",  // TUS - needs ResponseController for timeout extension
+			"/api/data/events",       // SSE - needs streaming
+			"/api/data/uploads/tus/", // TUS - needs ResponseController for timeout extension
 		}),
 		gzip.WithExcludedPathsRegexs([]string{
 			"/api/agent/sessions/.*/subscribe", // WebSocket - agent session updates
@@ -723,9 +709,6 @@ func (s *Server) Start() error {
 	if err := s.fsService.Start(); err != nil {
 		return fmt.Errorf("failed to start FS service: %w", err)
 	}
-
-	// Backfill the FTS5 index for any files that aren't yet indexed.
-	go s.textIndexer.Backfill()
 
 	// Start the periodic session-transcript indexer (writes into
 	// agent_sessions_fts). Runs an immediate catch-up sweep on startup, then
@@ -889,20 +872,19 @@ func (s *Server) runAttachmentsJanitor() {
 }
 
 // Component accessors for API handlers
-func (s *Server) IndexDB() *db.DB                             { return s.indexDB }
-func (s *Server) AppDB() *db.DB                               { return s.appDB }
-func (s *Server) FS() *fs.Service                             { return s.fsService }
-func (s *Server) TextIndexer() *textindex.Indexer            { return s.textIndexer }
-func (s *Server) Notifications() *notifications.Service       { return s.notifService }
-func (s *Server) AgentClient() *agentsdk.Client                { return s.agentClient }
-func (s *Server) FrameStore() *agentsdk.FrameStore             { return s.frameStore }
-func (s *Server) Explore() *explore.Service                      { return s.explore }
-func (s *Server) HookRegistry() *hooks.Registry                  { return s.hookRegistry }
-func (s *Server) FSHook() *hooks.FSHook                          { return s.fsHook }
-func (s *Server) AgentRunner() *agentrunner.Runner               { return s.agentRunner }
-func (s *Server) MCP() *mcppkg.Server                            { return s.mcpServer }
-func (s *Server) MCPTools() *mcptools.Cache                      { return s.mcpTools }
-func (s *Server) MCPToken() string                            { return s.mcpToken }
+func (s *Server) IndexDB() *db.DB                       { return s.indexDB }
+func (s *Server) AppDB() *db.DB                         { return s.appDB }
+func (s *Server) FS() *fs.Service                       { return s.fsService }
+func (s *Server) Notifications() *notifications.Service { return s.notifService }
+func (s *Server) AgentClient() *agentsdk.Client         { return s.agentClient }
+func (s *Server) FrameStore() *agentsdk.FrameStore      { return s.frameStore }
+func (s *Server) Explore() *explore.Service             { return s.explore }
+func (s *Server) HookRegistry() *hooks.Registry         { return s.hookRegistry }
+func (s *Server) FSHook() *hooks.FSHook                 { return s.fsHook }
+func (s *Server) AgentRunner() *agentrunner.Runner      { return s.agentRunner }
+func (s *Server) MCP() *mcppkg.Server                   { return s.mcpServer }
+func (s *Server) MCPTools() *mcptools.Cache             { return s.mcpTools }
+func (s *Server) MCPToken() string                      { return s.mcpToken }
 
 func (s *Server) WebDAVLocks() webdav.LockSystem {
 	if s.webdavLocks == nil {
@@ -910,9 +892,9 @@ func (s *Server) WebDAVLocks() webdav.LockSystem {
 	}
 	return s.webdavLocks
 }
-func (s *Server) Cfg() *Config                               { return s.cfg }
-func (s *Server) Router() *gin.Engine                         { return s.router }
-func (s *Server) ShutdownContext() context.Context            { return s.shutdownCtx }
+func (s *Server) Cfg() *Config                     { return s.cfg }
+func (s *Server) Router() *gin.Engine              { return s.router }
+func (s *Server) ShutdownContext() context.Context { return s.shutdownCtx }
 
 // SignalShutdown signals the server to begin shutting down early, before Shutdown() is called.
 // This should be called immediately after receiving SIGINT/SIGTERM so that child processes

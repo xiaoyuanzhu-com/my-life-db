@@ -30,7 +30,7 @@ type SearchResultItem struct {
 }
 
 // MatchContext provides context about where the match was found.
-// Source is "keyword" for FTS5 keyword hits.
+// Source is "keyword" for filename/path hits.
 type MatchContext struct {
 	Source  string   `json:"source"`
 	Snippet string   `json:"snippet"`
@@ -59,7 +59,7 @@ type Timing struct {
 	EnrichMs int64 `json:"enrichMs"`
 }
 
-// Search handles GET /api/search
+// Search handles GET /api/data/search (filename/path only).
 func (h *Handlers) Search(c *gin.Context) {
 	query := strings.TrimSpace(c.Query("q"))
 	if query == "" {
@@ -105,81 +105,27 @@ func (h *Handlers) Search(c *gin.Context) {
 	totalStart := time.Now()
 	var searchMs, enrichMs int64
 
-	// Keyword search via FTS5
 	searchStart := time.Now()
-	hits, hitsTotal, err := h.server.IndexDB().SearchFTS(query, db.FTSSearchOptions{
-		Limit:      limit,
-		Offset:     offset,
-		TypeFilter: typeFilter,
-		PathFilter: pathFilter,
+	files, hitsTotal, err := h.server.IndexDB().SearchPaths(c.Request.Context(), query, db.PathSearchOptions{
+		Limit: limit, Offset: offset, TypeFilter: typeFilter, PathFilter: pathFilter,
 	})
 	searchMs = time.Since(searchStart).Milliseconds()
 	if err != nil {
-		log.Error().Err(err).Msg("fts5 search failed")
-	} else {
-		sources = append(sources, "keyword")
-		total = hitsTotal
-
-		enrichStart := time.Now()
-		terms := extractSearchTerms(query)
-
-		// Batch enrichment: gather all hit paths once, then issue one query
-		// per data source instead of multiple queries per hit.
-		paths := make([]string, 0, len(hits))
-		for _, hit := range hits {
-			paths = append(paths, hit.FilePath)
-		}
-
-		filesByPath, err := h.server.IndexDB().GetFilesByPaths(paths)
-		if err != nil {
-			log.Error().Err(err).Msg("batch fetch files failed")
-			filesByPath = map[string]*db.FileRecord{}
-		}
-		pinnedSet, err := h.server.AppDB().GetPinnedSet(paths)
-		if err != nil {
-			log.Error().Err(err).Msg("batch fetch pins failed")
-			pinnedSet = map[string]bool{}
-		}
-		_ = pinnedSet // currently unused in response shape; reserved for future enrichment
-
-		for _, hit := range hits {
-			file := filesByPath[hit.FilePath]
-			if file == nil {
-				continue
-			}
-
-			// Highlights map mirrors the old meili shape so the frontend
-			// can render `<em>` markup on file_path / content.
-			highlights := map[string]string{}
-			if hit.FilePathHL != "" {
-				highlights["filePath"] = hit.FilePathHL
-			}
-			if hit.Snippet != "" {
-				highlights["content"] = hit.Snippet
-			}
-
-			snippet := safeSubstring(stripEm(hit.Snippet), 200)
-
-			matchContext := buildKeywordMatchContext(hit, terms)
-
-			results = append(results, SearchResultItem{
-				Path:          file.Path,
-				Name:          file.Name,
-				IsFolder:      file.IsFolder,
-				Size:          file.Size,
-				MimeType:      file.MimeType,
-				ModifiedAt:    file.ModifiedAt,
-				CreatedAt:     file.CreatedAt,
-				Score:         -hit.Score, // bm25 is negative-better; flip for "higher is better" UX
-				Snippet:       snippet,
-				TextPreview:   file.TextPreview,
-				PreviewSqlar:  file.PreviewSqlar,
-				PreviewStatus: file.PreviewStatus,
-				Highlights:    highlights,
-				MatchContext:  matchContext,
-			})
-		}
-		enrichMs = time.Since(enrichStart).Milliseconds()
+		log.Error().Err(err).Msg("path search failed")
+		RespondCoded(c, http.StatusInternalServerError, "SEARCH_FAILED", "File search failed")
+		return
+	}
+	sources = append(sources, "keyword")
+	total = hitsTotal
+	terms := extractSearchTerms(query)
+	for _, file := range files {
+		results = append(results, SearchResultItem{
+			Path: file.Path, Name: file.Name, IsFolder: file.IsFolder,
+			Size: file.Size, MimeType: file.MimeType, ModifiedAt: file.ModifiedAt,
+			CreatedAt: file.CreatedAt, Score: 1, Snippet: file.Path,
+			TextPreview:  file.TextPreview,
+			MatchContext: &MatchContext{Source: "keyword", Snippet: file.Path, Terms: terms, Label: "File path"},
+		})
 	}
 
 	response := SearchResponse{
@@ -198,24 +144,6 @@ func (h *Handlers) Search(c *gin.Context) {
 	response.Pagination.HasMore = offset+len(results) < total
 
 	c.JSON(http.StatusOK, response)
-}
-
-// safeSubstring safely extracts a substring up to maxLen characters (not bytes)
-// This handles unicode properly by counting runes instead of bytes
-func safeSubstring(s string, maxLen int) string {
-	runes := []rune(s)
-	if len(runes) <= maxLen {
-		return s
-	}
-	return string(runes[:maxLen])
-}
-
-// stripEm removes <em>...</em> markup so the same string can be reused as a
-// plain-text snippet. The frontend's `match-context.tsx` renders the
-// highlighted version separately via the Highlights map.
-func stripEm(s string) string {
-	r := strings.NewReplacer("<em>", "", "</em>", "")
-	return r.Replace(s)
 }
 
 func extractSearchTerms(query string) []string {
@@ -239,52 +167,4 @@ func contains(slice []string, item string) bool {
 		}
 	}
 	return false
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-// buildKeywordMatchContext creates a MatchContext for an FTS5 hit. Since
-// FTS5 indexes a single content column that concatenates the file path
-// and the file's text content, the hit itself tells us which side
-// matched: if the FilePathHL contains <em> markers and there's no
-// content hit, the match was on the path; otherwise it was on the
-// content.
-func buildKeywordMatchContext(hit db.FTSHit, terms []string) *MatchContext {
-	if len(terms) == 0 {
-		return nil
-	}
-
-	pathMatched := strings.Contains(hit.FilePathHL, "<em>")
-
-	if pathMatched && !hit.HasContentHit {
-		return &MatchContext{
-			Source:  "keyword",
-			Snippet: hit.FilePathHL,
-			Terms:   terms,
-			Label:   "File path",
-		}
-	}
-
-	if !hit.HasContentHit {
-		return nil
-	}
-
-	return &MatchContext{
-		Source:  "keyword",
-		Snippet: hit.Snippet,
-		Terms:   terms,
-		Label:   "File content",
-	}
 }

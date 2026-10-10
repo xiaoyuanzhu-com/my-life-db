@@ -5,7 +5,7 @@
     "signInHint": "请登录以开始。"
   },
   "search": {
-    "placeholder": "搜索文件…",
+    "placeholder": "搜索文件名和路径…",
     "searching": "搜索中…",
     "failed": "搜索失败：{{error}}",
     "noResults": "未找到结果",

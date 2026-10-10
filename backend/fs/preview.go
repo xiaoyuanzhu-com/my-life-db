@@ -3,6 +3,7 @@ package fs
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"image"
 	"image/gif"
@@ -11,40 +12,156 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/gen2brain/heic"
-	"github.com/xiaoyuanzhu-com/my-life-db/db"
-	"github.com/xiaoyuanzhu-com/my-life-db/log"
+	"github.com/xiaoyuanzhu-com/my-life-db/utils"
 	"golang.org/x/image/draw"
 
 	// Register WebP decoder so image.Decode can handle it
 	_ "golang.org/x/image/webp"
 )
 
-// Preview worker constants
 const (
-	previewQueueSize  = 100
 	thumbnailMaxWidth = 1200
 	thumbnailQuality  = 85
+	previewCacheLimit = 256 * 1024 * 1024
 )
 
-// previewJob represents a file that needs preview generation
-type previewJob struct {
-	filePath string
-	mimeType string
+type previewWorker struct {
+	service *Service
+	gate    chan struct{} // One generator; canceled requests do not wait in a queue.
 }
 
-// PreviewNotifier is called after a preview is generated for a file.
-// filePath is the relative file path, previewType is "thumbnail" or "screenshot".
-type PreviewNotifier func(filePath string, previewType string)
+func newPreviewWorker(service *Service) *previewWorker {
+	return &previewWorker{service: service, gate: make(chan struct{}, 1)}
+}
 
-// previewWorker processes files asynchronously to generate previews
-type previewWorker struct {
-	service  *Service
-	queue    chan previewJob
-	notifier PreviewNotifier
+// Preview generates thumbnails only when requested. Cache data is disposable
+// and lives outside SQLite, so browsing does not grow a database WAL.
+func (s *Service) Preview(ctx context.Context, path string) ([]byte, error) {
+	if err := s.validator.ValidatePath(path); err != nil {
+		return nil, err
+	}
+	fullPath := filepath.Join(s.cfg.DataRoot, path)
+	resolved, err := filepath.EvalSymlinks(fullPath)
+	if err != nil {
+		return nil, err
+	}
+	root, err := filepath.EvalSymlinks(s.cfg.DataRoot)
+	if err != nil {
+		return nil, err
+	}
+	rel, err := filepath.Rel(root, resolved)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return nil, ErrInvalidPath
+	}
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, ErrInvalidPath
+	}
+	// Avoid unbounded image decoding and document rendering for giant inputs.
+	if info.Size() > 64*1024*1024 {
+		return nil, fmt.Errorf("file too large for a thumbnail")
+	}
+	mime := utils.DetectMimeType(path)
+	if !needsPreview(mime) {
+		return nil, fmt.Errorf("unsupported preview type")
+	}
+	w := s.preview
+	select {
+	case w.gate <- struct{}{}:
+		defer func() { <-w.gate }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	cacheDir := s.cfg.PreviewCacheDir
+	if cacheDir == "" {
+		return nil, fmt.Errorf("preview cache not configured")
+	}
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
+		return nil, err
+	}
+	key := sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%d", path, info.Size(), info.ModTime().UnixNano())))
+	cachePath := filepath.Join(cacheDir, fmt.Sprintf("%x.jpg", key))
+	if data, err := os.ReadFile(cachePath); err == nil {
+		now := time.Now()
+		_ = os.Chtimes(cachePath, now, now)
+		return data, nil
+	}
+	var data []byte
+	if isImageMime(mime) {
+		data, err = w.generateImageThumbnail(path, mime)
+	} else {
+		data, err = w.generateDocumentPreview(ctx, path)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if len(data) > previewCacheLimit {
+		return nil, fmt.Errorf("thumbnail exceeds cache limit")
+	}
+	if err := trimPreviewCache(cacheDir, int64(previewCacheLimit-len(data))); err != nil {
+		return nil, err
+	}
+	tmp, err := os.CreateTemp(cacheDir, ".preview-*")
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err = tmp.Write(data); err != nil {
+		tmp.Close()
+		return nil, err
+	}
+	if err = tmp.Close(); err != nil {
+		return nil, err
+	}
+	if err = os.Rename(tmp.Name(), cachePath); err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+func trimPreviewCache(dir string, budget int64) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	files := []os.FileInfo{}
+	var total int64
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		files = append(files, info)
+		total += info.Size()
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i].ModTime().Before(files[j].ModTime()) })
+	for _, file := range files {
+		if total <= budget {
+			break
+		}
+		if err := os.Remove(filepath.Join(dir, file.Name())); err != nil {
+			return err
+		}
+		total -= file.Size()
+	}
+	return nil
 }
 
 // ---------- MIME type helpers ----------
@@ -79,156 +196,11 @@ func isDocumentMime(mimeType string) bool {
 	return false
 }
 
-// ---------- Worker lifecycle ----------
-
-// newPreviewWorker creates a preview worker owned by the given service
-func newPreviewWorker(service *Service, notifier PreviewNotifier) *previewWorker {
-	return &previewWorker{
-		service:  service,
-		queue:    make(chan previewJob, previewQueueSize),
-		notifier: notifier,
-	}
-}
-
-// run reads jobs from the queue until the channel is closed.
-// Intended to be called as a goroutine.
-func (w *previewWorker) run() {
-	for job := range w.queue {
-		w.processJob(job)
-	}
-}
-
-// enqueue sends a preview job to the worker. Non-blocking: if the queue is
-// full the job is dropped and a warning is logged.
-func (w *previewWorker) enqueue(job previewJob) {
-	select {
-	case w.queue <- job:
-		// queued
-	default:
-		log.Warn().
-			Str("path", job.filePath).
-			Str("mime", job.mimeType).
-			Msg("preview queue full, job dropped")
-	}
-}
-
-// ---------- Preview generation dispatch ----------
-
-// processJob dispatches to the correct generator based on MIME type,
-// stores the result in SQLAR, and updates the file record.
-func (w *previewWorker) processJob(job previewJob) {
-	// Check if file still exists before attempting generation
-	fullPath := filepath.Join(w.service.cfg.DataRoot, job.filePath)
-	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-		log.Info().
-			Str("path", job.filePath).
-			Msg("skipping preview for missing file")
-		return
-	}
-
-	var data []byte
-	var err error
-	var previewType string
-	var sqlarName string
-
-	pathHash := db.GeneratePathHash(job.filePath)
-
-	switch {
-	case isImageMime(job.mimeType):
-		previewType = "thumbnail"
-		sqlarName = pathHash + "/preview/thumbnail.jpg"
-		data, err = w.generateImageThumbnail(job.filePath, job.mimeType)
-
-	case isDocumentMime(job.mimeType):
-		previewType = "thumbnail"
-		sqlarName = pathHash + "/preview/thumbnail.jpg"
-		data, err = w.generateDocumentPreview(job.filePath)
-
-	default:
-		return
-	}
-
-	if err != nil {
-		log.Error().Err(err).
-			Str("path", job.filePath).
-			Str("mime", job.mimeType).
-			Msg("preview generation failed")
-
-		// Mark as failed so it won't be re-queued every scan cycle
-		if updateErr := w.service.cfg.DB.UpdateFileField(job.filePath, "preview_status", db.PreviewStatusFailed); updateErr != nil {
-			log.Error().Err(updateErr).
-				Str("path", job.filePath).
-				Msg("failed to update preview_status to failed")
-		}
-		return
-	}
-
-	// Placeholder generators return nil, nil — nothing to store yet
-	if data == nil {
-		return
-	}
-
-	// Store in SQLAR
-	ok := w.service.cfg.DB.SqlarStore(sqlarName, data, 0644)
-	if !ok {
-		log.Error().
-			Str("path", job.filePath).
-			Str("sqlar", sqlarName).
-			Msg("failed to store preview in sqlar")
-		return
-	}
-
-	// Update file record: set sqlar path and status to ready
-	if err := w.service.cfg.DB.UpdateFileField(job.filePath, "preview_sqlar", sqlarName); err != nil {
-		log.Error().Err(err).
-			Str("path", job.filePath).
-			Msg("failed to update preview_sqlar field")
-		return
-	}
-	if err := w.service.cfg.DB.UpdateFileField(job.filePath, "preview_status", db.PreviewStatusReady); err != nil {
-		log.Error().Err(err).
-			Str("path", job.filePath).
-			Msg("failed to update preview_status to ready")
-		return
-	}
-
-	log.Info().
-		Str("path", job.filePath).
-		Str("sqlar", sqlarName).
-		Int("bytes", len(data)).
-		Msg("preview generated")
-
-	// Notify listener (e.g. SSE push) if set
-	if w.notifier != nil {
-		w.notifier(job.filePath, previewType)
-	}
-}
-
-// ---------- Missing preview catch-up ----------
-
-// queueMissingPreviews finds files with preview_status='pending' and enqueues
-// them for generation. Called by the scanner after each scan cycle.
-func (w *previewWorker) queueMissingPreviews() {
-	files, err := w.service.cfg.DB.GetFilesMissingPreviews(50)
-	if err != nil {
-		log.Warn().Err(err).Msg("failed to query files missing previews")
-		return
-	}
-
-	for _, f := range files {
-		w.enqueue(previewJob{filePath: f.Path, mimeType: f.MimeType})
-	}
-
-	if len(files) > 0 {
-		log.Info().Int("count", len(files)).Msg("queued files with missing previews")
-	}
-}
-
 // ---------- Document preview (screenitshot) ----------
 
 // generateDocumentPreview runs screenitshot CLI to produce a PNG screenshot
 // of a document, then resizes and encodes it as a JPEG thumbnail.
-func (w *previewWorker) generateDocumentPreview(filePath string) ([]byte, error) {
+func (w *previewWorker) generateDocumentPreview(parent context.Context, filePath string) ([]byte, error) {
 	fullPath := filepath.Join(w.service.cfg.DataRoot, filePath)
 
 	tmpFile, err := os.CreateTemp("", "screenitshot-*.png")
@@ -239,7 +211,7 @@ func (w *previewWorker) generateDocumentPreview(filePath string) ([]byte, error)
 	tmpFile.Close()
 	defer os.Remove(tmpPath)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 60*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "screenitshot", fullPath, "-o", tmpPath)
@@ -256,6 +228,9 @@ func (w *previewWorker) generateDocumentPreview(filePath string) ([]byte, error)
 	}
 	defer f.Close()
 
+	if err := checkPreviewDimensions(f); err != nil {
+		return nil, err
+	}
 	img, _, err := image.Decode(f)
 	if err != nil {
 		return nil, fmt.Errorf("decode screenshot: %w", err)
@@ -284,6 +259,9 @@ func (w *previewWorker) generateImageThumbnail(filePath, mimeType string) ([]byt
 	}
 	defer f.Close()
 
+	if err := checkPreviewDimensions(f); err != nil {
+		return nil, err
+	}
 	var img image.Image
 
 	// HEIC/HEIF needs a dedicated decoder (not registered with image.Decode)
@@ -311,6 +289,18 @@ func (w *previewWorker) generateImageThumbnail(filePath, mimeType string) ([]byt
 	}
 
 	return buf.Bytes(), nil
+}
+
+func checkPreviewDimensions(f *os.File) error {
+	cfg, _, err := image.DecodeConfig(f)
+	if err != nil {
+		return fmt.Errorf("read image dimensions: %w", err)
+	}
+	if cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width > 40_000_000/cfg.Height {
+		return fmt.Errorf("image too large for a thumbnail")
+	}
+	_, err = f.Seek(0, 0)
+	return err
 }
 
 // resizeToMaxWidth scales an image so its width is at most maxWidth pixels,

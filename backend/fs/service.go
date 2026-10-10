@@ -3,6 +3,8 @@ package fs
 import (
 	"context"
 	"io"
+	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/xiaoyuanzhu-com/my-life-db/db"
@@ -50,7 +52,7 @@ func NewService(cfg Config) *Service {
 
 	// Initialize sub-components
 	s.processor = newMetadataProcessor(s)
-	s.preview = newPreviewWorker(s, cfg.PreviewNotifier)
+	s.preview = newPreviewWorker(s)
 
 	// Only create watcher if enabled
 	if cfg.WatchEnabled {
@@ -69,13 +71,6 @@ func (s *Service) Start() error {
 	// Start change notification worker
 	s.wg.Add(1)
 	go s.changeNotificationWorker()
-
-	// Start preview worker
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		s.preview.run()
-	}()
 
 	// Start watcher if enabled
 	if s.watcher != nil {
@@ -96,9 +91,6 @@ func (s *Service) Start() error {
 // Stop gracefully shuts down the service
 func (s *Service) Stop() error {
 	log.Info().Msg("stopping filesystem service")
-
-	// Close preview queue to stop preview worker
-	close(s.preview.queue)
 
 	close(s.stopChan)
 
@@ -170,19 +162,6 @@ func (s *Service) changeNotificationWorker() {
 				handler(event)
 			}
 
-			// Queue preview generation if needed
-			if event.ContentChanged || event.IsNew {
-				file, _ := s.cfg.DB.GetFileByPath(event.FilePath)
-				if file != nil && file.MimeType != nil && needsPreview(*file.MimeType) {
-					// Set preview_status to pending (reset any previous failure)
-					_ = s.cfg.DB.UpdateFileField(event.FilePath, "preview_status", db.PreviewStatusPending)
-					s.preview.enqueue(previewJob{
-						filePath: event.FilePath,
-						mimeType: *file.MimeType,
-					})
-				}
-			}
-
 		case <-s.stopChan:
 			// Drain remaining events before exiting
 			for {
@@ -223,7 +202,19 @@ func (s *Service) GetFileInfo(ctx context.Context, path string) (*db.FileRecord,
 		return nil, err
 	}
 
-	return s.cfg.DB.GetFileByPath(path)
+	file, err := s.cfg.DB.GetFileByPath(path)
+	if err != nil || file != nil {
+		return file, err
+	}
+	info, err := os.Stat(filepath.Join(s.cfg.DataRoot, path))
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	// Skipped build trees remain browsable without adding metadata rows.
+	return s.buildFileRecord(path, info, nil), nil
 }
 
 // WriteFile creates or updates a file with content
@@ -251,7 +242,7 @@ func (s *Service) MoveFile(ctx context.Context, src, dst string) error {
 }
 
 // RenameOrMove renames or moves a file/directory from oldPath to newPath.
-// Handles both files and directories, including all related DB tables and search indices.
+// Handles both files and directories, including file metadata and pins.
 func (s *Service) RenameOrMove(ctx context.Context, oldPath, newPath string) error {
 	// Implementation in operations.go
 	return s.renameOrMove(ctx, oldPath, newPath)

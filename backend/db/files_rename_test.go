@@ -11,8 +11,8 @@ import (
 // newRenameTestDB builds a minimal *DB for exercising RenameFilePaths without
 // the FTS5 'simple' extension or the production cross-DB wiring.
 //
-// RenameFilePaths only issues three UPDATEs touching files.path/name,
-// files_fts.file_path and app.pins.file_path, so plain stand-in tables (and an
+// RenameFilePaths only issues UPDATEs touching files.path/name,
+// app.pins.file_path, so plain stand-in tables (and an
 // ATTACHed in-memory 'app' schema) reproduce the real statements faithfully.
 // A single pooled connection keeps the ATTACH alive and lets the writer
 // goroutine see the same in-memory database the test inserts into.
@@ -30,7 +30,6 @@ func newRenameTestDB(t *testing.T) *DB {
 	stmts := []string{
 		`ATTACH DATABASE ':memory:' AS app`,
 		`CREATE TABLE files (path TEXT PRIMARY KEY, name TEXT NOT NULL)`,
-		`CREATE TABLE files_fts (file_path TEXT, content TEXT)`,
 		`CREATE TABLE app.pins (file_path TEXT PRIMARY KEY)`,
 	}
 	for _, s := range stmts {
@@ -88,7 +87,7 @@ func assertEqualSlice(t *testing.T, label string, got, want []string) {
 // substr bug. SQLite substr() on TEXT counts CHARACTERS while Go len() counts
 // BYTES; for a multi-byte (CJK) folder name those diverge, so a byte-derived
 // offset rewrote every child path into garbage. The fix uses SQL length()+1,
-// which this test pins down across files, files_fts and app.pins — including a
+// which this test pins down across files and app.pins — including a
 // sibling whose name shares the renamed folder as a string prefix but is not a
 // child (照片备份 vs 照片), which must stay untouched.
 func TestRenameFilePaths_CJKFolder(t *testing.T) {
@@ -101,9 +100,6 @@ func TestRenameFilePaths_CJKFolder(t *testing.T) {
 	mustExec(t, conn, `INSERT INTO files (path, name) VALUES (?, ?)`, "照片/a.jpg", "a.jpg")
 	mustExec(t, conn, `INSERT INTO files (path, name) VALUES (?, ?)`, "照片/子目录/b.png", "b.png")
 	mustExec(t, conn, `INSERT INTO files (path, name) VALUES (?, ?)`, "照片备份/c.jpg", "c.jpg")
-
-	mustExec(t, conn, `INSERT INTO files_fts (file_path, content) VALUES (?, ?)`, "照片/a.jpg", "x")
-	mustExec(t, conn, `INSERT INTO files_fts (file_path, content) VALUES (?, ?)`, "照片备份/c.jpg", "x")
 
 	mustExec(t, conn, `INSERT INTO app.pins (file_path) VALUES (?)`, "照片/a.jpg")
 	mustExec(t, conn, `INSERT INTO app.pins (file_path) VALUES (?)`, "照片备份/c.jpg")
@@ -118,9 +114,6 @@ func TestRenameFilePaths_CJKFolder(t *testing.T) {
 	// The renamed folder's own name follows the new basename; children keep theirs.
 	got := queryColumn(t, conn, `SELECT name FROM files WHERE path = '我的照片'`)
 	assertEqualSlice(t, "folder name", got, []string{"我的照片"})
-
-	assertEqualSlice(t, "files_fts.file_path", queryColumn(t, conn, `SELECT file_path FROM files_fts ORDER BY file_path`),
-		[]string{"我的照片/a.jpg", "照片备份/c.jpg"})
 
 	assertEqualSlice(t, "app.pins.file_path", queryColumn(t, conn, `SELECT file_path FROM app.pins ORDER BY file_path`),
 		[]string{"我的照片/a.jpg", "照片备份/c.jpg"})

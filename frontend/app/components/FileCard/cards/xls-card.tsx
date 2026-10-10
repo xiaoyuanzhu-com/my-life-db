@@ -35,7 +35,8 @@ export function XlsCard({
   const openModal = useCardModal(file);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
-  const screenshotSrc = getScreenshotUrl(file);
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const screenshotSrc = previewFailed ? null : getScreenshotUrl(file);
   const href = getFileLibraryUrl(file.path);
 
   const handleOpen = () => navigate(href);
@@ -74,6 +75,7 @@ export function XlsCard({
         >
           <img
             src={screenshotSrc}
+            onError={() => setPreviewFailed(true)}
             alt={file.name}
             className="object-contain"
             style={{

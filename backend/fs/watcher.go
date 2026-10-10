@@ -317,7 +317,7 @@ func (w *watcher) handleDelete(path string) {
 		Str("path", path).
 		Msg("detected external file deletion, updating database")
 
-	// Delete from database with cascade (deletes pins, files_fts)
+	// Delete from database with cascade (deletes files and pins)
 	if err := w.service.cfg.DB.DeleteFileWithCascade(path); err != nil {
 		log.Warn().
 			Err(err).
@@ -487,8 +487,6 @@ func (w *watcher) processMove(oldPath, newPath string) {
 			Msg("failed to move file record atomically")
 		return
 	}
-
-	// files_fts paths are rewritten inside MoveFileAtomic; no async push.
 
 	// Notify of file change (location changed, not content)
 	w.service.notifyFileChange(FileChangeEvent{

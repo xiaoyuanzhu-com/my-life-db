@@ -118,6 +118,22 @@ func (h *Handlers) SaveRawFile(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
+// ServePreviewFile generates a bounded, disposable thumbnail on demand.
+func (h *Handlers) ServePreviewFile(c *gin.Context) {
+	path := strings.TrimPrefix(c.Param("path"), "/")
+	if path == "" {
+		RespondCoded(c, http.StatusBadRequest, "PREVIEW_PATH_REQUIRED", "Path is required")
+		return
+	}
+	data, err := h.server.FS().Preview(c.Request.Context(), path)
+	if err != nil {
+		RespondCoded(c, http.StatusNotFound, "PREVIEW_UNAVAILABLE", "Preview unavailable")
+		return
+	}
+	c.Header("Cache-Control", "private, no-cache")
+	c.Data(http.StatusOK, "image/jpeg", data)
+}
+
 // ServeSqlarFile handles GET /sqlar/*path
 func (h *Handlers) ServeSqlarFile(c *gin.Context) {
 	name := c.Param("path")

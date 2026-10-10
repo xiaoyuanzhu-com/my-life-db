@@ -183,9 +183,6 @@ func (s *scanner) scan() {
 			Msg("cleaned up stale file locks")
 	}
 
-	// Check for files missing previews (backfill for pre-existing files)
-	s.service.preview.queueMissingPreviews()
-
 	log.Info().
 		Int("totalFiles", totalFiles).
 		Int("filesProcessed", len(filesToProcess)).
@@ -296,6 +293,13 @@ func (s *scanner) reconcileOrphans(seenPaths map[string]bool) int {
 	var orphans []string
 	for _, dbPath := range dbPaths {
 		if !seenPaths[dbPath] {
+			// A newly skipped build tree is not a deleted file. Keep existing
+			// metadata/pins without scanning or processing its contents.
+			if IsIndexSkipped(dbPath) {
+				if _, err := os.Stat(filepath.Join(s.service.cfg.DataRoot, dbPath)); err == nil {
+					continue
+				}
+			}
 			orphans = append(orphans, dbPath)
 		}
 	}

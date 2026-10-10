@@ -103,6 +103,7 @@ func SetupRoutes(r *gin.Engine, h *Handlers) {
 			data.GET("/root", h.GetLibraryRoot)
 			data.GET("/directories", h.GetDirectories)
 			data.GET("/search", h.Search)
+			data.GET("/preview/*path", h.ServePreviewFile)
 
 			// Filesystem event stream.
 			data.GET("/events", h.NotificationStream)

@@ -16,6 +16,11 @@ func TestIsIndexSkipped(t *testing.T) {
 		{".worktrees", true, ".worktrees at root"},
 		{".venv", true, ".venv at root"},
 		{"venv", true, "venv at root"},
+		{"projects/demo/target/debug/a.o", true, "Rust build output"},
+		{"projects/demo/build/index.js", true, "build output"},
+		{"projects/demo/dist/index.html", true, "distribution output"},
+		{"projects/demo/out/result.json", true, "output tree"},
+		{"notes/build-guide.md", false, "not an exact directory marker"},
 
 		// Markers nested at any depth
 		{"projects/foo/node_modules", true, "node_modules nested"},
@@ -50,14 +55,14 @@ func TestIsIndexSkipped(t *testing.T) {
 }
 
 func TestIsIndexSkippedName(t *testing.T) {
-	skipped := []string{"node_modules", ".git", ".pnpm-store", "__pycache__", ".worktrees", ".venv", "venv"}
+	skipped := []string{"node_modules", ".git", ".pnpm-store", "__pycache__", ".worktrees", ".venv", "venv", "build", "dist", "out", "target"}
 	for _, name := range skipped {
 		if !IsIndexSkippedName(name) {
 			t.Errorf("IsIndexSkippedName(%q) should be true", name)
 		}
 	}
 
-	notSkipped := []string{"", "notes", ".claude", ".obsidian", ".DS_Store", "build", "dist", "out", "target"}
+	notSkipped := []string{"", "notes", ".claude", ".obsidian", ".DS_Store"}
 	for _, name := range notSkipped {
 		if IsIndexSkippedName(name) {
 			t.Errorf("IsIndexSkippedName(%q) should be false", name)

@@ -54,7 +54,7 @@ func (h *Handlers) GetDataFile(c *gin.Context) {
 		return
 	}
 
-	file, err := h.server.IndexDB().GetFileByPath(path)
+	file, err := h.server.FS().GetFileInfo(c.Request.Context(), path)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to get file info")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get file info"})

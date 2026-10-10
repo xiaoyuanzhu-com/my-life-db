@@ -45,13 +45,11 @@ type FileChangeHandler func(event FileChangeEvent)
 
 // Config contains configuration for the FS service
 type Config struct {
-	DataRoot     string
-	DB           Database
-	ScanInterval time.Duration // How often to scan for external changes
-	WatchEnabled bool          // Enable filesystem watching
-
-	// Preview notification callback (optional, for SSE)
-	PreviewNotifier PreviewNotifier
+	PreviewCacheDir string // Bounded, disposable on-demand thumbnail cache
+	DataRoot        string
+	DB              Database
+	ScanInterval    time.Duration // How often to scan for external changes
+	WatchEnabled    bool          // Enable filesystem watching
 
 	// Library notification callback (optional, for SSE).
 	// Fired when the watcher detects external file create/write/move/delete
@@ -82,11 +80,4 @@ type Database interface {
 	DeleteFileWithCascade(path string) error
 	BatchDeleteFilesWithCascade(paths []string) error
 	DeleteFilesWithCascadePrefix(pathPrefix string) error
-
-	// Preview operations
-	GetFilesMissingPreviews(limit int) ([]db.FileWithMime, error)
-
-	// SQLAR operations (for preview storage)
-	SqlarStore(name string, data []byte, mode int) bool
-	SqlarExists(name string) bool
 }

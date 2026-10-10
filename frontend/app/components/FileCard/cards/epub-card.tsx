@@ -37,7 +37,8 @@ export function EpubCard({
   const openModal = useCardModal(file);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
-  const screenshotSrc = getScreenshotUrl(file);
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const screenshotSrc = previewFailed ? null : getScreenshotUrl(file);
   const href = getFileLibraryUrl(file.path);
 
   const handleOpen = () => navigate(href);
@@ -73,6 +74,7 @@ export function EpubCard({
         <div className="flex flex-col w-[226px] mx-auto">
           <img
             src={screenshotSrc}
+            onError={() => setPreviewFailed(true)}
             alt={file.name}
             className="w-full h-auto max-h-[320px] object-cover object-top"
             loading={priority ? 'eager' : 'lazy'}

@@ -5,7 +5,7 @@
     "signInHint": "Please sign in to get started."
   },
   "search": {
-    "placeholder": "Search files...",
+    "placeholder": "Search file names and paths...",
     "searching": "Searching...",
     "failed": "Search failed: {{error}}",
     "noResults": "No results found",

@@ -6,7 +6,7 @@ type DBRole int
 
 const (
 	// DBRoleIndex is the rebuildable file/search index.
-	// Tables: files, files_fts, sqlar.
+	// Tables: files, sqlar, agent_sessions_fts.
 	// File: index.sqlite.
 	DBRoleIndex DBRole = iota
 

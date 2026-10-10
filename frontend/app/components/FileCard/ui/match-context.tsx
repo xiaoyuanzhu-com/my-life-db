@@ -1,5 +1,5 @@
 import type { SearchResultItem } from '~/types/search';
-import { renderHighlightedSnippet } from './text-highlight';
+import { highlightMatches, renderHighlightedSnippet } from './text-highlight';
 
 type MatchContextProps = {
   context: NonNullable<SearchResultItem['matchContext']>;
@@ -36,7 +36,9 @@ export function MatchContext({ context }: MatchContextProps) {
 
   // Handle keyword match context
   // Snippet may contain <em> tags from FTS5 highlight()
-  const snippetWithHighlights = renderHighlightedSnippet(context.snippet);
+  const snippetWithHighlights = context.label === 'File path'
+    ? highlightMatches(context.snippet, context.terms)
+    : renderHighlightedSnippet(context.snippet);
 
   return (
     <div className={baseClasses}>

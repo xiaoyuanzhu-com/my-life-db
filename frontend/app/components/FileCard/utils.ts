@@ -438,18 +438,15 @@ export function getRawFileUrl(path: string): string {
 
 /**
  * Get the content URL for a file (supports local blob URLs for pending uploads)
- * For HEIC images, returns the JPEG preview from SQLAR if available
+ * For HEIC images, requests a JPEG thumbnail on demand
  */
 export function getFileContentUrl(file: FileWithDigests): string {
   // Use blob URL for pending uploads
   if (file.blobUrl) return file.blobUrl;
 
-  // For HEIC/HEIF images, use preview if available
   const mimeType = file.mimeType || '';
   if (mimeType === 'image/heic' || mimeType === 'image/heif') {
-    if (file.previewSqlar) {
-      return getSqlarUrl(file.previewSqlar);
-    }
+    return getPreviewUrl(file.path);
   }
 
   // Default: raw file URL
@@ -467,11 +464,13 @@ export function getSqlarUrl(sqlarName: string): string {
 }
 
 /**
- * Get the preview SQLAR URL for a file, if any.
+ * Get an on-demand document thumbnail URL.
  */
 export function getScreenshotUrl(file: FileWithDigests): string | null {
-  if (file.previewSqlar) {
-    return getSqlarUrl(file.previewSqlar);
-  }
-  return null;
+  return getPreviewUrl(file.path);
+}
+
+/** Request only visible thumbnails; the server bounds its disposable cache. */
+export function getPreviewUrl(path: string): string {
+  return `/api/data/preview/${path.split('/').map(encodeURIComponent).join('/')}`;
 }

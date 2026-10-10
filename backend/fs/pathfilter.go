@@ -11,15 +11,13 @@ import (
 // Skipping is for INDEXING ONLY. The data page tree shows everything —
 // these directories remain visible to the user as a regular file browser.
 //
-// Adding entries here requires a high bar: a name must be (a) almost
-// universally junk AND (b) impractical-to-large to index. Do NOT add
-// names that might be legitimate user content in some contexts (e.g.
-// dist/, build/, out/, target/ — these often hold user-meaningful
-// artifacts and aren't always large).
-//
-// Each entry below is annotated with: what tool produces it, and the
-// typical total size / file count we'd otherwise drag through FTS.
+// Generated build trees are intentionally excluded even if they contain useful
+// artifacts. Users can still browse and open those artifacts directly.
 var indexSkipNames = map[string]bool{
+	"target": true,
+	"build":  true,
+	"dist":   true,
+	"out":    true,
 	// Node.js / npm / yarn / pnpm per-project dependency directory.
 	// Typical: 100MB–2GB, 10k–200k files per project.
 	"node_modules": true,
