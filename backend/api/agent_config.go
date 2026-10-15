@@ -89,23 +89,42 @@ var defaultConfigOptions = map[string][]configOption{
 		},
 		{
 			ID: "reasoning_effort", Category: "thought_level", Name: "Reasoning Effort", Type: "select",
-			Description:  "Choose how much reasoning effort the model should use",
+			Description:  "How much reasoning effort the model should use",
 			CurrentValue: "high",
 			Options: []configOptionChoice{
 				{Value: "low", Name: "Low", Description: "Fast responses with lighter reasoning"},
 				{Value: "medium", Name: "Medium", Description: "Balances speed and reasoning depth for everyday tasks"},
 				{Value: "high", Name: "High", Description: "Greater reasoning depth for complex problems"},
 				{Value: "xhigh", Name: "Xhigh", Description: "Extra high reasoning depth for complex problems"},
+				{Value: "max", Name: "Max", Description: "Maximum reasoning depth for the hardest problems"},
+				{Value: "ultra", Name: "Ultra", Description: "Maximum reasoning with automatic task delegation"},
 			},
 		},
 		{
-			ID: "mode", Category: "mode", Name: "Approval Preset", Type: "select",
-			Description:  "Choose an approval and sandboxing preset for your session",
+			ID: "mode", Category: "mode", Name: "Mode", Type: "select",
+			Description:  "Approval and sandboxing preset for the session",
 			CurrentValue: "agent-full-access",
 			Options: []configOptionChoice{
-				{Value: "read-only", Name: "Ask for approval", Description: "Always ask to edit external files and use the internet"},
-				{Value: "agent", Name: "Approve for me", Description: "Only ask for actions detected as potentially unsafe"},
+				{Value: "read-only", Name: "Read-only", Description: "Requires approval to edit files and access the internet."},
+				{Value: "workspace-write", Name: "Workspace access", Description: "Edit workspace files; ask before writing outside the workspace or accessing the network."},
+				{Value: "agent", Name: "Auto review", Description: "Only ask for actions detected as potentially unsafe"},
 				{Value: "agent-full-access", Name: "Full access", Description: "Unrestricted access to the internet and any file on your computer"},
+			},
+		},
+		{
+			ID: "collaboration_mode", Category: "collaboration_mode", Name: "Collaboration mode", Type: "select",
+			Description: "How Codex collaborates for subsequent turns", CurrentValue: "default",
+			Options: []configOptionChoice{
+				{Value: "default", Name: "Default"},
+				{Value: "plan", Name: "Plan", Description: "Plan before making changes"},
+			},
+		},
+		{
+			ID: "fast-mode", Category: "model_config", Name: "Fast mode", Type: "select",
+			Description: "1.5x speed, increased usage", CurrentValue: "off",
+			Options: []configOptionChoice{
+				{Value: "off", Name: "Off", Description: "Default speed, normal usage"},
+				{Value: "on", Name: "On", Description: "1.5x speed, increased usage"},
 			},
 		},
 	},
